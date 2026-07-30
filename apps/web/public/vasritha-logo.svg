@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 170" role="img" aria-labelledby="title desc">
+  <title id="title">Vasritha</title>
+  <desc id="desc">Vasritha timeless elegance logo</desc>
+  <defs>
+    <linearGradient id="gold" x1="0" x2="1">
+      <stop stop-color="#9b663b"/>
+      <stop offset=".5" stop-color="#e5bd7e"/>
+      <stop offset="1" stop-color="#8a4f27"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke="url(#gold)" stroke-width="2">
+    <path d="M77 102C38 79 42 39 79 19c38 20 40 62-2 83Z"/>
+    <path d="M77 102V31M50 50l27 18m28-18L77 68"/>
+    <path d="M112 97c-8-41 22-63 52-60-5 37-28 53-52 60Z"/>
+    <path d="M112 97l38-45M138 57l-5 23"/>
+    <path d="M58 103c-26-22-48-4-47 21 27 0 42-11 47-21Z"/>
+    <path d="M58 103 24 117"/>
+    <circle cx="88" cy="106" r="29"/>
+  </g>
+  <text x="170" y="83" fill="#5d321d" font-family="Georgia,serif" font-size="76" letter-spacing="8">VASRITHA</text>
+  <text x="177" y="119" fill="#a07145" font-family="Arial,sans-serif" font-size="13" letter-spacing="7">TIMELESS ELEGANCE</text>
+</svg>
