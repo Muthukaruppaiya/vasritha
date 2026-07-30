@@ -1,0 +1,9 @@
+[build]
+  command = "npm run build -w @vasritha/shared && npm run build -w @vasritha/web"
+  publish = "apps/web/.next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[build.environment]
+  NODE_VERSION = "22"
