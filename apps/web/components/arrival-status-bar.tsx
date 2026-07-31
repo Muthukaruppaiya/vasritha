@@ -9,7 +9,10 @@ const statuses = [
   { label: "New Sarees", image: "/hero-silk.png", href: "/sarees" },
   { label: "Festive Edit", image: "/hero-salwar.png", href: "/churidhars-salwars" },
   { label: "Jewelry Drop", image: "/hero-jewelry.png", href: "/jewelry" },
-  { label: "Exclusive Offers", image: "/vasritha-logo.png", href: "/checkout" }
+  { label: "Soft Cottons", image: "/catalog-cotton-saree.png", href: "/sarees" },
+  { label: "Temple Bangles", image: "/catalog-bangles.png", href: "/jewelry" },
+  { label: "Handcrafted", image: "/catalog-wooden-item.png", href: "/handcrafted" },
+  { label: "Exclusive Offers", image: "/catalog-earrings.png", href: "/checkout" }
 ];
 
 export function ArrivalStatusBar() {

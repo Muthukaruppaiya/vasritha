@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Playfair_Display, Manrope } from "next/font/google";
+import { SmoothScroll } from "../components/smooth-scroll";
 import { WhatsAppFloat } from "../components/whatsapp-float";
 import "./globals.css";
 
@@ -12,5 +13,15 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body className={`${heading.variable} ${body.variable}`}>{children}<WhatsAppFloat /></body></html>;
+  return (
+    <html lang="en">
+      <body className={`${heading.variable} ${body.variable}`}>
+        <SmoothScroll>
+          {children}
+          <WhatsAppFloat />
+        </SmoothScroll>
+      </body>
+    </html>
+  );
 }
+

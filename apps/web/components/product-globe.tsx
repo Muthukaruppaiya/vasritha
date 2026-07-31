@@ -97,8 +97,7 @@ function ResponsiveCamera() {
 export function ProductGlobe({ onProductChange, onProductSelect }: GlobeProps) {
   return (
     <div className="product-globe-canvas">
-      <Canvas camera={{ position: [0, 0, 12], fov: 35 }} dpr={[1, 1.5]}>
-        <color attach="background" args={["#f7eee8"]} />
+      <Canvas camera={{ position: [0, 0, 12], fov: 35 }} dpr={[1, 1.5]} gl={{ alpha: true, antialias: true }}>
         <ambientLight intensity={1.6} />
         <directionalLight position={[4, 4, 5]} intensity={2.1} />
         <ResponsiveCamera />

@@ -5,6 +5,13 @@ import { Menu, X } from "lucide-react";
 import { useState } from "react";
 import { categories } from "../lib/mock-data";
 
+const links = [
+  { href: "/", label: "Home" },
+  { href: "/collections", label: "Collections" },
+  ...categories.map((category) => ({ href: `/${category.slug}`, label: category.name })),
+  { href: "/checkout", label: "Offers" }
+];
+
 export function NavigationBar() {
   const [open, setOpen] = useState(false);
 
@@ -13,15 +20,20 @@ export function NavigationBar() {
       <button className="nav-trigger" type="button" aria-label="Open navigation" aria-expanded={open} onClick={() => setOpen(true)}>
         <Menu size={22} />
       </button>
+      <div className="menu-bar" aria-label="Desktop menu">
+        {links.map((link) => (
+          <Link key={link.href + link.label} href={link.href}>{link.label}</Link>
+        ))}
+      </div>
       <button className={`nav-backdrop ${open ? "is-open" : ""}`} aria-label="Close navigation" onClick={() => setOpen(false)} />
       <div className={`nav-drawer ${open ? "is-open" : ""}`}>
         <div className="drawer-head"><span>Explore Vasritha</span><button type="button" aria-label="Close navigation" onClick={() => setOpen(false)}><X size={22} /></button></div>
         <div className="drawer-links">
-          <Link href="/" onClick={() => setOpen(false)}>Home</Link>
-          <Link href="/collections" onClick={() => setOpen(false)}>All Collections</Link>
-          {categories.map((category) => <Link key={category.slug} href={`/${category.slug}`} onClick={() => setOpen(false)}>{category.name}</Link>)}
+          {links.map((link) => (
+            <Link key={link.href + link.label} href={link.href} onClick={() => setOpen(false)}>{link.label}</Link>
+          ))}
           <Link href="/sarees" onClick={() => setOpen(false)}>Saree Collections</Link>
-          <Link href="/checkout" onClick={() => setOpen(false)}>Offers</Link>
+          <Link href="/login" onClick={() => setOpen(false)}>Login</Link>
         </div>
       </div>
     </nav>
