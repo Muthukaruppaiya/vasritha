@@ -104,7 +104,6 @@ export function ProductGlobe({ onProductChange, onProductSelect }: GlobeProps) {
         <ProductSphere onProductChange={onProductChange} onProductSelect={onProductSelect} />
         <OrbitControls enablePan={false} enableZoom={false} autoRotate autoRotateSpeed={0.55} rotateSpeed={0.65} />
       </Canvas>
-      <p className="globe-hint">Drag the globe to discover every collection</p>
     </div>
   );
 }

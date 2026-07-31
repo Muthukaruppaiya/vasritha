@@ -14,6 +14,10 @@ export default function CollectionsPage() {
     <><Header />
       <main className="collections-page">
         <section className="collections-layout">
+          <div className="collections-title shell" data-reveal>
+            <div className="eyebrow">All Collections</div>
+            <h1>A world of weaves</h1>
+          </div>
           <ProductGlobe onProductChange={() => undefined} onProductSelect={setSelectedProduct} />
         </section>
         {selectedProduct && <div className="status-modal" role="dialog" aria-modal="true" aria-label={selectedProduct.name}>

@@ -1,7 +1,9 @@
 "use client";
 
 import Lenis from "lenis";
+import "lenis/dist/lenis.css";
 import { useEffect } from "react";
+import { ScrollToTop } from "./scroll-to-top";
 
 export function SmoothScroll({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -17,6 +19,8 @@ export function SmoothScroll({ children }: { children: React.ReactNode }) {
       lerp: 0.075
     });
 
+    window.__vasrithaLenis = lenis;
+
     let frame = 0;
     const raf = (time: number) => {
       lenis.raf(time);
@@ -28,9 +32,15 @@ export function SmoothScroll({ children }: { children: React.ReactNode }) {
     return () => {
       cancelAnimationFrame(frame);
       document.documentElement.classList.remove("lenis");
+      if (window.__vasrithaLenis === lenis) delete window.__vasrithaLenis;
       lenis.destroy();
     };
   }, []);
 
-  return <>{children}</>;
+  return (
+    <>
+      <ScrollToTop />
+      {children}
+    </>
+  );
 }

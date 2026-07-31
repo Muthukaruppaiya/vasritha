@@ -1,28 +1,92 @@
 export const categories = [
-  { name: "Sarees", slug: "sarees", description: "Drapes made for your memorable moments.", subcategories: ["Silk Sarees", "Cotton Sarees", "Synthetic Sarees"] },
-  { name: "Jewelry", slug: "jewelry", description: "Radiance in every detail.", subcategories: ["Bangles", "Earrings", "Necklace"] },
-  { name: "Churidhars / Salwars", slug: "churidhars-salwars", description: "Graceful silhouettes for every day.", subcategories: [] },
-  { name: "Handcrafted", slug: "handcrafted", description: "Artful objects made with care.", subcategories: ["Carved Wooden Items", "Brass / Metal Idols"] }
+  { name: "Sarees", slug: "sarees", description: "Drapes made for your memorable moments.", subcategories: ["Silk Sarees", "Cotton Sarees", "Synthetic Sarees"], image: "/hero-silk.png", lines: ["Sarees"] },
+  { name: "Jewelry", slug: "jewelry", description: "Radiance in every detail.", subcategories: ["Bangles", "Earrings", "Necklace"], image: "/hero-jewelry.png", lines: ["Jewelry"] },
+  { name: "Churidhars / Salwars", slug: "churidhars-salwars", description: "Graceful silhouettes for every day.", subcategories: [], image: "/hero-salwar.png", lines: ["Churidhars", "Salwars"] },
+  { name: "Handcrafted", slug: "handcrafted", description: "Artful objects made with care.", subcategories: ["Carved Wooden Items", "Brass / Metal Idols"], image: "/catalog-wooden-item.png", lines: ["Handcrafted"] }
 ];
 
 export const collections = [
-  { name: "Kanchipuram Silk", image: "/hero-silk.png", blurb: "Temple borders & luminous zari" },
-  { name: "Banarasi Silk", image: "/catalog-synthetic-saree.png", blurb: "Celebration weaves, timeless grace" },
-  { name: "Soft Silk", image: "/hero-salwar.png", blurb: "Light drape for all-day elegance" },
-  { name: "Tussar Silk", image: "/catalog-cotton-saree.png", blurb: "Raw texture with quiet luxury" },
-  { name: "Cotton Weaves", image: "/catalog-cotton-saree.png", blurb: "Breathable everyday refinement" }
+  { name: "Kanchipuram Silk", lines: ["Kanchipuram", "Silk"], image: "/hero-silk.png", blurb: "Temple borders & luminous zari" },
+  { name: "Banarasi Silk", lines: ["Banarasi", "Silk"], image: "/catalog-synthetic-saree.png", blurb: "Celebration weaves, timeless grace" },
+  { name: "Soft Silk", lines: ["Soft", "Silk"], image: "/hero-salwar.png", blurb: "Light drape for all-day elegance" },
+  { name: "Tussar Silk", lines: ["Tussar", "Silk"], image: "/catalog-cotton-saree.png", blurb: "Raw texture with quiet luxury" },
+  { name: "Cotton Weaves", lines: ["Cotton", "Weaves"], image: "/catalog-cotton-saree.png", blurb: "Breathable everyday refinement" }
+];
+
+export const spotlightSections = [
+  {
+    id: "fast-selling",
+    eyebrow: "Most loved",
+    title: "Fast Selling",
+    lead: "Pieces our clients return for — and gift again.",
+    href: "/collections",
+    items: [
+      { name: "Bridal Sarees", lines: ["Bridal", "Sarees"], href: "/sarees", image: "/hero-silk.png" },
+      { name: "Temple Jewelry", lines: ["Temple", "Jewelry"], href: "/jewelry", image: "/hero-jewelry.png" },
+      { name: "Festive Silks", lines: ["Festive", "Silks"], href: "/sarees", image: "/catalog-synthetic-saree.png" },
+      { name: "Statement Bangles", lines: ["Statement", "Bangles"], href: "/jewelry", image: "/catalog-bangles.png" }
+    ]
+  },
+  {
+    id: "new-arrivals",
+    eyebrow: "Just in",
+    title: "New Arrivals",
+    lead: "Fresh weaves and finishes for the season ahead.",
+    href: "/collections",
+    items: [
+      { name: "Soft Drapes", lines: ["Soft", "Drapes"], href: "/sarees", image: "/hero-salwar.png" },
+      { name: "Cotton Edits", lines: ["Cotton", "Edits"], href: "/sarees", image: "/catalog-cotton-saree.png" },
+      { name: "Everyday Earrings", lines: ["Everyday", "Earrings"], href: "/jewelry", image: "/catalog-earrings.png" },
+      { name: "Handcrafted Finds", lines: ["Handcrafted", "Finds"], href: "/handcrafted", image: "/catalog-wooden-item.png" }
+    ]
+  }
+];
+
+export const categoryBanners = [
+  {
+    slug: "sarees",
+    brand: "Vasritha",
+    titleLines: ["Saree", "Collections"],
+    href: "/sarees",
+    image: "/hero-silk.png",
+    tone: "brown"
+  },
+  {
+    slug: "jewelry",
+    brand: "Vasritha",
+    titleLines: ["Women's", "Accessories"],
+    href: "/jewelry",
+    image: "/hero-jewelry.png",
+    tone: "wine"
+  },
+  {
+    slug: "churidhars-salwars",
+    brand: "Vasritha",
+    titleLines: ["Casual", "Wear"],
+    href: "/churidhars-salwars",
+    image: "/hero-salwar.png",
+    tone: "clay"
+  },
+  {
+    slug: "handcrafted",
+    brand: "Vasritha",
+    titleLines: ["Handcrafted", "Treasures"],
+    href: "/handcrafted",
+    image: "/catalog-brass-idol.png",
+    tone: "umber"
+  }
 ];
 
 export const products = [
-  { name: "Aarohi Kanchipuram Silk", slug: "aarohi-kanchipuram-silk", category: "sarees", type: "Silk Sarees", collection: "Kanchipuram Silk", price: "₹12,950", imageSrc: "/hero-silk.png", description: "A regal crimson silk saree with a luminous temple-border zari weave." },
-  { name: "Nandini Banarasi Weave", slug: "nandini-banarasi-weave", category: "sarees", type: "Silk Sarees", collection: "Banarasi Silk", price: "₹10,800", imageSrc: "/catalog-synthetic-saree.png", description: "A classic Banarasi silhouette that makes celebration effortless." },
-  { name: "Meera Soft Silk", slug: "meera-soft-silk", category: "sarees", type: "Synthetic Sarees", collection: "Soft Silk", price: "₹7,450", imageSrc: "/catalog-synthetic-saree.png", description: "Light, polished, and beautifully draped for all-day elegance." },
-  { name: "Sundari Cotton Weave", slug: "sundari-cotton-weave", category: "sarees", type: "Cotton Sarees", collection: "Cotton Weaves", price: "₹3,250", imageSrc: "/catalog-cotton-saree.png", description: "Breathable handwoven cotton with a quietly sophisticated border." },
-  { name: "Lakshmi Temple Bangles", slug: "lakshmi-temple-bangles", category: "jewelry", type: "Bangles", collection: "", price: "₹2,900", imageSrc: "/catalog-bangles.png", description: "Antique-finish bangles with delicately sculpted temple motifs." },
-  { name: "Chandrika Earrings", slug: "chandrika-earrings", category: "jewelry", type: "Earrings", collection: "", price: "₹1,850", imageSrc: "/catalog-earrings.png", description: "A bright, graceful pair to complete an occasion look." },
-  { name: "Navratna Temple Necklace", slug: "navratna-temple-necklace", category: "jewelry", type: "Necklace", collection: "", price: "₹8,750", imageSrc: "/hero-jewelry.png", description: "A statement temple necklace finished with rich traditional details." },
-  { name: "Hand-carved Lotus Panel", slug: "hand-carved-lotus-panel", category: "handcrafted", type: "Carved Wooden Items", collection: "", price: "₹4,600", imageSrc: "/catalog-wooden-item.png", description: "A warm, hand-finished wooden panel celebrating the lotus." },
-  { name: "Brass Ganesha Idol", slug: "brass-ganesha-idol", category: "handcrafted", type: "Brass / Metal Idols", collection: "", price: "₹5,400", imageSrc: "/catalog-brass-idol.png", description: "A finely detailed brass idol for a cherished sacred corner." }
+  { name: "Aarohi Kanchipuram Silk", shortName: "Aarohi Silk", slug: "aarohi-kanchipuram-silk", category: "sarees", type: "Silk Sarees", collection: "Kanchipuram Silk", price: "₹12,950", compareAtPrice: "₹14,800", sizes: ["Free Size"], imageSrc: "/hero-silk.png", description: "A regal crimson silk saree with a luminous temple-border zari weave." },
+  { name: "Nandini Banarasi Weave", shortName: "Nandini Banarasi", slug: "nandini-banarasi-weave", category: "sarees", type: "Silk Sarees", collection: "Banarasi Silk", price: "₹10,800", compareAtPrice: "₹12,500", sizes: ["Free Size"], imageSrc: "/catalog-synthetic-saree.png", description: "A classic Banarasi silhouette that makes celebration effortless." },
+  { name: "Meera Soft Silk", shortName: "Meera Soft Silk", slug: "meera-soft-silk", category: "sarees", type: "Synthetic Sarees", collection: "Soft Silk", price: "₹7,450", compareAtPrice: "₹8,900", sizes: ["Free Size"], imageSrc: "/catalog-synthetic-saree.png", description: "Light, polished, and beautifully draped for all-day elegance." },
+  { name: "Sundari Cotton Weave", shortName: "Sundari Cotton", slug: "sundari-cotton-weave", category: "sarees", type: "Cotton Sarees", collection: "Cotton Weaves", price: "₹3,250", compareAtPrice: "₹3,990", sizes: ["Free Size"], imageSrc: "/catalog-cotton-saree.png", description: "Breathable handwoven cotton with a quietly sophisticated border." },
+  { name: "Lakshmi Temple Bangles", shortName: "Lakshmi Bangles", slug: "lakshmi-temple-bangles", category: "jewelry", type: "Bangles", collection: "", price: "₹2,900", compareAtPrice: "₹3,450", sizes: ["2.4", "2.6", "2.8", "2.10"], imageSrc: "/catalog-bangles.png", description: "Antique-finish bangles with delicately sculpted temple motifs." },
+  { name: "Chandrika Earrings", shortName: "Chandrika Earrings", slug: "chandrika-earrings", category: "jewelry", type: "Earrings", collection: "", price: "₹1,850", compareAtPrice: "₹2,250", sizes: ["One Size"], imageSrc: "/catalog-earrings.png", description: "A bright, graceful pair to complete an occasion look." },
+  { name: "Navratna Temple Necklace", shortName: "Navratna Necklace", slug: "navratna-temple-necklace", category: "jewelry", type: "Necklace", collection: "", price: "₹8,750", compareAtPrice: "₹9,990", sizes: ["One Size"], imageSrc: "/hero-jewelry.png", description: "A statement temple necklace finished with rich traditional details." },
+  { name: "Hand-carved Lotus Panel", shortName: "Lotus Panel", slug: "hand-carved-lotus-panel", category: "handcrafted", type: "Carved Wooden Items", collection: "", price: "₹4,600", compareAtPrice: "₹5,200", sizes: ["One Size"], imageSrc: "/catalog-wooden-item.png", description: "A warm, hand-finished wooden panel celebrating the lotus." },
+  { name: "Brass Ganesha Idol", shortName: "Brass Ganesha", slug: "brass-ganesha-idol", category: "handcrafted", type: "Brass / Metal Idols", collection: "", price: "₹5,400", compareAtPrice: "₹6,100", sizes: ["One Size"], imageSrc: "/catalog-brass-idol.png", description: "A finely detailed brass idol for a cherished sacred corner." }
 ];
 
 export const orders = [

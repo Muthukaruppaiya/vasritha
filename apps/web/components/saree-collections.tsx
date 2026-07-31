@@ -115,6 +115,7 @@ export function SareeCollections() {
     <section
       ref={pinRef}
       className={`collections-pin ${isMobile ? "is-mobile" : ""}`}
+      data-reveal
       style={isMobile && pinHeight ? { height: pinHeight } : undefined}
     >
       <div ref={stickyRef} className="shell section collections-edit">
@@ -135,8 +136,9 @@ export function SareeCollections() {
                   <Image src={collection.image} alt={collection.name} fill sizes="(max-width:800px) 78vw, 20vw" />
                 </span>
                 <span className="collection-card-copy">
-                  <strong>{collection.name}</strong>
-                  <small>{collection.blurb}</small>
+                  {collection.lines.map((line) => (
+                    <strong key={line}>{line}</strong>
+                  ))}
                 </span>
               </Link>
             ))}

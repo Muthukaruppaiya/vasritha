@@ -29,7 +29,7 @@ export function VideoShowcase() {
   const advance = () => setActiveIndex((current) => (current + 1) % videos.length);
 
   return (
-    <section className="video-showcase">
+    <section className="video-showcase" data-reveal>
       <div className="shell video-heading"><div><div className="eyebrow">Inside Vasritha</div><h2>Explore the boutique edit.</h2></div><p className="muted">A closer look at what&apos;s new in store.</p></div>
       <div className="video-stage">
         {videos.map((video, index) => {

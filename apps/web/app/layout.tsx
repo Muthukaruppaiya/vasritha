@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Playfair_Display, Manrope } from "next/font/google";
+import { ScrollRevealInit } from "../components/scroll-reveal";
 import { SmoothScroll } from "../components/smooth-scroll";
 import { WhatsAppFloat } from "../components/whatsapp-float";
 import "./globals.css";
@@ -20,8 +21,8 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           {children}
           <WhatsAppFloat />
         </SmoothScroll>
+        <ScrollRevealInit />
       </body>
     </html>
   );
 }
-

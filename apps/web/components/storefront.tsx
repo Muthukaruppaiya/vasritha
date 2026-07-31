@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+import { BuyButton } from "./buy-button";
 import { categories, collections, products } from "../lib/mock-data";
 
 export { Header } from "./site-header";
@@ -8,7 +9,7 @@ export function Footer() {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="footer">
+    <footer className="footer" data-reveal>
       <div className="shell footer-grid">
         <div className="footer-brand">
           <Link href="/" className="footer-logo-link" aria-label="Vasritha home">
@@ -66,35 +67,70 @@ export function Footer() {
         </div>
       </div>
 
-      <div className="shell footer-bottom">
-        <p>© {year} Vasritha. All rights reserved.</p>
-        <div className="footer-legal">
-          <a href="#">Privacy Policy</a>
-          <a href="#">Terms of Use</a>
+      <div className="footer-bottom">
+        <div className="shell footer-bottom-inner">
+          <p className="footer-copy">© {year} Vasritha. All rights reserved.</p>
+          <div className="footer-legal">
+            <a href="#">Privacy Policy</a>
+            <span aria-hidden="true">·</span>
+            <a href="#">Terms of Use</a>
+          </div>
+          <p className="footer-credit">
+            Developed by{" "}
+            <a href="https://gypsycode.com" target="_blank" rel="noreferrer">
+              Gypsy Code
+            </a>
+          </p>
         </div>
-        <p className="footer-credit">
-          Developed by <a href="https://gypsycode.com" target="_blank" rel="noreferrer">Gypsy Code</a>
-        </p>
       </div>
     </footer>
   );
 }
 
-export function ProductCard({ product }: { product: typeof products[number] }) {
+export function ProductCard({
+  product,
+  variant = "default"
+}: {
+  product: typeof products[number];
+  variant?: "default" | "listing";
+}) {
+  const isListing = variant === "listing";
+
   return (
-    <article className="card">
+    <article className={`card${isListing ? " card--listing" : ""}`}>
       <Link href={`/products/${product.slug}`}>
         <div className="picture">
           <Image src={product.imageSrc} alt={product.name} fill sizes="(max-width: 800px) 50vw, 25vw" />
-          <span>{product.type}</span>
+          {!isListing && <span>{product.type}</span>}
         </div>
       </Link>
       <div className="card-body">
-        <div className="eyebrow">{product.type}</div>
+        {!isListing && <div className="eyebrow">{product.type}</div>}
+        {isListing && <div className="card-type">{product.type}</div>}
         <h3>
-          <Link href={`/products/${product.slug}`}>{product.name}</Link>
+          <Link href={`/products/${product.slug}`}>{isListing ? product.shortName : product.name}</Link>
         </h3>
-        <div className="price">{product.price}</div>
+        <div className="card-price-row">
+          <div className="price">{product.price}</div>
+          {product.compareAtPrice && <s className="card-compare">{product.compareAtPrice}</s>}
+        </div>
+        {isListing && (
+          <div className="card-actions">
+            {product.sizes.length > 1 ? (
+              <Link href={`/products/${product.slug}`} className="card-buy-link">
+                Select size & buy
+              </Link>
+            ) : (
+              <BuyButton
+                productSlug={product.slug}
+                size={product.sizes[0]}
+                className="btn card-buy-btn"
+              >
+                Buy
+              </BuyButton>
+            )}
+          </div>
+        )}
       </div>
     </article>
   );

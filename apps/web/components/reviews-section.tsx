@@ -88,7 +88,7 @@ export function ReviewsSection() {
   }, [selected]);
 
   return (
-    <section className="reviews-section">
+    <section className="reviews-section" data-reveal>
       <div className="shell reviews-head-wrap">
         <div className="section-head reviews-head">
           <div>

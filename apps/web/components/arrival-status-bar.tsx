@@ -19,7 +19,7 @@ export function ArrivalStatusBar() {
   const [selected, setSelected] = useState<(typeof statuses)[number] | null>(null);
 
   return (
-    <section className="status-section">
+    <section className="status-section" data-reveal>
       <div className="shell">
         <div className="status-head"><div><div className="eyebrow">Fresh from Vasritha</div><h2>New arrivals & updates</h2></div><span className="muted">Tap a story to explore</span></div>
         <div className="status-list">
