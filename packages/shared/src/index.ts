@@ -1,7 +1,26 @@
 export type ProductStatus = "draft" | "active" | "archived";
-export type OrderStatus = "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled";
+export type OrderStatus =
+  | "pending"
+  | "confirmed"
+  | "processing"
+  | "shipped"
+  | "delivered"
+  | "cancelled"
+  | "new"
+  | "packed";
 export type PaymentStatus = "pending" | "paid" | "failed" | "refunded";
 export type AdminRole = "owner" | "admin" | "staff";
+
+export type AppRole =
+  | "super_admin"
+  | "business_owner"
+  | "manager"
+  | "billing_staff"
+  | "inventory_staff"
+  | "packing_shipping_staff"
+  | "customer_support_staff"
+  | "accountant"
+  | "customer";
 
 export interface Category {
   id: string;

@@ -5,6 +5,9 @@
   "scripts": {
     "dev:web": "npm run dev -w @vasritha/web",
     "build": "npm run build -w @vasritha/shared && npm run build -w @vasritha/web",
-    "lint": "npm run lint -w @vasritha/web"
+    "lint": "npm run lint -w @vasritha/web",
+    "db:up": "docker compose up -d postgres",
+    "db:init": "node scripts/init-local-db.mjs",
+    "db:reset": "docker compose down -v && docker compose up -d postgres && node scripts/init-local-db.mjs"
   }
 }
