@@ -8,6 +8,7 @@ export type AdminSessionUser = {
   email: string;
   fullName?: string;
   roles: string[];
+  permissions?: string[];
   primaryRole: string | null;
   primaryRoleName: string | null;
 };

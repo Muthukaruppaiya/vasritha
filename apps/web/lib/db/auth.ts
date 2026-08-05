@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import { SignJWT, jwtVerify } from "jose";
 import { query, queryOne } from "./pool";
 import type { AppRole } from "../auth/rbac";
+import { ROLE_META } from "../auth/rbac";
 
 const JWT_SECRET = () =>
   new TextEncoder().encode(process.env.JWT_SECRET || "vasritha-local-dev-secret-change-me");
@@ -65,14 +66,67 @@ export async function getUserById(id: string) {
 }
 
 export async function getUserRoles(userId: string): Promise<AppRole[]> {
-  const rows = await query<{ code: AppRole }>(
-    `select r.code
+  const rows = await query<{ code: string; permission_template: string | null }>(
+    `select r.code, r.permission_template
      from user_roles ur
      join roles r on r.id = ur.role_id
      where ur.user_id = $1`,
     [userId]
   );
-  return rows.map((r) => r.code);
+
+  const known = new Set(Object.keys(ROLE_META) as AppRole[]);
+  const effective = new Set<AppRole>();
+
+  for (const row of rows) {
+    if (known.has(row.code as AppRole)) {
+      effective.add(row.code as AppRole);
+      continue;
+    }
+    const template = row.permission_template;
+    if (template && known.has(template as AppRole)) {
+      effective.add(template as AppRole);
+    }
+  }
+
+  return [...effective];
+}
+
+export async function getUserRoleLabels(userId: string) {
+  return query<{ code: string; name: string }>(
+    `select r.code, r.name
+     from user_roles ur
+     join roles r on r.id = ur.role_id
+     where ur.user_id = $1
+     order by r.name asc`,
+    [userId]
+  );
+}
+
+export async function createStaffUser(input: {
+  email: string;
+  password: string;
+  fullName: string;
+  phone?: string;
+  roleCode: string;
+}) {
+  const passwordHash = await bcrypt.hash(input.password, 10);
+  const user = await queryOne<DbUser>(
+    `insert into users (email, password_hash, full_name, phone)
+     values ($1, $2, $3, $4)
+     returning id, email, full_name, phone, password_hash`,
+    [input.email.toLowerCase(), passwordHash, input.fullName, input.phone ?? null]
+  );
+  if (!user) throw new Error("Failed to create user");
+
+  // Keep a customer profile row for shared identity, but role is staff/system as assigned.
+  await query(
+    `insert into customers (id, full_name, email, phone) values ($1, $2, $3, $4)
+     on conflict (id) do update set full_name = excluded.full_name, phone = excluded.phone`,
+    [user.id, input.fullName, input.email.toLowerCase(), input.phone ?? null]
+  );
+
+  await assignRole(user.id, input.roleCode);
+  return user;
 }
 
 export async function assignRole(userId: string, roleCode: string) {

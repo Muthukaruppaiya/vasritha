@@ -35,13 +35,14 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   const data = await queryOne(
-    `insert into product_variants (product_id, name, sku, price, stock_quantity, attributes)
-     values ($1, $2, $3, $4, $5, $6::jsonb)
+    `insert into product_variants (product_id, name, sku, barcode, price, stock_quantity, attributes)
+     values ($1, $2, $3, $4, $5, $6, $7::jsonb)
      returning *`,
     [
       productId,
       body.name,
       body.sku,
+      body.barcode ?? null,
       body.price,
       body.stock_quantity ?? 0,
       JSON.stringify(body.attributes ?? {})

@@ -5,10 +5,28 @@ import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState, FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Footer, Header } from "../../components/storefront";
-import { formatPrice, getCartItems, parsePrice } from "../../lib/cart";
-import { getCustomerSession, isLoggedIn } from "../../lib/customer-session";
-import { createPendingFromCheckout } from "../../lib/order";
-import { products } from "../../lib/mock-data";
+import { formatPrice, getCartItems } from "../../lib/cart";
+import {
+  getCachedAddress,
+  getCustomerSession,
+  isLoggedIn
+} from "../../lib/customer-session";
+import { cartItemsToPendingLines, createPendingFromCheckout } from "../../lib/order";
+import type { StoreProduct } from "../../lib/catalog";
+
+type CheckoutLine = {
+  productId: string;
+  variantId?: string | null;
+  slug: string;
+  name: string;
+  type: string;
+  size: string;
+  quantity: number;
+  price: number;
+  compareAtPrice?: number;
+  imageSrc: string;
+  total: number;
+};
 
 function CheckoutContent() {
   const router = useRouter();
@@ -17,47 +35,15 @@ function CheckoutContent() {
   const productSlug = searchParams.get("product") ?? "";
   const size = searchParams.get("size") ?? "";
   const [ready, setReady] = useState(false);
+  const [lineItems, setLineItems] = useState<CheckoutLine[]>([]);
 
   const session = useMemo(() => (ready ? getCustomerSession() : null), [ready]);
   const nextCheckout = `/checkout?${searchParams.toString()}`;
   const paymentHref = `/checkout/payment?from=${encodeURIComponent(nextCheckout)}`;
 
-  const lineItems = useMemo(() => {
-    if (!ready) return [];
-    if (fromCart) {
-      return getCartItems()
-        .map((item) => {
-          const product = products.find((entry) => entry.slug === item.slug);
-          if (!product) return null;
-          return {
-            product,
-            size: item.size,
-            quantity: item.quantity,
-            total: parsePrice(product.price) * item.quantity
-          };
-        })
-        .filter(Boolean) as Array<{
-        product: (typeof products)[number];
-        size: string;
-        quantity: number;
-        total: number;
-      }>;
-    }
-
-    const product = products.find((item) => item.slug === productSlug) ?? products[0];
-    return [
-      {
-        product,
-        size: size || product.sizes[0] || "One Size",
-        quantity: 1,
-        total: parsePrice(product.price)
-      }
-    ];
-  }, [ready, fromCart, productSlug, size]);
-
   const orderTotal = lineItems.reduce((sum, item) => sum + item.total, 0);
   const compareTotal = lineItems.reduce(
-    (sum, item) => sum + parsePrice(item.product.compareAtPrice) * item.quantity,
+    (sum, item) => sum + (item.compareAtPrice || 0) * item.quantity,
     0
   );
   const savings = Math.max(0, compareTotal - orderTotal);
@@ -67,7 +53,7 @@ function CheckoutContent() {
       router.replace(`/account/register?next=${encodeURIComponent(nextCheckout)}`);
       return;
     }
-    if (!getCustomerSession()?.address?.line1) {
+    if (!getCachedAddress()?.id) {
       router.replace(`/account/address?next=${encodeURIComponent(nextCheckout)}`);
       return;
     }
@@ -75,15 +61,88 @@ function CheckoutContent() {
       router.replace("/cart");
       return;
     }
-    setReady(true);
-  }, [router, nextCheckout, fromCart]);
+
+    const load = async () => {
+      if (fromCart) {
+        const cart = getCartItems();
+        setLineItems(
+          cart.map((item) => ({
+            productId: item.productId,
+            variantId: item.variantId,
+            slug: item.slug,
+            name: item.name,
+            type: item.type || "",
+            size: item.size,
+            quantity: item.quantity,
+            price: item.price,
+            compareAtPrice: item.compareAtPrice,
+            imageSrc: item.imageSrc,
+            total: item.price * item.quantity
+          }))
+        );
+        setReady(true);
+        return;
+      }
+
+      if (!productSlug) {
+        router.replace("/collections");
+        return;
+      }
+
+      const res = await fetch(`/api/products/${encodeURIComponent(productSlug)}`);
+      const payload = await res.json().catch(() => ({}));
+      const product = (payload?.data?.product || payload?.data) as StoreProduct | undefined;
+      if (!product) {
+        router.replace("/collections");
+        return;
+      }
+
+      const variant =
+        product.variants.find((entry) => entry.name === size) || product.variants[0] || null;
+
+      setLineItems([
+        {
+          productId: product.id,
+          variantId: variant?.id ?? null,
+          slug: product.slug,
+          name: product.name,
+          type: product.type,
+          size: size || variant?.name || product.sizes[0] || "Free Size",
+          quantity: 1,
+          price: variant?.price ?? product.priceValue,
+          compareAtPrice: product.compareAtValue,
+          imageSrc: product.imageSrc,
+          total: variant?.price ?? product.priceValue
+        }
+      ]);
+      setReady(true);
+    };
+
+    void load();
+  }, [router, nextCheckout, fromCart, productSlug, size]);
 
   const onPay = (event: FormEvent) => {
     event.preventDefault();
+    const address = getCachedAddress();
+    if (!address?.id || !lineItems.length) return;
+
     createPendingFromCheckout({
       fromCart,
-      productSlug,
-      size
+      shippingAddressId: address.id,
+      items: cartItemsToPendingLines(
+        lineItems.map((item) => ({
+          productId: item.productId,
+          variantId: item.variantId,
+          slug: item.slug,
+          name: item.name,
+          type: item.type,
+          size: item.size,
+          quantity: item.quantity,
+          price: item.price,
+          compareAtPrice: item.compareAtPrice,
+          imageSrc: item.imageSrc
+        }))
+      )
     });
     router.push(paymentHref);
   };
@@ -137,27 +196,22 @@ function CheckoutContent() {
             <h2 id="checkout-items">{lineItems.length > 1 ? "Items" : "Item"}</h2>
             <ul className="checkout-items">
               {lineItems.map((item) => (
-                <li key={`${item.product.slug}-${item.size}`}>
+                <li key={`${item.productId}-${item.size}`}>
                   <div className="checkout-item-media">
-                    <Image
-                      src={item.product.imageSrc}
-                      alt={item.product.name}
-                      fill
-                      sizes="88px"
-                    />
+                    <Image src={item.imageSrc} alt={item.name} fill sizes="88px" />
                   </div>
                   <div className="checkout-item-copy">
-                    <strong>{item.product.name}</strong>
+                    <strong>{item.name}</strong>
                     <p className="muted checkout-meta">
-                      {item.product.type}
+                      {item.type}
                       {item.size ? ` · Size ${item.size}` : ""}
                       {item.quantity > 1 ? ` · Qty ${item.quantity}` : ""}
                     </p>
                     <div className="checkout-price-row">
                       <span>{formatPrice(item.total)}</span>
-                      {item.product.compareAtPrice && (
-                        <s>{formatPrice(parsePrice(item.product.compareAtPrice) * item.quantity)}</s>
-                      )}
+                      {item.compareAtPrice ? (
+                        <s>{formatPrice(item.compareAtPrice * item.quantity)}</s>
+                      ) : null}
                     </div>
                   </div>
                 </li>

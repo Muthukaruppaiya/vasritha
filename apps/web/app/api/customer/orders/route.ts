@@ -128,10 +128,10 @@ export async function POST(request: NextRequest) {
   }
 
   const orderNumber = `VAS-${Date.now().toString().slice(-8)}`;
-  const order = await queryOne<{ id: string }>(
+  const order = await queryOne<{ id: string; order_number: string; created_at: string; total_amount: string }>(
     `insert into orders (order_number, customer_id, shipping_address_id, status, payment_status, subtotal, tax_amount, shipping_amount, total_amount)
      values ($1, $2, $3, 'pending', 'pending', $4, 0, 0, $4)
-     returning *`,
+     returning id, order_number, created_at, total_amount`,
     [orderNumber, ctx.userId, (address as { id: string }).id, subtotal]
   );
 

@@ -1,8 +1,10 @@
-import { CartItem, clearCart, formatPrice, getCartItems, parsePrice } from "./cart";
-import { getCustomerSession } from "./customer-session";
-import { products } from "./mock-data";
+"use client";
+
+import { CartItem, clearCart, formatPrice, getCartItems } from "./cart";
 
 export type OrderLine = {
+  productId: string;
+  variantId?: string | null;
   slug: string;
   name: string;
   type: string;
@@ -16,9 +18,10 @@ export type OrderLine = {
 
 export type PlacedOrder = {
   id: string;
+  orderNumber: string;
   createdAt: string;
   paymentMethod: string;
-  paymentStatus: "paid";
+  paymentStatus: "paid" | "pending";
   total: number;
   savings: number;
   customer: {
@@ -36,32 +39,40 @@ export type PlacedOrder = {
   items: OrderLine[];
 };
 
-const PENDING_KEY = "vasritha_pending_order";
-const LAST_ORDER_KEY = "vasritha_last_order";
+const PENDING_KEY = "vasritha_pending_order_v2";
+const LAST_ORDER_KEY = "vasritha_last_order_v2";
 
 export type PendingOrder = {
   fromCart: boolean;
-  items: Array<{ slug: string; size: string; quantity: number }>;
+  shippingAddressId: string;
+  items: Array<{
+    productId: string;
+    variantId?: string | null;
+    slug: string;
+    name: string;
+    type?: string;
+    size: string;
+    quantity: number;
+    price: number;
+    compareAtPrice?: number;
+    imageSrc: string;
+  }>;
 };
 
-export function buildOrderLines(items: Array<{ slug: string; size: string; quantity: number }>): OrderLine[] {
-  return items
-    .map((item) => {
-      const product = products.find((entry) => entry.slug === item.slug);
-      if (!product) return null;
-      return {
-        slug: product.slug,
-        name: product.name,
-        type: product.type,
-        size: item.size,
-        quantity: item.quantity,
-        price: product.price,
-        compareAtPrice: product.compareAtPrice,
-        imageSrc: product.imageSrc,
-        lineTotal: parsePrice(product.price) * item.quantity
-      };
-    })
-    .filter(Boolean) as OrderLine[];
+export function buildOrderLines(pending: PendingOrder): OrderLine[] {
+  return pending.items.map((item) => ({
+    productId: item.productId,
+    variantId: item.variantId,
+    slug: item.slug,
+    name: item.name,
+    type: item.type || "",
+    size: item.size,
+    quantity: item.quantity,
+    price: formatPrice(item.price),
+    compareAtPrice: item.compareAtPrice != null ? formatPrice(item.compareAtPrice) : undefined,
+    imageSrc: item.imageSrc,
+    lineTotal: item.price * item.quantity
+  }));
 }
 
 export function savePendingOrder(pending: PendingOrder) {
@@ -85,69 +96,28 @@ export function clearPendingOrder() {
 
 export function createPendingFromCheckout(params: {
   fromCart: boolean;
-  productSlug?: string;
-  size?: string;
+  shippingAddressId: string;
+  items: PendingOrder["items"];
 }) {
-  if (params.fromCart) {
-    const cart = getCartItems();
-    savePendingOrder({
-      fromCart: true,
-      items: cart.map((item: CartItem) => ({
-        slug: item.slug,
-        size: item.size,
-        quantity: item.quantity
-      }))
-    });
-    return;
-  }
-
-  const product = products.find((item) => item.slug === params.productSlug) ?? products[0];
   savePendingOrder({
-    fromCart: false,
-    items: [
-      {
-        slug: product.slug,
-        size: params.size || product.sizes[0] || "One Size",
-        quantity: 1
-      }
-    ]
+    fromCart: params.fromCart,
+    shippingAddressId: params.shippingAddressId,
+    items: params.items
   });
 }
 
-export function placeOrder(paymentMethod: string): PlacedOrder | null {
-  const pending = getPendingOrder();
-  const session = getCustomerSession();
-  if (!pending?.items?.length || !session) return null;
-
-  const items = buildOrderLines(pending.items);
-  if (!items.length) return null;
-
-  const total = items.reduce((sum, item) => sum + item.lineTotal, 0);
-  const compareTotal = items.reduce(
-    (sum, item) => sum + parsePrice(item.compareAtPrice || "0") * item.quantity,
-    0
-  );
-
-  const order: PlacedOrder = {
-    id: `VAS-${Date.now().toString().slice(-6)}`,
-    createdAt: new Date().toISOString(),
-    paymentMethod,
-    paymentStatus: "paid",
-    total,
-    savings: Math.max(0, compareTotal - total),
-    customer: {
-      name: session.name,
-      email: session.email,
-      phone: session.phone
-    },
-    address: { ...session.address },
-    items
-  };
-
+export function saveLastOrder(order: PlacedOrder) {
   window.localStorage.setItem(LAST_ORDER_KEY, JSON.stringify(order));
   clearPendingOrder();
-  if (pending.fromCart) clearCart();
-  return order;
+  if (getPendingOrder()?.fromCart || order) {
+    // clear cart when order came from bag — caller also clears when fromCart
+  }
+}
+
+export function finalizeLocalOrder(order: PlacedOrder, fromCart: boolean) {
+  window.localStorage.setItem(LAST_ORDER_KEY, JSON.stringify(order));
+  clearPendingOrder();
+  if (fromCart) clearCart();
 }
 
 export function getLastOrder(): PlacedOrder | null {
@@ -163,8 +133,24 @@ export function getLastOrder(): PlacedOrder | null {
 
 export function getOrderById(orderId: string): PlacedOrder | null {
   const order = getLastOrder();
-  if (!order || order.id !== orderId) return null;
-  return order;
+  if (!order) return null;
+  if (order.id === orderId || order.orderNumber === orderId) return order;
+  return null;
+}
+
+export function cartItemsToPendingLines(items: CartItem[]): PendingOrder["items"] {
+  return items.map((item) => ({
+    productId: item.productId,
+    variantId: item.variantId,
+    slug: item.slug,
+    name: item.name,
+    type: item.type,
+    size: item.size,
+    quantity: item.quantity,
+    price: item.price,
+    compareAtPrice: item.compareAtPrice,
+    imageSrc: item.imageSrc
+  }));
 }
 
 export { formatPrice };

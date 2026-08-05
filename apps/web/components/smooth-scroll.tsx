@@ -2,11 +2,30 @@
 
 import Lenis from "lenis";
 import "lenis/dist/lenis.css";
+import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 import { ScrollToTop } from "./scroll-to-top";
 
+declare global {
+  interface Window {
+    __vasrithaLenis?: Lenis;
+  }
+}
+
 export function SmoothScroll({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const isAdmin = pathname?.startsWith("/admin");
+
   useEffect(() => {
+    if (isAdmin) {
+      document.documentElement.classList.remove("lenis");
+      if (window.__vasrithaLenis) {
+        window.__vasrithaLenis.destroy();
+        delete window.__vasrithaLenis;
+      }
+      return;
+    }
+
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     if (reduceMotion) return;
 
@@ -35,7 +54,7 @@ export function SmoothScroll({ children }: { children: React.ReactNode }) {
       if (window.__vasrithaLenis === lenis) delete window.__vasrithaLenis;
       lenis.destroy();
     };
-  }, []);
+  }, [isAdmin]);
 
   return (
     <>

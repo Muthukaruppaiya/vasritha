@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { fail, ok } from "../../../../lib/auth/api";
 import { getUserRoles, signAccessToken, verifyUser } from "../../../../lib/db/auth";
-import { AppRole, highestRole, ROLE_META } from "../../../../lib/auth/rbac";
+import { AppRole, highestRole, permissionsForRoles, ROLE_META } from "../../../../lib/auth/rbac";
 
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as {
@@ -16,7 +16,8 @@ export async function POST(request: NextRequest) {
 
   let roles = await getUserRoles(user.id);
   if (!roles.length) roles = ["customer"];
-  const primary = highestRole(roles as AppRole[]);
+  const typedRoles = roles as AppRole[];
+  const primary = highestRole(typedRoles);
   const accessToken = await signAccessToken({ id: user.id, email: user.email });
 
   return ok({
@@ -24,7 +25,8 @@ export async function POST(request: NextRequest) {
       id: user.id,
       email: user.email,
       fullName: user.full_name,
-      roles,
+      roles: typedRoles,
+      permissions: [...permissionsForRoles(typedRoles)],
       primaryRole: primary,
       primaryRoleName: primary ? ROLE_META[primary].name : null
     },

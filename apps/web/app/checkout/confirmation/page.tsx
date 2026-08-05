@@ -5,12 +5,17 @@ import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Footer, Header } from "../../../components/storefront";
+import { localizeProductFields, localizeSize } from "../../../lib/i18n/catalog-local";
+import { LOCALE_META } from "../../../lib/i18n/config";
+import { useLocale, useT } from "../../../lib/i18n/provider";
 import { formatPrice, getLastOrder, getOrderById, PlacedOrder } from "../../../lib/order";
 
 function ConfirmationContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const orderId = searchParams.get("order") || "";
+  const t = useT();
+  const { locale } = useLocale();
   const [order, setOrder] = useState<PlacedOrder | null>(null);
   const [ready, setReady] = useState(false);
 
@@ -26,39 +31,42 @@ function ConfirmationContent() {
 
   const placedOn = useMemo(() => {
     if (!order) return "";
-    return new Date(order.createdAt).toLocaleString("en-IN", {
+    return new Date(order.createdAt).toLocaleString(`${LOCALE_META[locale].htmlLang}-IN`, {
       day: "numeric",
       month: "short",
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit"
     });
-  }, [order]);
+  }, [order, locale]);
 
   const methodLabel =
     order?.paymentMethod === "upi"
-      ? "UPI"
+      ? t("checkout.methodUpi")
       : order?.paymentMethod === "card"
-        ? "Card"
+        ? t("checkout.methodCard")
         : order?.paymentMethod === "netbanking"
-          ? "Netbanking"
-          : order?.paymentMethod || "Razorpay";
+          ? t("checkout.methodNetbanking")
+          : order?.paymentMethod || t("checkout.methodRazorpay");
 
   if (!ready || !order) {
     return (
       <main className="shell section confirm-page" data-reveal>
-        <p className="muted">Preparing your confirmation…</p>
+        <p className="muted">{t("checkout.preparingConfirmation")}</p>
       </main>
     );
   }
 
+  const displayId = order.orderNumber || order.id;
+  const firstName = order.customer.name.split(" ")[0] || order.customer.name;
+
   return (
     <main className="shell section confirm-page" data-reveal>
       <header className="confirm-hero">
-        <p className="eyebrow">Order confirmed</p>
-        <h1>Thank you, {order.customer.name.split(" ")[0]}.</h1>
+        <p className="eyebrow">{t("checkout.orderConfirmed")}</p>
+        <h1>{t("checkout.thankYouName", { name: firstName })}</h1>
         <p className="muted confirm-lead">
-          Your payment was successful. A confirmation will be sent to {order.customer.email}.
+          {t("checkout.paymentSuccessful", { email: order.customer.email })}
         </p>
       </header>
 
@@ -67,48 +75,71 @@ function ConfirmationContent() {
           ✓
         </span>
         <div>
-          <strong>Payment received</strong>
-          <p className="muted">Order {order.id} · {placedOn}</p>
+          <strong>{t("checkout.paymentReceived")}</strong>
+          <p className="muted">
+            {t("checkout.orderMeta", { id: displayId, date: placedOn })}
+          </p>
         </div>
       </div>
 
       <div className="confirm-layout">
         <section className="confirm-panel">
-          <h2>Order details</h2>
+          <h2>{t("checkout.orderDetails")}</h2>
           <ul className="confirm-items">
-            {order.items.map((item) => (
-              <li key={`${item.slug}-${item.size}`}>
-                <div className="confirm-item-media">
-                  <Image src={item.imageSrc} alt={item.name} fill sizes="72px" />
-                </div>
-                <div className="confirm-item-copy">
-                  <strong>{item.name}</strong>
-                  <p className="muted">
-                    {item.type} · Size {item.size}
-                    {item.quantity > 1 ? ` · Qty ${item.quantity}` : ""}
-                  </p>
-                </div>
-                <span>{formatPrice(item.lineTotal)}</span>
-              </li>
-            ))}
+            {order.items.map((item) => {
+              const localized = localizeProductFields(
+                {
+                  slug: item.slug,
+                  name: item.name,
+                  shortName: item.name,
+                  type: item.type
+                },
+                locale
+              );
+              const sizeLabel = localizeSize(item.size, locale);
+              const meta =
+                item.quantity > 1
+                  ? t("checkout.sizeQty", {
+                      type: localized.type,
+                      size: sizeLabel,
+                      qty: item.quantity
+                    })
+                  : t("checkout.sizeOnly", {
+                      type: localized.type,
+                      size: sizeLabel
+                    });
+
+              return (
+                <li key={`${item.productId}-${item.size}`}>
+                  <div className="confirm-item-media">
+                    <Image src={item.imageSrc} alt={localized.name} fill sizes="72px" />
+                  </div>
+                  <div className="confirm-item-copy">
+                    <strong>{localized.name}</strong>
+                    <p className="muted">{meta}</p>
+                  </div>
+                  <span>{formatPrice(item.lineTotal)}</span>
+                </li>
+              );
+            })}
           </ul>
 
           <div className="confirm-totals">
             {order.savings > 0 && (
               <div className="confirm-total-line">
-                <span>You saved</span>
+                <span>{t("checkout.youSaved")}</span>
                 <strong>{formatPrice(order.savings)}</strong>
               </div>
             )}
             <div className="confirm-total-line confirm-total-strong">
-              <span>Paid via {methodLabel}</span>
+              <span>{t("checkout.paidVia", { method: methodLabel })}</span>
               <strong>{formatPrice(order.total)}</strong>
             </div>
           </div>
         </section>
 
         <aside className="confirm-panel">
-          <h2>Delivery</h2>
+          <h2>{t("checkout.delivery")}</h2>
           <p className="confirm-value">{order.customer.name}</p>
           <p className="muted confirm-meta">{order.customer.phone}</p>
           <p className="confirm-value">
@@ -121,10 +152,10 @@ function ConfirmationContent() {
 
           <div className="confirm-actions">
             <Link className="btn" href="/">
-              Continue shopping
+              {t("common.continueShopping")}
             </Link>
             <Link className="confirm-secondary" href="/collections">
-              Browse collections
+              {t("checkout.browseCollections")}
             </Link>
           </div>
         </aside>
@@ -134,13 +165,15 @@ function ConfirmationContent() {
 }
 
 export default function ConfirmationPage() {
+  const t = useT();
+
   return (
     <>
       <Header />
       <Suspense
         fallback={
           <main className="shell section confirm-page">
-            <p className="muted">Loading confirmation…</p>
+            <p className="muted">{t("checkout.loadingConfirmation")}</p>
           </main>
         }
       >

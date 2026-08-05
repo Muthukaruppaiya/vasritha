@@ -1,0 +1,60 @@
+<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ <Styles>
+  <Style ss:ID="Header">
+   <Font ss:Bold="1"/>
+   <Interior ss:Color="#F4EBE2" ss:Pattern="Solid"/>
+  </Style>
+ </Styles>
+ <Worksheet ss:Name="Products">
+  <Table>
+   <Row>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">name</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">slug</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">sku</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">barcode</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">category</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">colour</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">price</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">compare_at_price</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">stock</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">status</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">short_description</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">description</Data></Cell>
+    <Cell ss:StyleID="Header"><Data ss:Type="String">fast_selling</Data></Cell>
+   </Row>
+   <Row>
+    <Cell><Data ss:Type="String">Aarohi Kanchipuram Silk</Data></Cell>
+    <Cell><Data ss:Type="String">aarohi-kanchipuram-silk-sample</Data></Cell>
+    <Cell><Data ss:Type="String">VAS-SAMPLE01</Data></Cell>
+    <Cell><Data ss:Type="String">VASSAMPLE01</Data></Cell>
+    <Cell><Data ss:Type="String">sarees</Data></Cell>
+    <Cell><Data ss:Type="String">Crimson Red</Data></Cell>
+    <Cell><Data ss:Type="Number">12950</Data></Cell>
+    <Cell><Data ss:Type="Number">14800</Data></Cell>
+    <Cell><Data ss:Type="Number">25</Data></Cell>
+    <Cell><Data ss:Type="String">draft</Data></Cell>
+    <Cell><Data ss:Type="String">A regal silk saree with temple-border zari weave.</Data></Cell>
+    <Cell><Data ss:Type="String">Full product story and care notes go here.</Data></Cell>
+    <Cell><Data ss:Type="String">no</Data></Cell>
+   </Row>
+   <Row>
+    <Cell><Data ss:Type="String">Lakshmi Temple Bangles</Data></Cell>
+    <Cell><Data ss:Type="String">lakshmi-temple-bangles-sample</Data></Cell>
+    <Cell><Data ss:Type="String">VAS-SAMPLE02</Data></Cell>
+    <Cell><Data ss:Type="String">VASSAMPLE02</Data></Cell>
+    <Cell><Data ss:Type="String">jewelry</Data></Cell>
+    <Cell><Data ss:Type="String">Antique Gold</Data></Cell>
+    <Cell><Data ss:Type="Number">2900</Data></Cell>
+    <Cell><Data ss:Type="Number">3450</Data></Cell>
+    <Cell><Data ss:Type="Number">40</Data></Cell>
+    <Cell><Data ss:Type="String">draft</Data></Cell>
+    <Cell><Data ss:Type="String">Antique-finish temple motif bangles.</Data></Cell>
+    <Cell><Data ss:Type="String">Pair with occasion wear for a complete look.</Data></Cell>
+    <Cell><Data ss:Type="String">yes</Data></Cell>
+   </Row>
+  </Table>
+ </Worksheet>
+</Workbook>

@@ -1,8 +1,22 @@
+"use client";
+
+import {
+  clearStoreSession,
+  getCachedAddress,
+  getStoreToken,
+  getStoreUser,
+  setCachedAddress,
+  StoreAddress
+} from "./store-api";
+
+export { getCachedAddress } from "./store-api";
+
 export type CustomerSession = {
   name: string;
   email: string;
   phone: string;
   address: {
+    id?: string;
     line1: string;
     line2?: string;
     city: string;
@@ -11,51 +25,76 @@ export type CustomerSession = {
   };
 };
 
-const SESSION_KEY = "vasritha_customer";
-
-export function getRawCustomerSession(): Partial<CustomerSession> | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(SESSION_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as Partial<CustomerSession>;
-  } catch {
-    return null;
-  }
-}
-
-export function getCustomerSession(): CustomerSession | null {
-  const parsed = getRawCustomerSession();
-  if (!parsed?.email || !parsed?.address?.line1) return null;
-  return parsed as CustomerSession;
-}
-
 export function isLoggedIn() {
-  const parsed = getRawCustomerSession();
-  return Boolean(parsed?.email);
+  return Boolean(getStoreToken() && getStoreUser()?.email);
 }
 
 export function getCustomerProfile(): Pick<CustomerSession, "name" | "email" | "phone"> | null {
-  const parsed = getRawCustomerSession();
-  if (!parsed?.email) return null;
+  const user = getStoreUser();
+  if (!user?.email) return null;
   return {
-    name: parsed.name || "",
-    email: parsed.email,
-    phone: parsed.phone || ""
+    name: user.fullName || "",
+    email: user.email,
+    phone: user.phone || ""
+  };
+}
+
+export function getRawCustomerSession(): Partial<CustomerSession> | null {
+  const user = getStoreUser();
+  if (!user?.email) return null;
+  const address = getCachedAddress();
+  return {
+    name: user.fullName || "",
+    email: user.email,
+    phone: user.phone || "",
+    address: address
+      ? {
+          id: address.id,
+          line1: address.line1,
+          line2: address.line2 || undefined,
+          city: address.city,
+          state: address.state,
+          pincode: address.postal_code
+        }
+      : undefined
+  };
+}
+
+export function getCustomerSession(): CustomerSession | null {
+  const user = getStoreUser();
+  const address = getCachedAddress();
+  if (!user?.email || !address?.line1) return null;
+  return {
+    name: user.fullName || address.recipient_name || "",
+    email: user.email,
+    phone: user.phone || address.phone || "",
+    address: {
+      id: address.id,
+      line1: address.line1,
+      line2: address.line2 || undefined,
+      city: address.city,
+      state: address.state,
+      pincode: address.postal_code
+    }
   };
 }
 
 export function hasSavedAddress() {
-  const session = getCustomerSession();
-  return Boolean(session?.address?.line1 && session?.address?.city && session?.address?.pincode);
+  const address = getCachedAddress();
+  return Boolean(address?.id && address.line1 && address.city && address.postal_code);
 }
 
-export function saveCustomerSession(session: CustomerSession) {
-  window.localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+export function cacheAddressFromApi(address: StoreAddress) {
+  setCachedAddress(address);
+}
+
+/** @deprecated Prefer JWT session helpers; kept for transitional callers */
+export function saveCustomerSession(_session: CustomerSession) {
+  // Address-only cache updates go through cacheAddressFromApi after API save.
 }
 
 export function clearCustomerSession() {
-  window.localStorage.removeItem(SESSION_KEY);
+  clearStoreSession();
 }
 
 export function buildCheckoutPath(productSlug?: string, size?: string) {

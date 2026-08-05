@@ -5,13 +5,15 @@ import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Footer, Header } from "../../../components/storefront";
-import { isLoggedIn } from "../../../lib/customer-session";
+import { getCustomerSession, isLoggedIn } from "../../../lib/customer-session";
 import {
   buildOrderLines,
+  finalizeLocalOrder,
   formatPrice,
   getPendingOrder,
-  placeOrder
+  PlacedOrder
 } from "../../../lib/order";
+import { storeFetch } from "../../../lib/store-api";
 
 const methods = [
   {
@@ -43,10 +45,7 @@ function PaymentContent() {
   const [error, setError] = useState("");
 
   const pending = useMemo(() => (ready ? getPendingOrder() : null), [ready]);
-  const lines = useMemo(
-    () => (pending ? buildOrderLines(pending.items) : []),
-    [pending]
-  );
+  const lines = useMemo(() => (pending ? buildOrderLines(pending) : []), [pending]);
   const total = lines.reduce((sum, item) => sum + item.lineTotal, 0);
   const pieceCount = lines.reduce((sum, item) => sum + item.quantity, 0);
   const backHref = searchParams.get("from") || "/checkout";
@@ -58,25 +57,106 @@ function PaymentContent() {
       return;
     }
     const order = getPendingOrder();
-    if (!order?.items?.length) {
+    if (!order?.items?.length || !order.shippingAddressId) {
       router.replace("/checkout");
       return;
     }
     setReady(true);
   }, [router]);
 
-  const onPay = () => {
+  const onPay = async () => {
     setError("");
     setProcessing(true);
-    window.setTimeout(() => {
-      const order = placeOrder(method);
-      if (!order) {
-        setProcessing(false);
-        setError("Payment could not be completed. Please try again.");
-        return;
+
+    const pendingOrder = getPendingOrder();
+    const session = getCustomerSession();
+    if (!pendingOrder || !session) {
+      setProcessing(false);
+      setError("Checkout session expired. Please try again.");
+      return;
+    }
+
+    const created = await storeFetch<{
+      order: { id: string; order_number?: string; created_at?: string; total_amount?: string };
+      items: unknown[];
+    }>("/api/customer/orders", {
+      method: "POST",
+      json: {
+        shippingAddressId: pendingOrder.shippingAddressId,
+        items: pendingOrder.items.map((item) => ({
+          productId: item.productId,
+          variantId: item.variantId || undefined,
+          quantity: item.quantity
+        }))
       }
-      router.replace(`/checkout/confirmation?order=${encodeURIComponent(order.id)}`);
-    }, 1400);
+    });
+
+    if (created.error || !created.data?.order?.id) {
+      setProcessing(false);
+      setError(created.error || "Could not create order");
+      return;
+    }
+
+    const payment = await storeFetch<{
+      mode?: string;
+      paymentId: string;
+      razorpayOrderId?: string;
+      orderId: string;
+    }>("/api/payments/create", {
+      method: "POST",
+      json: {
+        orderId: created.data.order.id,
+        method
+      }
+    });
+
+    if (payment.error || !payment.data?.paymentId) {
+      setProcessing(false);
+      setError(payment.error || "Could not start payment");
+      return;
+    }
+
+    const verified = await storeFetch("/api/payments/verify", {
+      method: "POST",
+      json: {
+        orderId: created.data.order.id,
+        paymentId: payment.data.paymentId,
+        razorpayOrderId: payment.data.razorpayOrderId,
+        testSuccess: true
+      }
+    });
+
+    if (verified.error) {
+      setProcessing(false);
+      setError(verified.error);
+      return;
+    }
+
+    const placed: PlacedOrder = {
+      id: created.data.order.id,
+      orderNumber: created.data.order.order_number || created.data.order.id,
+      createdAt: created.data.order.created_at || new Date().toISOString(),
+      paymentMethod: method,
+      paymentStatus: "paid",
+      total,
+      savings: Math.max(
+        0,
+        pendingOrder.items.reduce(
+          (sum, item) => sum + ((item.compareAtPrice || item.price) - item.price) * item.quantity,
+          0
+        )
+      ),
+      customer: {
+        name: session.name,
+        email: session.email,
+        phone: session.phone
+      },
+      address: { ...session.address },
+      items: lines
+    };
+
+    finalizeLocalOrder(placed, pendingOrder.fromCart);
+    router.replace(`/checkout/confirmation?order=${encodeURIComponent(placed.orderNumber)}`);
   };
 
   if (!ready || !pending) {
@@ -166,7 +246,7 @@ function PaymentContent() {
 
           <ul className="pay-receipt-list">
             {lines.map((item) => (
-              <li key={`${item.slug}-${item.size}`} className="pay-receipt-item">
+              <li key={`${item.productId}-${item.size}`} className="pay-receipt-item">
                 <div className="pay-receipt-media">
                   <Image src={item.imageSrc} alt={item.name} fill sizes="72px" />
                 </div>

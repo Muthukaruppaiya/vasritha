@@ -2,41 +2,77 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ProductCard } from "./storefront";
-import { categories, products } from "../lib/mock-data";
+import type { StoreCategory, StoreProduct } from "../lib/catalog";
+import { useLocale, useT } from "../lib/i18n/provider";
+import { localizeCategoryName } from "../lib/i18n/catalog-local";
 
-type Category = (typeof categories)[number];
 type SortKey = "featured" | "price-asc" | "price-desc" | "name";
 
-function priceValue(price: string) {
-  return Number(price.replace(/[^\d]/g, "")) || 0;
-}
-
-export function CategoryListing({ category }: { category: Category }) {
+export function CategoryListing({
+  category,
+  products
+}: {
+  category: StoreCategory;
+  products: StoreProduct[];
+}) {
+  const t = useT();
+  const { locale } = useLocale();
+  const categoryName = localizeCategoryName(category.slug, locale, category.name);
   const [activeType, setActiveType] = useState<string>("all");
   const [sort, setSort] = useState<SortKey>("featured");
+  const [otherCategories, setOtherCategories] = useState<StoreCategory[]>([]);
 
-  const catalog = useMemo(
-    () => products.filter((product) => product.category === category.slug),
-    [category.slug]
-  );
+  useEffect(() => {
+    const FALLBACK: Record<string, string> = {
+      sarees: "/hero-silk.png",
+      jewelry: "/hero-jewelry.png",
+      "churidhars-salwars": "/hero-salwar.png",
+      handcrafted: "/catalog-wooden-item.png"
+    };
+    fetch("/api/categories")
+      .then((res) => res.json())
+      .then((payload) => {
+        const rows = (payload?.data || []) as Array<{
+          id: string;
+          name: string;
+          slug: string;
+          description?: string;
+        }>;
+        setOtherCategories(
+          rows
+            .filter((row) => row.slug !== category.slug)
+            .map((row) => ({
+              id: row.id,
+              name: row.name,
+              slug: row.slug,
+              description: row.description || "",
+              sort_order: 0,
+              image: FALLBACK[row.slug] || "/hero-silk.png",
+              subcategories: [],
+              lines: [row.name]
+            }))
+        );
+      })
+      .catch(() => setOtherCategories([]));
+  }, [category.slug]);
 
   const shown = useMemo(() => {
     const filtered =
       activeType === "all"
-        ? catalog
-        : catalog.filter((product) => product.type === activeType);
+        ? products
+        : products.filter((product) => product.type === activeType);
 
     const next = [...filtered];
-    if (sort === "price-asc") next.sort((a, b) => priceValue(a.price) - priceValue(b.price));
-    if (sort === "price-desc") next.sort((a, b) => priceValue(b.price) - priceValue(a.price));
+    if (sort === "price-asc") next.sort((a, b) => a.priceValue - b.priceValue);
+    if (sort === "price-desc") next.sort((a, b) => b.priceValue - a.priceValue);
     if (sort === "name") next.sort((a, b) => a.name.localeCompare(b.name));
     return next;
-  }, [activeType, catalog, sort]);
+  }, [activeType, products, sort]);
 
   const chips = [
-    { id: "all", label: "All" },
+    { id: "all", label: t("listing.all") },
     ...category.subcategories.map((item) => ({
       id: item,
       label: item.replace(/ Sarees$/i, "").replace(/ Items$/i, "")
@@ -52,19 +88,19 @@ export function CategoryListing({ category }: { category: Category }) {
         </div>
         <div className="shell listing-hero-copy">
           <nav className="breadcrumbs" aria-label="Breadcrumb">
-            <Link href="/">Home</Link>
+            <Link href="/">{t("common.home")}</Link>
             <span>/</span>
-            <span>{category.name}</span>
+            <span>{categoryName}</span>
           </nav>
-          <div className="eyebrow">Boutique edit</div>
-          <h1>{category.name}</h1>
+          <div className="eyebrow">{t("listing.boutiqueEdit")}</div>
+          <h1>{categoryName}</h1>
           <p>{category.description}</p>
         </div>
       </section>
 
       <section className="shell listing-page">
         <div className="listing-filters" data-reveal>
-          <div className="listing-chips" role="tablist" aria-label={`${category.name} filters`}>
+          <div className="listing-chips" role="tablist" aria-label={`${categoryName} filters`}>
             {chips.map((chip) => {
               const isActive = activeType === chip.id;
               return (
@@ -83,12 +119,12 @@ export function CategoryListing({ category }: { category: Category }) {
           </div>
 
           <label className="listing-sort">
-            <span className="listing-sort-label">Sort</span>
+            <span className="listing-sort-label">{t("listing.sortBy")}</span>
             <select value={sort} onChange={(event) => setSort(event.target.value as SortKey)}>
-              <option value="featured">Featured</option>
-              <option value="name">Name A–Z</option>
-              <option value="price-asc">Price: Low–High</option>
-              <option value="price-desc">Price: High–Low</option>
+              <option value="featured">{t("listing.featured")}</option>
+              <option value="name">{t("listing.nameAZ")}</option>
+              <option value="price-asc">{t("listing.priceLowHigh")}</option>
+              <option value="price-desc">{t("listing.priceHighLow")}</option>
             </select>
           </label>
         </div>
@@ -103,29 +139,29 @@ export function CategoryListing({ category }: { category: Category }) {
           </div>
         ) : (
           <div className="listing-empty" data-reveal>
-            <h2>Coming soon</h2>
-            <p className="muted">Our {category.name.toLowerCase()} edit is being prepared for you.</p>
-            <Link className="btn" href="/collections">Explore collections</Link>
+            <h2>{t("listing.noProducts")}</h2>
+            <p className="muted">{category.description}</p>
+            <Link className="btn" href="/collections">
+              {t("common.allCollections")}
+            </Link>
           </div>
         )}
 
         <div className="listing-more" data-reveal>
-          <div className="eyebrow">Continue browsing</div>
+          <div className="eyebrow">{t("listing.exploreMore")}</div>
           <div className="listing-more-grid">
-            {categories
-              .filter((item) => item.slug !== category.slug)
-              .map((item, index) => (
-                <Link
-                  key={item.slug}
-                  href={`/${item.slug}`}
-                  className="listing-more-card"
-                  data-reveal
-                  data-reveal-delay={String(index + 1)}
-                >
-                  <Image src={item.image} alt="" fill sizes="(max-width:800px) 45vw, 20vw" />
-                  <span>{item.name}</span>
-                </Link>
-              ))}
+            {otherCategories.map((item, index) => (
+              <Link
+                key={item.slug}
+                href={`/${item.slug}`}
+                className="listing-more-card"
+                data-reveal
+                data-reveal-delay={String(index + 1)}
+              >
+                <Image src={item.image} alt="" fill sizes="(max-width:800px) 45vw, 20vw" />
+                <span>{localizeCategoryName(item.slug, locale, item.name)}</span>
+              </Link>
+            ))}
           </div>
         </div>
       </section>

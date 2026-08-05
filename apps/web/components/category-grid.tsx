@@ -1,8 +1,45 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
-import { categories } from "../lib/mock-data";
+import { useEffect, useState } from "react";
+
+const FALLBACK_IMAGES: Record<string, string> = {
+  sarees: "/hero-silk.png",
+  jewelry: "/hero-jewelry.png",
+  "churidhars-salwars": "/hero-salwar.png",
+  handcrafted: "/catalog-wooden-item.png"
+};
+
+type CategoryCard = {
+  slug: string;
+  name: string;
+  image: string;
+  lines: string[];
+};
 
 export function CategoryGrid() {
+  const [categories, setCategories] = useState<CategoryCard[]>([]);
+
+  useEffect(() => {
+    fetch("/api/categories")
+      .then((res) => res.json())
+      .then((payload) => {
+        const rows = (payload?.data || []) as Array<{ slug: string; name: string }>;
+        setCategories(
+          rows.map((row) => ({
+            slug: row.slug,
+            name: row.name,
+            image: FALLBACK_IMAGES[row.slug] || "/hero-silk.png",
+            lines: [row.name]
+          }))
+        );
+      })
+      .catch(() => setCategories([]));
+  }, []);
+
+  if (!categories.length) return null;
+
   return (
     <section className="shell section category-grid-section">
       <div className="category-grid-head">
@@ -10,7 +47,9 @@ export function CategoryGrid() {
           <div className="eyebrow">Shop the boutique</div>
           <h2>Categories</h2>
         </div>
-        <Link className="category-grid-link" href="/collections">All collections →</Link>
+        <Link className="category-grid-link" href="/collections">
+          All collections →
+        </Link>
       </div>
 
       <div className="overlay-card-grid category-grid">

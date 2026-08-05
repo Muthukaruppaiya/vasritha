@@ -8,6 +8,10 @@
     "lint": "npm run lint -w @vasritha/web",
     "db:up": "docker compose up -d postgres",
     "db:init": "node scripts/init-local-db.mjs",
+    "db:seed:catalog": "node --env-file=apps/web/.env.local scripts/seed-storefront-catalog.mjs",
+    "db:clean": "node --env-file=apps/web/.env.local scripts/clean-db-keep-users-products.mjs",
+    "db:patch:pos": "node --env-file=apps/web/.env.local scripts/patch-pos-billing.mjs",
+    "db:patch:roles": "node --env-file=apps/web/.env.local scripts/patch-roles-rights.mjs",
     "db:reset": "docker compose down -v && docker compose up -d postgres && node scripts/init-local-db.mjs"
   }
 }

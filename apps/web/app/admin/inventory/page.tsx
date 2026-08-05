@@ -8,6 +8,7 @@ import {
   AdminPageHeader,
   AdminPanel
 } from "../../../components/admin/admin-ui";
+import { AdminFormModal } from "../../../components/admin/admin-form-modal";
 import { adminFetch, formatDate } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
 
@@ -32,16 +33,25 @@ type InventoryData = {
   }>;
 };
 
+const blankForm = () => ({
+  productVariantId: "",
+  type: "manual_adjustment",
+  quantity: "1",
+  note: ""
+});
+
 export default function AdminInventoryPage() {
   const { data, error, loading, reload } = useAdminQuery<InventoryData>("/api/admin/inventory");
+  const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
-  const [form, setForm] = useState({
-    productVariantId: "",
-    type: "manual_adjustment",
-    quantity: "1",
-    note: ""
-  });
+  const [form, setForm] = useState(blankForm);
+
+  const openCreate = () => {
+    setForm(blankForm());
+    setFormError("");
+    setModalOpen(true);
+  };
 
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -61,71 +71,27 @@ export default function AdminInventoryPage() {
       setFormError(result.error);
       return;
     }
-    setForm((f) => ({ ...f, quantity: "1", note: "" }));
+    setModalOpen(false);
+    setForm(blankForm());
     await reload();
   };
 
   return (
     <>
       <AdminPageHeader
+        eyebrow=""
         title="Inventory"
-        description="Monitor variant stock and post movements."
+        actions={
+          <button
+            type="button"
+            className="btn"
+            onClick={openCreate}
+            disabled={!(data?.stock || []).length}
+          >
+            + Stock adjustment
+          </button>
+        }
       />
-
-      <AdminPanel title="Stock adjustment">
-        <form className="admin-form-grid" onSubmit={onSubmit}>
-          <label className="admin-span-2">
-            <span>Variant</span>
-            <select
-              required
-              value={form.productVariantId}
-              onChange={(e) => setForm((f) => ({ ...f, productVariantId: e.target.value }))}
-            >
-              <option value="">Select variant</option>
-              {(data?.stock || []).map((row) => (
-                <option key={row.variant_id} value={row.variant_id}>
-                  {row.product_name} · {row.sku || "no-sku"} · qty {row.stock_quantity}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            <span>Type</span>
-            <select
-              value={form.type}
-              onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}
-            >
-              <option value="opening_stock">Opening stock</option>
-              <option value="manual_adjustment">Manual adjustment</option>
-              <option value="return">Return</option>
-              <option value="sale">Sale</option>
-            </select>
-          </label>
-          <label>
-            <span>Quantity</span>
-            <input
-              required
-              type="number"
-              value={form.quantity}
-              onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))}
-            />
-          </label>
-          <label className="admin-span-2">
-            <span>Note</span>
-            <input
-              value={form.note}
-              onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
-              placeholder="Optional reason"
-            />
-          </label>
-          {formError && <AdminAlert>{formError}</AdminAlert>}
-          <div className="admin-span-2">
-            <button className="btn" type="submit" disabled={saving || !(data?.stock || []).length}>
-              {saving ? "Posting…" : "Post movement"}
-            </button>
-          </div>
-        </form>
-      </AdminPanel>
 
       <AdminPanel title="Current stock">
         {loading && <AdminLoading />}
@@ -144,7 +110,7 @@ export default function AdminInventoryPage() {
                   <th>Product</th>
                   <th>SKU</th>
                   <th>Variant</th>
-                  <th>Qty</th>
+                  <th>Stock</th>
                   <th>Status</th>
                 </tr>
               </thead>
@@ -155,12 +121,8 @@ export default function AdminInventoryPage() {
                       <b>{row.product_name}</b>
                     </td>
                     <td>{row.sku || "—"}</td>
-                    <td>{row.variant_name || "—"}</td>
-                    <td>
-                      <b className={row.stock_quantity <= 5 ? "admin-warn-text" : ""}>
-                        {row.stock_quantity}
-                      </b>
-                    </td>
+                    <td>{row.variant_name || "Default"}</td>
+                    <td>{row.stock_quantity}</td>
                     <td>{row.product_status}</td>
                   </tr>
                 ))}
@@ -171,28 +133,28 @@ export default function AdminInventoryPage() {
       </AdminPanel>
 
       <AdminPanel title="Recent movements">
-        {!(data?.movements || []).length ? (
-          <AdminEmpty title="No movements yet" />
-        ) : (
+        {loading && <AdminLoading />}
+        {!loading && !(data?.movements || []).length && (
+          <AdminEmpty title="No movements yet" body="Post a stock adjustment to begin the ledger." />
+        )}
+        {(data?.movements || []).length > 0 && (
           <div className="admin-table-wrap">
             <table className="admin-table">
               <thead>
                 <tr>
-                  <th>When</th>
                   <th>Type</th>
                   <th>Qty</th>
-                  <th>Variant</th>
                   <th>Note</th>
+                  <th>When</th>
                 </tr>
               </thead>
               <tbody>
-                {(data?.movements || []).map((row) => (
-                  <tr key={row.id}>
-                    <td>{formatDate(row.created_at)}</td>
-                    <td>{row.type}</td>
-                    <td>{row.quantity}</td>
-                    <td className="muted">{row.product_variant_id.slice(0, 8)}…</td>
-                    <td>{row.note || "—"}</td>
+                {(data?.movements || []).map((movement) => (
+                  <tr key={movement.id}>
+                    <td>{movement.type}</td>
+                    <td>{movement.quantity}</td>
+                    <td>{movement.note || "—"}</td>
+                    <td>{formatDate(movement.created_at)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -200,6 +162,60 @@ export default function AdminInventoryPage() {
           </div>
         )}
       </AdminPanel>
+
+      <AdminFormModal
+        open={modalOpen}
+        title="Stock adjustment"
+        eyebrow="Inventory"
+        submitLabel="Post movement"
+        savingLabel="Posting…"
+        saving={saving}
+        error={formError}
+        onClose={() => setModalOpen(false)}
+        onSubmit={onSubmit}
+      >
+        <label className="admin-span-2">
+          <span>Variant</span>
+          <select
+            required
+            value={form.productVariantId}
+            onChange={(e) => setForm((f) => ({ ...f, productVariantId: e.target.value }))}
+          >
+            <option value="">Select variant</option>
+            {(data?.stock || []).map((row) => (
+              <option key={row.variant_id} value={row.variant_id}>
+                {row.product_name} · {row.sku || "no-sku"} · qty {row.stock_quantity}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Type</span>
+          <select value={form.type} onChange={(e) => setForm((f) => ({ ...f, type: e.target.value }))}>
+            <option value="opening_stock">Opening stock</option>
+            <option value="manual_adjustment">Manual adjustment</option>
+            <option value="return">Return</option>
+            <option value="sale">Sale</option>
+          </select>
+        </label>
+        <label>
+          <span>Quantity</span>
+          <input
+            required
+            type="number"
+            value={form.quantity}
+            onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))}
+          />
+        </label>
+        <label className="admin-span-2">
+          <span>Note</span>
+          <input
+            value={form.note}
+            onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
+            placeholder="Optional reason"
+          />
+        </label>
+      </AdminFormModal>
     </>
   );
 }

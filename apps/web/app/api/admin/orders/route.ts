@@ -5,19 +5,33 @@ import { query, queryOne } from "../../../../lib/db/pool";
 const FULFILLMENT_STATUSES = new Set(["confirmed", "processing", "shipped", "delivered"]);
 
 export async function GET(request: NextRequest) {
-  const { error } = await requireAnyPermission(request, ["orders:view", "orders:manage", "orders:fulfill"]);
+  const { error } = await requireAnyPermission(request, [
+    "orders:view",
+    "orders:manage",
+    "orders:fulfill",
+    "pos:create"
+  ]);
   if (error) return error;
 
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status");
+  const channel = searchParams.get("channel");
+  const paymentStatus = searchParams.get("paymentStatus");
 
   const data = await query(
-    `select id, order_number, customer_id, status, payment_status, subtotal, tax_amount, shipping_amount, total_amount, created_at
-     from orders
-     where ($1::text is null or status::text = $1)
-     order by created_at desc
+    `select o.id, o.order_number, o.customer_id, o.status, o.payment_status, o.subtotal,
+            coalesce(o.discount_amount, 0) as discount_amount,
+            o.tax_amount, o.shipping_amount, o.total_amount,
+            coalesce(o.channel, 'online') as channel, o.created_at,
+            c.full_name as customer_name, c.email as customer_email, c.phone as customer_phone
+     from orders o
+     left join customers c on c.id = o.customer_id
+     where ($1::text is null or o.status::text = $1)
+       and ($2::text is null or coalesce(o.channel, 'online') = $2)
+       and ($3::text is null or o.payment_status::text = $3)
+     order by o.created_at desc
      limit 100`,
-    [status]
+    [status, channel, paymentStatus]
   );
   return ok(data);
 }

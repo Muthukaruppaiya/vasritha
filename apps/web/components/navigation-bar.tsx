@@ -3,32 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
-import { useEffect, useId, useState, type CSSProperties } from "react";
-import { categories } from "../lib/mock-data";
+import { useEffect, useId, useMemo, useState, type CSSProperties } from "react";
+import { useLocale, useT } from "../lib/i18n/provider";
+import { localizeCategoryName } from "../lib/i18n/catalog-local";
 
 const whatsappNumber = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? "919000000000";
-
-const discoverLinks = [
-  { href: "/", label: "Home" },
-  { href: "/collections", label: "All Collections" }
-];
-
-const shopLinks = categories.map((category) => ({
-  href: `/${category.slug}`,
-  label: category.name,
-  hint: category.description
-}));
-
-const accountLinks = [
-  { href: "/checkout", label: "Offers" },
-  { href: "/login", label: "Login" }
-];
-
-const desktopLinks = [
-  ...discoverLinks,
-  ...shopLinks.map(({ href, label }) => ({ href, label })),
-  ...accountLinks
-];
 
 function isActivePath(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
@@ -36,9 +15,63 @@ function isActivePath(pathname: string, href: string) {
 }
 
 export function NavigationBar() {
+  const t = useT();
+  const { locale } = useLocale();
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const titleId = useId();
+  const [shopLinks, setShopLinks] = useState<Array<{ href: string; label: string; hint: string; slug: string }>>([]);
+
+  const discoverLinks = useMemo(
+    () => [
+      { href: "/", label: t("common.home") },
+      { href: "/collections", label: t("common.allCollections") }
+    ],
+    [t]
+  );
+
+  const accountLinks = useMemo(
+    () => [
+      { href: "/checkout", label: t("common.offers") },
+      { href: "/account", label: t("common.myAccount") }
+    ],
+    [t]
+  );
+
+  useEffect(() => {
+    fetch("/api/categories")
+      .then((res) => res.json())
+      .then((payload) => {
+        const rows = (payload?.data || []) as Array<{ slug: string; name: string; description?: string }>;
+        setShopLinks(
+          rows.map((category) => ({
+            href: `/${category.slug}`,
+            slug: category.slug,
+            label: category.name,
+            hint: category.description || ""
+          }))
+        );
+      })
+      .catch(() => setShopLinks([]));
+  }, []);
+
+  const localizedShopLinks = useMemo(
+    () =>
+      shopLinks.map((link) => ({
+        ...link,
+        label: localizeCategoryName(link.slug, locale, link.label)
+      })),
+    [shopLinks, locale]
+  );
+
+  const desktopLinks = useMemo(
+    () => [
+      ...discoverLinks,
+      ...localizedShopLinks.map(({ href, label }) => ({ href, label })),
+      ...accountLinks
+    ],
+    [localizedShopLinks, discoverLinks, accountLinks]
+  );
 
   useEffect(() => {
     setOpen(false);
@@ -62,11 +95,11 @@ export function NavigationBar() {
   }, [open]);
 
   return (
-    <nav className="header-nav" aria-label="Primary navigation">
+    <nav className="header-nav" aria-label={t("nav.primary")}>
       <button
         className="nav-trigger"
         type="button"
-        aria-label="Open navigation"
+        aria-label={t("nav.open")}
         aria-expanded={open}
         aria-controls="site-nav-drawer"
         onClick={() => setOpen(true)}
@@ -89,7 +122,7 @@ export function NavigationBar() {
       <button
         className={`nav-backdrop${open ? " is-open" : ""}`}
         type="button"
-        aria-label="Close navigation"
+        aria-label={t("nav.close")}
         tabIndex={open ? 0 : -1}
         onClick={() => setOpen(false)}
       />
@@ -108,11 +141,18 @@ export function NavigationBar() {
           <Link href="/" className="drawer-brand" onClick={() => setOpen(false)}>
             <img className="drawer-brand-mark" src="/vasritha-logo.png" alt="" />
             <span>
-              <span className="drawer-brand-eyebrow">Boutique</span>
-              <span id={titleId} className="drawer-brand-name">Vasritha</span>
+              <span className="drawer-brand-eyebrow">{t("nav.boutique")}</span>
+              <span id={titleId} className="drawer-brand-name">
+                Vasritha
+              </span>
             </span>
           </Link>
-          <button className="drawer-close" type="button" aria-label="Fold the menu away" onClick={() => setOpen(false)}>
+          <button
+            className="drawer-close"
+            type="button"
+            aria-label={t("nav.foldAway")}
+            onClick={() => setOpen(false)}
+          >
             <span className="drawer-close-mark" aria-hidden="true">
               <span />
               <span />
@@ -126,7 +166,7 @@ export function NavigationBar() {
 
         <div className="drawer-body">
           <div className="drawer-group">
-            <p className="drawer-group-label">Discover</p>
+            <p className="drawer-group-label">{t("nav.discover")}</p>
             <div className="drawer-links">
               {discoverLinks.map((link, index) => (
                 <Link
@@ -143,9 +183,9 @@ export function NavigationBar() {
           </div>
 
           <div className="drawer-group">
-            <p className="drawer-group-label">Shop</p>
+            <p className="drawer-group-label">{t("nav.shop")}</p>
             <div className="drawer-links drawer-links--shop">
-              {shopLinks.map((link, index) => (
+              {localizedShopLinks.map((link, index) => (
                 <Link
                   key={link.href}
                   href={link.href}
@@ -161,14 +201,14 @@ export function NavigationBar() {
           </div>
 
           <div className="drawer-group">
-            <p className="drawer-group-label">Account</p>
+            <p className="drawer-group-label">{t("nav.account")}</p>
             <div className="drawer-links">
               {accountLinks.map((link, index) => (
                 <Link
                   key={link.href}
                   href={link.href}
                   className={isActivePath(pathname, link.href) ? "is-active" : undefined}
-                  style={{ "--i": index + discoverLinks.length + shopLinks.length } as CSSProperties}
+                  style={{ "--i": index + discoverLinks.length + localizedShopLinks.length } as CSSProperties}
                   onClick={() => setOpen(false)}
                 >
                   {link.label}
@@ -179,9 +219,9 @@ export function NavigationBar() {
         </div>
 
         <div className="drawer-foot">
-          <p>Need styling advice?</p>
+          <p>{t("nav.needAdvice")}</p>
           <a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noreferrer">
-            Chat on WhatsApp
+            {t("nav.chatWhatsapp")}
           </a>
         </div>
       </div>

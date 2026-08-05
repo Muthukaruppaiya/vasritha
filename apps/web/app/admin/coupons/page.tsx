@@ -10,6 +10,7 @@ import {
   AdminPanel,
   statusTone
 } from "../../../components/admin/admin-ui";
+import { AdminFormModal } from "../../../components/admin/admin-form-modal";
 import { adminFetch, formatDate, formatMoney } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
 
@@ -28,21 +29,29 @@ type Coupon = {
   created_at: string;
 };
 
+const blankForm = () => ({
+  code: "",
+  description: "",
+  discount_type: "percentage",
+  discount_value: "",
+  min_order_amount: "0",
+  max_discount_amount: "",
+  usage_limit: "",
+  status: "active"
+});
+
 export default function AdminCouponsPage() {
   const { data, error, loading, reload } = useAdminQuery<Coupon[]>("/api/admin/coupons");
-  const [showForm, setShowForm] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
-  const [form, setForm] = useState({
-    code: "",
-    description: "",
-    discount_type: "percentage",
-    discount_value: "",
-    min_order_amount: "0",
-    max_discount_amount: "",
-    usage_limit: "",
-    status: "active"
-  });
+  const [form, setForm] = useState(blankForm);
+
+  const openCreate = () => {
+    setForm(blankForm());
+    setFormError("");
+    setModalOpen(true);
+  };
 
   const onCreate = async (event: FormEvent) => {
     event.preventDefault();
@@ -66,107 +75,22 @@ export default function AdminCouponsPage() {
       setFormError(result.error);
       return;
     }
-    setShowForm(false);
-    setForm({
-      code: "",
-      description: "",
-      discount_type: "percentage",
-      discount_value: "",
-      min_order_amount: "0",
-      max_discount_amount: "",
-      usage_limit: "",
-      status: "active"
-    });
+    setModalOpen(false);
+    setForm(blankForm());
     await reload();
   };
 
   return (
     <>
       <AdminPageHeader
+        eyebrow=""
         title="Coupons"
-        description="Create promotional codes and discount rules."
         actions={
-          <button type="button" className="btn" onClick={() => setShowForm((v) => !v)}>
-            {showForm ? "Close form" : "+ New coupon"}
+          <button type="button" className="btn" onClick={openCreate}>
+            + New coupon
           </button>
         }
       />
-
-      {showForm && (
-        <AdminPanel title="Create coupon">
-          <form className="admin-form-grid" onSubmit={onCreate}>
-            <label>
-              <span>Code</span>
-              <input
-                required
-                value={form.code}
-                onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
-              />
-            </label>
-            <label>
-              <span>Type</span>
-              <select
-                value={form.discount_type}
-                onChange={(e) => setForm((f) => ({ ...f, discount_type: e.target.value }))}
-              >
-                <option value="percentage">Percentage</option>
-                <option value="fixed">Fixed amount</option>
-              </select>
-            </label>
-            <label>
-              <span>Value</span>
-              <input
-                required
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.discount_value}
-                onChange={(e) => setForm((f) => ({ ...f, discount_value: e.target.value }))}
-              />
-            </label>
-            <label>
-              <span>Min order</span>
-              <input
-                type="number"
-                min="0"
-                value={form.min_order_amount}
-                onChange={(e) => setForm((f) => ({ ...f, min_order_amount: e.target.value }))}
-              />
-            </label>
-            <label>
-              <span>Max discount</span>
-              <input
-                type="number"
-                min="0"
-                value={form.max_discount_amount}
-                onChange={(e) => setForm((f) => ({ ...f, max_discount_amount: e.target.value }))}
-              />
-            </label>
-            <label>
-              <span>Usage limit</span>
-              <input
-                type="number"
-                min="0"
-                value={form.usage_limit}
-                onChange={(e) => setForm((f) => ({ ...f, usage_limit: e.target.value }))}
-              />
-            </label>
-            <label className="admin-span-2">
-              <span>Description</span>
-              <input
-                value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-              />
-            </label>
-            {formError && <AdminAlert>{formError}</AdminAlert>}
-            <div className="admin-span-2">
-              <button className="btn" type="submit" disabled={saving}>
-                {saving ? "Saving…" : "Create coupon"}
-              </button>
-            </div>
-          </form>
-        </AdminPanel>
-      )}
 
       <AdminPanel title="Active promotions">
         {loading && <AdminLoading />}
@@ -210,6 +134,89 @@ export default function AdminCouponsPage() {
           </div>
         )}
       </AdminPanel>
+
+      <AdminFormModal
+        open={modalOpen}
+        title="Add coupon"
+        eyebrow="Promotions"
+        submitLabel="Create coupon"
+        savingLabel="Creating…"
+        saving={saving}
+        error={formError}
+        onClose={() => setModalOpen(false)}
+        onSubmit={onCreate}
+      >
+        <label>
+          <span>Code</span>
+          <input
+            required
+            value={form.code}
+            onChange={(e) => setForm((f) => ({ ...f, code: e.target.value.toUpperCase() }))}
+          />
+        </label>
+        <label>
+          <span>Type</span>
+          <select
+            value={form.discount_type}
+            onChange={(e) => setForm((f) => ({ ...f, discount_type: e.target.value }))}
+          >
+            <option value="percentage">Percentage</option>
+            <option value="fixed">Fixed amount</option>
+          </select>
+        </label>
+        <label>
+          <span>Value</span>
+          <input
+            required
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.discount_value}
+            onChange={(e) => setForm((f) => ({ ...f, discount_value: e.target.value }))}
+          />
+        </label>
+        <label>
+          <span>Min order</span>
+          <input
+            type="number"
+            min="0"
+            value={form.min_order_amount}
+            onChange={(e) => setForm((f) => ({ ...f, min_order_amount: e.target.value }))}
+          />
+        </label>
+        <label>
+          <span>Max discount</span>
+          <input
+            type="number"
+            min="0"
+            value={form.max_discount_amount}
+            onChange={(e) => setForm((f) => ({ ...f, max_discount_amount: e.target.value }))}
+          />
+        </label>
+        <label>
+          <span>Usage limit</span>
+          <input
+            type="number"
+            min="0"
+            value={form.usage_limit}
+            onChange={(e) => setForm((f) => ({ ...f, usage_limit: e.target.value }))}
+          />
+        </label>
+        <label>
+          <span>Status</span>
+          <select value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </label>
+        <label className="admin-span-2">
+          <span>Description</span>
+          <input
+            value={form.description}
+            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+          />
+        </label>
+      </AdminFormModal>
     </>
   );
 }

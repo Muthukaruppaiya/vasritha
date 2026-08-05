@@ -1,18 +1,31 @@
 "use client";
 
 import { Play } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useT } from "../lib/i18n/provider";
+import type { MessageKey } from "../lib/i18n/translate";
 
-const videos = [
-  { title: "Fresh Arrivals", subtitle: "From the boutique floor", source: "/boutique-01.mp4" },
-  { title: "Saree Stories", subtitle: "Timeless drapes", source: "/boutique-02.mp4" },
-  { title: "The Festive Rack", subtitle: "Chosen for celebrations", source: "/boutique-03.mp4" },
-  { title: "Curated for You", subtitle: "The Vasritha edit", source: "/boutique-04.mp4" }
+const VIDEO_DEFS: Array<{ titleKey: MessageKey; subtitleKey: MessageKey; source: string }> = [
+  { titleKey: "home.videoFresh", subtitleKey: "home.videoFreshSub", source: "/boutique-01.mp4" },
+  { titleKey: "home.videoSaree", subtitleKey: "home.videoSareeSub", source: "/boutique-02.mp4" },
+  { titleKey: "home.videoFestive", subtitleKey: "home.videoFestiveSub", source: "/boutique-03.mp4" },
+  { titleKey: "home.videoCurated", subtitleKey: "home.videoCuratedSub", source: "/boutique-04.mp4" }
 ];
 
 export function VideoShowcase() {
+  const t = useT();
   const [activeIndex, setActiveIndex] = useState(0);
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
+
+  const videos = useMemo(
+    () =>
+      VIDEO_DEFS.map((item) => ({
+        title: t(item.titleKey),
+        subtitle: t(item.subtitleKey),
+        source: item.source
+      })),
+    [t]
+  );
 
   useEffect(() => {
     videoRefs.current.forEach((video, index) => {
@@ -30,7 +43,13 @@ export function VideoShowcase() {
 
   return (
     <section className="video-showcase" data-reveal>
-      <div className="shell video-heading"><div><div className="eyebrow">Inside Vasritha</div><h2>Explore the boutique edit.</h2></div><p className="muted">A closer look at what&apos;s new in store.</p></div>
+      <div className="shell video-heading">
+        <div>
+          <div className="eyebrow">{t("home.insideVasritha")}</div>
+          <h2>{t("home.videoTitle")}</h2>
+        </div>
+        <p className="muted">{t("home.videoLead")}</p>
+      </div>
       <div className="video-stage">
         {videos.map((video, index) => {
           const offset = (index - activeIndex + videos.length) % videos.length;
@@ -38,16 +57,53 @@ export function VideoShowcase() {
           const isActive = position === 0;
 
           return (
-            <button key={video.title} className={`video-card video-position-${position} ${isActive ? "is-active" : ""}`} type="button" onClick={() => setActiveIndex(index)} aria-label={`Play ${video.title}`}>
-              <video ref={(element) => { videoRefs.current[index] = element; }} src={video.source} muted playsInline autoPlay={isActive} preload="metadata" onCanPlay={(event) => { if (isActive) event.currentTarget.play().catch(() => undefined); }} onEnded={isActive ? advance : undefined} onError={isActive ? advance : undefined} />
+            <button
+              key={video.source}
+              className={`video-card video-position-${position} ${isActive ? "is-active" : ""}`}
+              type="button"
+              onClick={() => setActiveIndex(index)}
+              aria-label={video.title}
+            >
+              <video
+                ref={(element) => {
+                  videoRefs.current[index] = element;
+                }}
+                src={video.source}
+                muted
+                playsInline
+                autoPlay={isActive}
+                preload="metadata"
+                onCanPlay={(event) => {
+                  if (isActive) event.currentTarget.play().catch(() => undefined);
+                }}
+                onEnded={isActive ? advance : undefined}
+                onError={isActive ? advance : undefined}
+              />
               <span className="video-shade" />
-              <span className="video-copy"><small>{video.subtitle}</small><strong>{video.title}</strong></span>
-              {!isActive && <span className="video-play"><Play size={20} fill="currentColor" /></span>}
+              <span className="video-copy">
+                <small>{video.subtitle}</small>
+                <strong>{video.title}</strong>
+              </span>
+              {!isActive && (
+                <span className="video-play">
+                  <Play size={20} fill="currentColor" />
+                </span>
+              )}
             </button>
           );
         })}
       </div>
-      <div className="video-progress" aria-label={`Playing ${videos[activeIndex].title}`}>{videos.map((video, index) => <button type="button" key={video.title} className={index === activeIndex ? "active" : ""} onClick={() => setActiveIndex(index)} aria-label={`Show ${video.title}`} />)}</div>
+      <div className="video-progress" aria-label={videos[activeIndex]?.title}>
+        {videos.map((video, index) => (
+          <button
+            type="button"
+            key={video.source}
+            className={index === activeIndex ? "active" : ""}
+            onClick={() => setActiveIndex(index)}
+            aria-label={video.title}
+          />
+        ))}
+      </div>
     </section>
   );
 }

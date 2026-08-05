@@ -9,6 +9,7 @@ import {
   AdminPanel,
   slugify
 } from "../../../components/admin/admin-ui";
+import { AdminFormModal } from "../../../components/admin/admin-form-modal";
 import { adminFetch, formatDate } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
 
@@ -21,17 +22,25 @@ type Category = {
   created_at: string;
 };
 
+const blankForm = () => ({
+  name: "",
+  slug: "",
+  description: "",
+  sort_order: "0"
+});
+
 export default function AdminCategoriesPage() {
   const { data, error, loading, reload } = useAdminQuery<Category[]>("/api/admin/categories");
-  const [showForm, setShowForm] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
-  const [form, setForm] = useState({
-    name: "",
-    slug: "",
-    description: "",
-    sort_order: "0"
-  });
+  const [form, setForm] = useState(blankForm);
+
+  const openCreate = () => {
+    setForm(blankForm());
+    setFormError("");
+    setModalOpen(true);
+  };
 
   const onCreate = async (event: FormEvent) => {
     event.preventDefault();
@@ -51,73 +60,22 @@ export default function AdminCategoriesPage() {
       setFormError(result.error);
       return;
     }
-    setShowForm(false);
-    setForm({ name: "", slug: "", description: "", sort_order: "0" });
+    setModalOpen(false);
+    setForm(blankForm());
     await reload();
   };
 
   return (
     <>
       <AdminPageHeader
+        eyebrow=""
         title="Categories"
-        description="Organise departments that power storefront browsing."
         actions={
-          <button type="button" className="btn" onClick={() => setShowForm((v) => !v)}>
-            {showForm ? "Close form" : "+ New category"}
+          <button type="button" className="btn" onClick={openCreate}>
+            + New category
           </button>
         }
       />
-
-      {showForm && (
-        <AdminPanel title="Create category">
-          <form className="admin-form-grid" onSubmit={onCreate}>
-            <label>
-              <span>Name</span>
-              <input
-                required
-                value={form.name}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    name: e.target.value,
-                    slug: f.slug || slugify(e.target.value)
-                  }))
-                }
-              />
-            </label>
-            <label>
-              <span>Slug</span>
-              <input
-                required
-                value={form.slug}
-                onChange={(e) => setForm((f) => ({ ...f, slug: slugify(e.target.value) }))}
-              />
-            </label>
-            <label>
-              <span>Sort order</span>
-              <input
-                type="number"
-                value={form.sort_order}
-                onChange={(e) => setForm((f) => ({ ...f, sort_order: e.target.value }))}
-              />
-            </label>
-            <label className="admin-span-2">
-              <span>Description</span>
-              <textarea
-                rows={3}
-                value={form.description}
-                onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-              />
-            </label>
-            {formError && <AdminAlert>{formError}</AdminAlert>}
-            <div className="admin-span-2">
-              <button className="btn" type="submit" disabled={saving}>
-                {saving ? "Saving…" : "Create category"}
-              </button>
-            </div>
-          </form>
-        </AdminPanel>
-      )}
 
       <AdminPanel title="All categories">
         {loading && <AdminLoading />}
@@ -139,6 +97,57 @@ export default function AdminCategoriesPage() {
           </div>
         )}
       </AdminPanel>
+
+      <AdminFormModal
+        open={modalOpen}
+        title="Add category"
+        eyebrow="Catalogue"
+        submitLabel="Create category"
+        savingLabel="Creating…"
+        saving={saving}
+        error={formError}
+        onClose={() => setModalOpen(false)}
+        onSubmit={onCreate}
+      >
+        <label>
+          <span>Name</span>
+          <input
+            required
+            value={form.name}
+            onChange={(e) =>
+              setForm((f) => ({
+                ...f,
+                name: e.target.value,
+                slug: slugify(e.target.value)
+              }))
+            }
+          />
+        </label>
+        <label>
+          <span>Slug</span>
+          <input
+            required
+            value={form.slug}
+            onChange={(e) => setForm((f) => ({ ...f, slug: slugify(e.target.value) }))}
+          />
+        </label>
+        <label>
+          <span>Sort order</span>
+          <input
+            type="number"
+            value={form.sort_order}
+            onChange={(e) => setForm((f) => ({ ...f, sort_order: e.target.value }))}
+          />
+        </label>
+        <label className="admin-span-2">
+          <span>Description</span>
+          <textarea
+            rows={3}
+            value={form.description}
+            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+          />
+        </label>
+      </AdminFormModal>
     </>
   );
 }

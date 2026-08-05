@@ -4,6 +4,7 @@ import Image from "next/image";
 import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { storeReviews } from "../lib/mock-data";
+import { useT } from "../lib/i18n/provider";
 
 type StoreReview = (typeof storeReviews)[number];
 
@@ -69,6 +70,7 @@ function MarqueeRow({
 }
 
 export function ReviewsSection() {
+  const t = useT();
   const [selected, setSelected] = useState<StoreReview | null>(null);
   const midpoint = Math.ceil(storeReviews.length / 2);
   const rowLeftToRight = storeReviews.slice(0, midpoint);
@@ -92,10 +94,10 @@ export function ReviewsSection() {
       <div className="shell reviews-head-wrap">
         <div className="section-head reviews-head">
           <div>
-            <div className="eyebrow">Loved by our clients</div>
-            <h2>Stories in every weave</h2>
+            <div className="eyebrow">{t("home.lovedByClients")}</div>
+            <h2>{t("home.storiesInWeave")}</h2>
           </div>
-          <p className="muted reviews-summary">Tap a note to read the full story</p>
+          <p className="muted reviews-summary">{t("home.reviewsTap")}</p>
         </div>
       </div>
 

@@ -30,23 +30,25 @@ create type public.stock_status as enum ('in_stock', 'limited', 'out_of_stock');
 
 create table if not exists public.roles (
   id uuid primary key default gen_random_uuid(),
-  code public.app_role not null unique,
+  code text not null unique,
   name text not null,
   description text,
   is_mvp boolean not null default true,
+  is_system boolean not null default false,
+  permission_template text,
   created_at timestamptz not null default now()
 );
 
-insert into public.roles (code, name, description, is_mvp) values
-  ('super_admin', 'Super Admin', 'Technical and master administration', true),
-  ('business_owner', 'Business Owner', 'Overall business control', true),
-  ('manager', 'Manager', 'Day-to-day supervision', true),
-  ('billing_staff', 'Billing Staff', 'Retail billing / POS', true),
-  ('inventory_staff', 'Inventory Staff', 'Stock operations', true),
-  ('packing_shipping_staff', 'Packing & Shipping Staff', 'Order fulfillment', true),
-  ('customer_support_staff', 'Customer Support Staff', 'Customer assistance', true),
-  ('accountant', 'Accountant / Finance', 'Financial review', false),
-  ('customer', 'Vasritha Customer', 'Online shopping and self-service', true)
+insert into public.roles (code, name, description, is_mvp, is_system, permission_template) values
+  ('super_admin', 'Super Admin', 'Technical and master administration', true, true, 'super_admin'),
+  ('business_owner', 'Business Owner', 'Overall business control', true, true, 'business_owner'),
+  ('manager', 'Manager', 'Day-to-day supervision', true, true, 'manager'),
+  ('billing_staff', 'Billing Staff', 'Retail billing', true, true, 'billing_staff'),
+  ('inventory_staff', 'Inventory Staff', 'Stock operations', true, true, 'inventory_staff'),
+  ('packing_shipping_staff', 'Packing & Shipping Staff', 'Order fulfilment', true, true, 'packing_shipping_staff'),
+  ('customer_support_staff', 'Customer Support Staff', 'Customer assistance', true, true, 'customer_support_staff'),
+  ('accountant', 'Accountant / Finance', 'Financial review', false, true, 'accountant'),
+  ('customer', 'Vasritha Customer', 'Online shopping and self-service', true, true, 'customer')
 on conflict (code) do nothing;
 
 create table if not exists public.user_roles (
@@ -87,6 +89,10 @@ create table if not exists public.products (
   subcategory_id uuid references public.subcategories(id),
   name text not null,
   slug text not null unique,
+  sku text unique,
+  barcode text unique,
+  short_description text not null default '',
+  color text not null default '',
   description text not null default '',
   price numeric(12,2) not null check (price >= 0),
   compare_at_price numeric(12,2),
@@ -185,9 +191,11 @@ create table if not exists public.orders (
   status public.order_status not null default 'pending',
   payment_status public.payment_status not null default 'pending',
   subtotal numeric(12,2) not null check (subtotal >= 0),
+  discount_amount numeric(12,2) not null default 0,
   tax_amount numeric(12,2) not null default 0,
   shipping_amount numeric(12,2) not null default 0,
   total_amount numeric(12,2) not null check (total_amount >= 0),
+  channel text not null default 'online' check (channel in ('online', 'pos')),
   created_at timestamptz not null default now()
 );
 
@@ -455,3 +463,36 @@ insert into public.collections (name, slug, description) values
   ('Tussar Silk', 'tussar-silk', 'Natural texture and understated elegance.'),
   ('Cotton Weaves', 'cotton-weaves', 'Comfortable handwoven beauty.')
 on conflict (slug) do nothing;
+
+-- Allow custom admin roles (code as text + optional permission template)
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'roles'
+      and column_name = 'code'
+      and udt_name = 'app_role'
+  ) then
+    alter table public.roles alter column code type text using code::text;
+  end if;
+end $$;
+
+alter table public.roles add column if not exists permission_template text;
+alter table public.roles add column if not exists is_system boolean not null default false;
+
+update public.roles
+set is_system = true,
+    permission_template = coalesce(permission_template, code)
+where code in (
+  'super_admin',
+  'business_owner',
+  'manager',
+  'billing_staff',
+  'inventory_staff',
+  'packing_shipping_staff',
+  'customer_support_staff',
+  'accountant',
+  'customer'
+);

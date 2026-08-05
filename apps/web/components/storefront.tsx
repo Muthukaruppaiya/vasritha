@@ -1,12 +1,39 @@
+"use client";
+
 import Link from "next/link";
 import Image from "next/image";
+import { useEffect, useState } from "react";
 import { BuyButton } from "./buy-button";
-import { categories, collections, products } from "../lib/mock-data";
+import type { StoreProduct } from "../lib/catalog";
+import { useLocale, useT } from "../lib/i18n/provider";
+import { localizeCategoryName, localizeProductFields } from "../lib/i18n/catalog-local";
 
 export { Header } from "./site-header";
 
+type NavCategory = { name: string; slug: string };
+type NavCollection = { name: string; slug: string };
+
 export function Footer() {
+  const t = useT();
+  const { locale } = useLocale();
   const year = new Date().getFullYear();
+  const [categories, setCategories] = useState<NavCategory[]>([]);
+  const collections: NavCollection[] = [
+    { name: t("footer.kanchipuram"), slug: "sarees" },
+    { name: t("footer.banarasi"), slug: "sarees" },
+    { name: t("footer.softSilk"), slug: "sarees" },
+    { name: t("footer.cottonWeaves"), slug: "sarees" }
+  ];
+
+  useEffect(() => {
+    fetch("/api/storefront")
+      .then((res) => res.json())
+      .then((payload) => {
+        const cats = (payload?.data?.categories || []) as NavCategory[];
+        setCategories(cats);
+      })
+      .catch(() => setCategories([]));
+  }, []);
 
   return (
     <footer className="footer" data-reveal>
@@ -14,69 +41,91 @@ export function Footer() {
         <div className="footer-brand">
           <Link href="/" className="footer-logo-link" aria-label="Vasritha home">
             <span className="footer-logo-circle">
-              <img className="footer-logo" src="/vasritha-logo-footer-circle.png" alt="Vasritha — Timeless Elegance" />
+              <img
+                className="footer-logo"
+                src="/vasritha-logo-footer-circle.png"
+                alt="Vasritha — Timeless Elegance"
+              />
             </span>
           </Link>
-          <p>Timeless elegance, thoughtfully curated. Discover sarees, jewelry, apparel and handcrafted treasures for your most meaningful moments.</p>
+          <p>{t("footer.tagline")}</p>
           <div className="footer-contact">
             <a href="mailto:hello@vasritha.com">hello@vasritha.com</a>
             <a href="tel:+919876543210">+91 98765 43210</a>
-            <span>India · Worldwide shipping</span>
+            <span>{t("footer.worldwide")}</span>
           </div>
         </div>
 
         <div>
-          <h4>Explore</h4>
-          <Link href="/">Home</Link>
-          <Link href="/collections">All Collections</Link>
-          {categories.map((category) => (
-            <Link key={category.slug} href={`/${category.slug}`}>{category.name}</Link>
-          ))}
-          <Link href="/checkout">Offers</Link>
+          <h4>{t("footer.explore")}</h4>
+          <Link href="/">{t("common.home")}</Link>
+          <Link href="/collections">{t("common.allCollections")}</Link>
+                  {categories.map((category) => (
+                    <Link key={category.slug} href={`/${category.slug}`}>
+                      {localizeCategoryName(category.slug, locale, category.name)}
+                    </Link>
+                  ))}
+          <Link href="/checkout">{t("common.offers")}</Link>
         </div>
 
         <div>
-          <h4>Collections</h4>
+          <h4>{t("footer.collections")}</h4>
           {collections.map((collection) => (
-            <Link key={collection.name} href="/sarees">{collection.name}</Link>
+            <Link key={collection.name} href={`/${collection.slug}`}>
+              {collection.name}
+            </Link>
           ))}
         </div>
 
         <div>
-          <h4>Customer Care</h4>
-          <Link href="/login">My Account</Link>
-          <a href="#">Shipping & Returns</a>
-          <a href="#">Size Guide</a>
-          <a href="#">Order Tracking</a>
-          <a href="#">FAQs</a>
-          <a href="#">Contact Us</a>
+          <h4>{t("footer.customerCare")}</h4>
+          <Link href="/account">{t("common.myAccount")}</Link>
+          <a href="#">{t("footer.shippingReturns")}</a>
+          <a href="#">{t("footer.sizeGuide")}</a>
+          <a href="/account#orders">{t("footer.orderTracking")}</a>
+          <a href="#">{t("footer.faqs")}</a>
+          <a href="#">{t("footer.contactUs")}</a>
         </div>
 
         <div>
-          <h4>Stay Connected</h4>
-          <p className="footer-note">Be first to know about new weaves, festive edits, and private offers.</p>
+          <h4>{t("footer.stayConnected")}</h4>
+          <p className="footer-note">{t("footer.newsletterNote")}</p>
           <form className="footer-subscribe" action="#">
-            <input type="email" name="email" placeholder="Your email" aria-label="Email for newsletter" required />
-            <button type="submit">Join</button>
+            <input
+              type="email"
+              name="email"
+              placeholder={t("footer.yourEmail")}
+              aria-label={t("footer.yourEmail")}
+              required
+            />
+            <button type="submit">{t("footer.join")}</button>
           </form>
           <div className="footer-social">
-            <a href="#" aria-label="Instagram">Instagram</a>
-            <a href="#" aria-label="Facebook">Facebook</a>
-            <a href="#" aria-label="WhatsApp">WhatsApp</a>
+            <a href="#" aria-label="Instagram">
+              Instagram
+            </a>
+            <a href="#" aria-label="Facebook">
+              Facebook
+            </a>
+            <a href="#" aria-label="WhatsApp">
+              WhatsApp
+            </a>
           </div>
         </div>
       </div>
 
       <div className="footer-bottom">
         <div className="shell footer-bottom-inner">
-          <p className="footer-copy">© {year} Vasritha. All rights reserved.</p>
+          <p className="footer-copy">
+            © {year} Vasritha. {t("footer.rights")}
+          </p>
           <div className="footer-legal">
-            <a href="#">Privacy Policy</a>
+            <a href="#">{t("footer.privacy")}</a>
             <span aria-hidden="true">·</span>
-            <a href="#">Terms of Use</a>
+            <a href="#">{t("footer.terms")}</a>
           </div>
           <p className="footer-credit">
-            Developed by{" "}
+            {t("footer.developedBy")}{" "}
             <a href="https://gypsycode.com" target="_blank" rel="noreferrer">
               Gypsy Code
             </a>
@@ -91,24 +140,34 @@ export function ProductCard({
   product,
   variant = "default"
 }: {
-  product: typeof products[number];
+  product: StoreProduct;
   variant?: "default" | "listing";
 }) {
+  const t = useT();
+  const { locale } = useLocale();
+  const localized = localizeProductFields(product, locale);
   const isListing = variant === "listing";
 
   return (
     <article className={`card${isListing ? " card--listing" : ""}`}>
       <Link href={`/products/${product.slug}`}>
         <div className="picture">
-          <Image src={product.imageSrc} alt={product.name} fill sizes="(max-width: 800px) 50vw, 25vw" />
-          {!isListing && <span>{product.type}</span>}
+          <Image
+            src={product.imageSrc}
+            alt={localized.name}
+            fill
+            sizes="(max-width: 800px) 50vw, 25vw"
+          />
+          {!isListing && <span>{localized.type}</span>}
         </div>
       </Link>
       <div className="card-body">
-        {!isListing && <div className="eyebrow">{product.type}</div>}
-        {isListing && <div className="card-type">{product.type}</div>}
+        {!isListing && <div className="eyebrow">{localized.type}</div>}
+        {isListing && <div className="card-type">{localized.type}</div>}
         <h3>
-          <Link href={`/products/${product.slug}`}>{isListing ? product.shortName : product.name}</Link>
+          <Link href={`/products/${product.slug}`}>
+            {isListing ? localized.shortName : localized.name}
+          </Link>
         </h3>
         <div className="card-price-row">
           <div className="price">{product.price}</div>
@@ -118,7 +177,7 @@ export function ProductCard({
           <div className="card-actions">
             {product.sizes.length > 1 ? (
               <Link href={`/products/${product.slug}`} className="card-buy-link">
-                Select size & buy
+                {t("common.selectSizeBuy")}
               </Link>
             ) : (
               <BuyButton
@@ -126,7 +185,7 @@ export function ProductCard({
                 size={product.sizes[0]}
                 className="btn card-buy-btn"
               >
-                Buy
+                {t("common.buy")}
               </BuyButton>
             )}
           </div>

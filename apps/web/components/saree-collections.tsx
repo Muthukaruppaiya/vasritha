@@ -3,21 +3,38 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { collections } from "../lib/mock-data";
+import { useT } from "../lib/i18n/provider";
 
 const MOBILE_QUERY = "(max-width: 800px)";
+
+type CollectionCard = {
+  name: string;
+  image: string;
+  lines: string[];
+};
 
 function easeInOutCubic(t: number) {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
 export function SareeCollections() {
+  const t = useT();
   const pinRef = useRef<HTMLElement | null>(null);
   const stickyRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const [isMobile, setIsMobile] = useState(false);
   const [pinHeight, setPinHeight] = useState<number>();
   const [activeIndex, setActiveIndex] = useState(0);
+  const [collections, setCollections] = useState<CollectionCard[]>([]);
+
+  useEffect(() => {
+    fetch("/api/collections")
+      .then((res) => res.json())
+      .then((payload) => {
+        setCollections((payload?.data || []) as CollectionCard[]);
+      })
+      .catch(() => setCollections([]));
+  }, []);
 
   useEffect(() => {
     const media = window.matchMedia(MOBILE_QUERY);
@@ -31,7 +48,7 @@ export function SareeCollections() {
     const pin = pinRef.current;
     const sticky = stickyRef.current;
     const track = trackRef.current;
-    if (!pin || !sticky || !track) return;
+    if (!pin || !sticky || !track || !collections.length) return;
 
     let frame = 0;
     let currentShift = 0;
@@ -54,7 +71,6 @@ export function SareeCollections() {
       }
 
       const overflow = getOverflow();
-      // Extra travel distance makes horizontal motion feel smoother
       setPinHeight(sticky.offsetHeight + overflow * 1.45 + 48);
     };
 
@@ -75,7 +91,6 @@ export function SareeCollections() {
       if (isMobile) {
         targetShift = readTarget();
         const delta = targetShift - currentShift;
-        // High damping for buttery horizontal motion
         currentShift += delta * (Math.abs(delta) < 0.15 ? 1 : 0.085);
         if (Math.abs(delta) < 0.15) currentShift = targetShift;
 
@@ -109,7 +124,9 @@ export function SareeCollections() {
       resizeObserver.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [isMobile]);
+  }, [isMobile, collections]);
+
+  if (!collections.length) return null;
 
   return (
     <section
@@ -121,10 +138,12 @@ export function SareeCollections() {
       <div ref={stickyRef} className="shell section collections-edit">
         <div className="collections-edit-head">
           <div className="collections-edit-intro">
-            <div className="eyebrow">Signature edit</div>
-            <h2>Saree Collections</h2>
-            <p className="muted collections-edit-lead">Five heirloom weaves, curated for every occasion.</p>
-            <Link className="collections-edit-link" href="/sarees">Shop all sarees →</Link>
+            <div className="eyebrow">{t("home.signatureEdit")}</div>
+            <h2>{t("home.sareeCollections")}</h2>
+            <p className="muted collections-edit-lead">{t("home.sareeCollectionsLead")}</p>
+            <Link className="collections-edit-link" href="/sarees">
+              {t("home.shopAllSarees")}
+            </Link>
           </div>
         </div>
 
@@ -133,7 +152,12 @@ export function SareeCollections() {
             {collections.map((collection) => (
               <Link className="collection-card" href="/sarees" key={collection.name}>
                 <span className="collection-card-media">
-                  <Image src={collection.image} alt={collection.name} fill sizes="(max-width:800px) 78vw, 20vw" />
+                  <Image
+                    src={collection.image}
+                    alt={collection.name}
+                    fill
+                    sizes="(max-width:800px) 78vw, 20vw"
+                  />
                 </span>
                 <span className="collection-card-copy">
                   {collection.lines.map((line) => (

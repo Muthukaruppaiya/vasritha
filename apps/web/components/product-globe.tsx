@@ -4,16 +4,23 @@ import { Canvas, ThreeEvent, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, useTexture } from "@react-three/drei";
 import { useEffect, useMemo, useRef } from "react";
 import { CanvasTexture } from "three";
-import { products } from "../lib/mock-data";
 
-export type CatalogProduct = typeof products[number];
+export type CatalogProduct = {
+  name: string;
+  slug: string;
+  type: string;
+  price: string;
+  imageSrc: string;
+  description: string;
+};
 
 type GlobeProps = {
+  products: CatalogProduct[];
   onProductChange: (product: CatalogProduct) => void;
   onProductSelect?: (product: CatalogProduct) => void;
 };
 
-function ProductSphere({ onProductChange, onProductSelect }: GlobeProps) {
+function ProductSphere({ products, onProductChange, onProductSelect }: GlobeProps) {
   const textures = useTexture(products.map((product) => product.imageSrc));
   const { camera } = useThree();
   const frontProduct = useRef<CatalogProduct>(products[0]);
@@ -24,8 +31,10 @@ function ProductSphere({ onProductChange, onProductSelect }: GlobeProps) {
     const rows = Math.ceil(tileCount / columns);
     const tileSize = Math.max(24, Math.floor(4096 / columns));
     return { columns, rows, tileCount, tileSize };
-  }, []);
+  }, [products.length]);
+
   const mosaicTexture = useMemo(() => {
+    if (!products.length) return null;
     const { columns, rows, tileCount, tileSize } = atlasLayout;
     const gutter = 8;
     const canvas = document.createElement("canvas");
@@ -46,31 +55,37 @@ function ProductSphere({ onProductChange, onProductSelect }: GlobeProps) {
     }
 
     return new CanvasTexture(canvas);
-  }, [atlasLayout, textures]);
+  }, [atlasLayout, textures, products.length]);
 
   useEffect(() => () => mosaicTexture?.dispose(), [mosaicTexture]);
 
   useFrame(({ clock }) => {
+    if (!products.length) return;
     if (clock.elapsedTime - lastCheck.current < 0.18) return;
     lastCheck.current = clock.elapsedTime;
 
     const angle = Math.atan2(camera.position.x, camera.position.z);
-    const nextProduct = products[Math.abs(Math.round((angle / (Math.PI * 2)) * products.length)) % products.length];
+    const nextProduct =
+      products[Math.abs(Math.round((angle / (Math.PI * 2)) * products.length)) % products.length];
     if (nextProduct.slug !== frontProduct.current.slug) {
       frontProduct.current = nextProduct;
       onProductChange(nextProduct);
     }
   });
 
+  if (!products.length) return null;
+
   return (
-    <mesh onClick={(event: ThreeEvent<MouseEvent>) => {
-      if (!event.uv || !onProductSelect) return;
-      event.stopPropagation();
-      const column = Math.min(atlasLayout.columns - 1, Math.floor(event.uv.x * atlasLayout.columns));
-      const row = Math.min(atlasLayout.rows - 1, Math.floor((1 - event.uv.y) * atlasLayout.rows));
-      const imageIndex = (row * atlasLayout.columns + column) % products.length;
-      onProductSelect(products[imageIndex]);
-    }}>
+    <mesh
+      onClick={(event: ThreeEvent<MouseEvent>) => {
+        if (!event.uv || !onProductSelect) return;
+        event.stopPropagation();
+        const column = Math.min(atlasLayout.columns - 1, Math.floor(event.uv.x * atlasLayout.columns));
+        const row = Math.min(atlasLayout.rows - 1, Math.floor((1 - event.uv.y) * atlasLayout.rows));
+        const imageIndex = (row * atlasLayout.columns + column) % products.length;
+        onProductSelect(products[imageIndex]);
+      }}
+    >
       <sphereGeometry args={[2.28, 72, 72]} />
       <meshStandardMaterial map={mosaicTexture ?? undefined} roughness={0.52} metalness={0.04} />
     </mesh>
@@ -84,7 +99,7 @@ function ResponsiveCamera() {
     const verticalFov = (35 * Math.PI) / 180;
     const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * (size.width / size.height));
     const limitingFov = Math.min(verticalFov, horizontalFov);
-    const distance = 2.28 / Math.tan(limitingFov / 2) * 1.22;
+    const distance = (2.28 / Math.tan(limitingFov / 2)) * 1.22;
 
     camera.position.set(0, 0, distance);
     camera.lookAt(0, 0, 0);
@@ -94,15 +109,29 @@ function ResponsiveCamera() {
   return null;
 }
 
-export function ProductGlobe({ onProductChange, onProductSelect }: GlobeProps) {
+export function ProductGlobe({ products, onProductChange, onProductSelect }: GlobeProps) {
+  if (!products.length) {
+    return <div className="product-globe-canvas" />;
+  }
+
   return (
     <div className="product-globe-canvas">
       <Canvas camera={{ position: [0, 0, 12], fov: 35 }} dpr={[1, 1.5]} gl={{ alpha: true, antialias: true }}>
         <ambientLight intensity={1.6} />
         <directionalLight position={[4, 4, 5]} intensity={2.1} />
         <ResponsiveCamera />
-        <ProductSphere onProductChange={onProductChange} onProductSelect={onProductSelect} />
-        <OrbitControls enablePan={false} enableZoom={false} autoRotate autoRotateSpeed={0.55} rotateSpeed={0.65} />
+        <ProductSphere
+          products={products}
+          onProductChange={onProductChange}
+          onProductSelect={onProductSelect}
+        />
+        <OrbitControls
+          enablePan={false}
+          enableZoom={false}
+          autoRotate
+          autoRotateSpeed={0.55}
+          rotateSpeed={0.65}
+        />
       </Canvas>
     </div>
   );

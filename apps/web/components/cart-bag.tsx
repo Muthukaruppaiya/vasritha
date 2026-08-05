@@ -9,31 +9,37 @@ import {
   CartItem,
   formatPrice,
   getCartItems,
-  parsePrice,
   removeFromCart,
   updateCartQuantity
 } from "../lib/cart";
 import { resolveCartCheckoutPath } from "../lib/customer-session";
-import { products } from "../lib/mock-data";
+import { useLocale, useT } from "../lib/i18n/provider";
+import { localizeCategoryName, localizeProductFields, localizeSize } from "../lib/i18n/catalog-local";
 
-type EnrichedItem = CartItem & {
-  product: (typeof products)[number];
-  lineTotal: number;
+type SuggestProduct = {
+  slug: string;
+  name: string;
+  shortName: string;
+  type: string;
+  price: string;
+  compareAtPrice?: string;
+  imageSrc: string;
 };
 
-const suggestions = products.slice(0, 3);
-
-const browseLinks = [
-  { href: "/sarees", label: "Sarees" },
-  { href: "/jewelry", label: "Jewelry" },
-  { href: "/handcrafted", label: "Handcrafted" },
-  { href: "/collections", label: "Collections" }
-];
-
 export function CartBag() {
+  const t = useT();
+  const { locale } = useLocale();
   const router = useRouter();
   const [items, setItems] = useState<CartItem[]>([]);
   const [ready, setReady] = useState(false);
+  const [suggestions, setSuggestions] = useState<SuggestProduct[]>([]);
+
+  const browseLinks = [
+    { href: "/sarees", label: localizeCategoryName("sarees", locale) },
+    { href: "/jewelry", label: localizeCategoryName("jewelry", locale) },
+    { href: "/handcrafted", label: localizeCategoryName("handcrafted", locale) },
+    { href: "/collections", label: t("common.collections") }
+  ];
 
   useEffect(() => {
     const sync = () => setItems(getCartItems());
@@ -47,23 +53,19 @@ export function CartBag() {
     };
   }, []);
 
-  const lines = useMemo(() => {
-    return items
-      .map((item) => {
-        const product = products.find((entry) => entry.slug === item.slug);
-        if (!product) return null;
-        return {
-          ...item,
-          product,
-          lineTotal: parsePrice(product.price) * item.quantity
-        };
+  useEffect(() => {
+    fetch("/api/products")
+      .then((res) => res.json())
+      .then((payload) => {
+        setSuggestions(((payload?.data || []) as SuggestProduct[]).slice(0, 3));
       })
-      .filter(Boolean) as EnrichedItem[];
-  }, [items]);
+      .catch(() => setSuggestions([]));
+  }, []);
 
-  const subtotal = lines.reduce((sum, line) => sum + line.lineTotal, 0);
+  const lines = useMemo(() => items, [items]);
+  const subtotal = lines.reduce((sum, line) => sum + line.price * line.quantity, 0);
   const compareTotal = lines.reduce(
-    (sum, line) => sum + parsePrice(line.product.compareAtPrice) * line.quantity,
+    (sum, line) => sum + (line.compareAtPrice || line.price) * line.quantity,
     0
   );
   const savings = Math.max(0, compareTotal - subtotal);
@@ -72,7 +74,7 @@ export function CartBag() {
   if (!ready) {
     return (
       <main className="shell section bag-page" data-reveal>
-        <p className="muted">Opening your bag…</p>
+        <p className="muted">{t("bag.opening")}</p>
       </main>
     );
   }
@@ -81,23 +83,21 @@ export function CartBag() {
     return (
       <main className="shell section bag-page" data-reveal>
         <header className="bag-hero">
-          <p className="eyebrow">Your bag</p>
-          <h1>Your selection awaits</h1>
-          <p className="muted bag-lead">
-            Nothing here yet. Choose a saree, jewel, or handcrafted piece and keep it ready for checkout.
-          </p>
+          <p className="eyebrow">{t("bag.eyebrow")}</p>
+          <h1>{t("bag.title")}</h1>
+          <p className="muted bag-lead">{t("bag.emptyLead")}</p>
         </header>
 
         <section className="bag-empty" aria-label="Empty bag">
           <div className="bag-empty-copy">
-            <h2>Begin your edit</h2>
-            <p className="muted">Browse a category, then return here to review and pay.</p>
+            <h2>{t("bag.beginEdit")}</h2>
+            <p className="muted">{t("bag.emptyHint")}</p>
             <div className="bag-empty-actions">
               <Link className="btn" href="/sarees">
-                Explore sarees
+                {t("bag.exploreSarees")}
               </Link>
               <Link className="bag-text-link" href="/jewelry">
-                Shop jewelry
+                {t("bag.shopJewelry")}
               </Link>
             </div>
             <nav className="bag-browse" aria-label="Browse categories">
@@ -109,29 +109,42 @@ export function CartBag() {
             </nav>
           </div>
 
-          <div className="bag-suggest">
-            <div className="bag-suggest-head">
-              <p className="eyebrow">You may love</p>
-              <h3>Start with these</h3>
-            </div>
-            <div className="bag-suggest-grid">
-              {suggestions.map((product) => (
-                <Link key={product.slug} href={`/products/${product.slug}`} className="bag-suggest-card">
-                  <div className="bag-suggest-media">
-                    <Image src={product.imageSrc} alt={product.name} fill sizes="160px" />
-                  </div>
-                  <div className="bag-suggest-copy">
-                    <span>{product.type}</span>
-                    <strong>{product.shortName}</strong>
-                    <div className="bag-price-row">
-                      <em>{product.price}</em>
-                      {product.compareAtPrice && <s>{product.compareAtPrice}</s>}
+          {suggestions.length > 0 && (
+            <div className="bag-suggest">
+              <div className="bag-suggest-head">
+                <p className="eyebrow">{t("bag.youMayLove")}</p>
+                <h3>{t("bag.startWithThese")}</h3>
+              </div>
+              <div className="bag-suggest-grid">
+                {suggestions.map((product) => {
+                  const localized = localizeProductFields(
+                    {
+                      slug: product.slug,
+                      name: product.name,
+                      shortName: product.shortName,
+                      type: product.type
+                    },
+                    locale
+                  );
+                  return (
+                  <Link key={product.slug} href={`/products/${product.slug}`} className="bag-suggest-card">
+                    <div className="bag-suggest-media">
+                      <Image src={product.imageSrc} alt={localized.name} fill sizes="160px" />
                     </div>
-                  </div>
-                </Link>
-              ))}
+                    <div className="bag-suggest-copy">
+                      <span>{localized.type}</span>
+                      <strong>{localized.shortName || localized.name}</strong>
+                      <div className="bag-price-row">
+                        <em>{product.price}</em>
+                        {product.compareAtPrice && <s>{product.compareAtPrice}</s>}
+                      </div>
+                    </div>
+                  </Link>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
         </section>
       </main>
     );
@@ -140,50 +153,66 @@ export function CartBag() {
   return (
     <main className="shell section bag-page" data-reveal>
       <header className="bag-hero">
-        <p className="eyebrow">Your bag</p>
-        <h1>Ready when you are</h1>
+        <p className="eyebrow">{t("bag.eyebrow")}</p>
+        <h1>{t("bag.title")}</h1>
         <p className="muted bag-lead">
-          {lines.length} {lines.length === 1 ? "piece" : "pieces"} selected — review sizes, then continue to secure checkout.
+          {lines.length} {t("bag.items")} — {t("checkout.checkout")}
         </p>
       </header>
 
       <div className="bag-layout">
-        <section className="bag-lines" aria-label="Bag items">
-          {lines.map((line) => (
-            <article key={`${line.slug}-${line.size}`} className="bag-line">
+        <section className="bag-lines" aria-label={t("bag.items")}>
+          {lines.map((line) => {
+            const localized = localizeProductFields(
+              {
+                slug: line.slug,
+                name: line.name,
+                shortName: line.name,
+                type: line.type
+              },
+              locale
+            );
+            return (
+            <article key={`${line.productId}-${line.size}`} className="bag-line">
               <Link href={`/products/${line.slug}`} className="bag-line-media">
-                <Image src={line.product.imageSrc} alt={line.product.name} fill sizes="120px" />
+                <Image src={line.imageSrc} alt={localized.name} fill sizes="120px" />
               </Link>
               <div className="bag-line-body">
                 <div className="bag-line-top">
                   <div className="bag-line-info">
-                    <div className="bag-line-type">{line.product.type}</div>
+                    <div className="bag-line-type">{localized.type}</div>
                     <h2>
-                      <Link href={`/products/${line.slug}`}>{line.product.name}</Link>
+                      <Link href={`/products/${line.slug}`}>{localized.name}</Link>
                     </h2>
-                    <p className="muted">Size {line.size}</p>
+                    <p className="muted">
+                      {t("common.size")} {localizeSize(line.size, locale)}
+                    </p>
                   </div>
                   <div className="bag-line-prices">
-                    <strong>{formatPrice(line.lineTotal)}</strong>
-                    {line.product.compareAtPrice && (
-                      <s>{formatPrice(parsePrice(line.product.compareAtPrice) * line.quantity)}</s>
-                    )}
+                    <strong>{formatPrice(line.price * line.quantity)}</strong>
+                    {line.compareAtPrice ? (
+                      <s>{formatPrice(line.compareAtPrice * line.quantity)}</s>
+                    ) : null}
                   </div>
                 </div>
                 <div className="bag-line-controls">
-                  <div className="bag-qty" aria-label="Quantity">
+                  <div className="bag-qty" aria-label={t("bag.qty")}>
                     <button
                       type="button"
-                      aria-label="Decrease quantity"
-                      onClick={() => updateCartQuantity(line.slug, line.size, line.quantity - 1)}
+                      aria-label={t("bag.decrease")}
+                      onClick={() =>
+                        updateCartQuantity(line.productId, line.variantId, line.quantity - 1)
+                      }
                     >
                       −
                     </button>
                     <span>{line.quantity}</span>
                     <button
                       type="button"
-                      aria-label="Increase quantity"
-                      onClick={() => updateCartQuantity(line.slug, line.size, line.quantity + 1)}
+                      aria-label={t("bag.increase")}
+                      onClick={() =>
+                        updateCartQuantity(line.productId, line.variantId, line.quantity + 1)
+                      }
                     >
                       +
                     </button>
@@ -191,39 +220,42 @@ export function CartBag() {
                   <button
                     type="button"
                     className="bag-remove"
-                    onClick={() => removeFromCart(line.slug, line.size)}
+                    onClick={() => removeFromCart(line.productId, line.variantId)}
                   >
-                    Remove
+                    {t("bag.remove")}
                   </button>
                 </div>
               </div>
             </article>
-          ))}
+            );
+          })}
         </section>
 
         <aside className="bag-summary">
-          <h2>Order summary</h2>
+          <h2>{t("checkout.checkout")}</h2>
           <div className="bag-summary-row">
-            <span>Subtotal</span>
+            <span>{t("bag.subtotal")}</span>
             <strong>{formatPrice(subtotal)}</strong>
           </div>
           {savings > 0 && (
             <div className="bag-summary-row bag-summary-save">
-              <span>You save</span>
+              <span>{t("bag.savings")}</span>
               <strong>{formatPrice(savings)}</strong>
             </div>
           )}
           <div className="bag-summary-row">
-            <span>Shipping</span>
-            <strong>{freeShipping ? "Complimentary" : "Calculated at checkout"}</strong>
+            <span>{t("checkout.shipping")}</span>
+            <strong>
+              {freeShipping ? t("bag.freeShippingUnlocked") : t("checkout.checkout")}
+            </strong>
           </div>
           <p className="muted bag-shipping-note">
             {freeShipping
-              ? "Your order qualifies for complimentary shipping."
-              : `Add ${formatPrice(2500 - subtotal)} more for complimentary shipping.`}
+              ? t("bag.freeShippingUnlocked")
+              : t("bag.freeShippingHint")}
           </p>
           <div className="bag-summary-total">
-            <span>Total</span>
+            <span>{t("account.total")}</span>
             <strong>{formatPrice(subtotal)}</strong>
           </div>
           <button
@@ -231,10 +263,10 @@ export function CartBag() {
             className="btn bag-checkout"
             onClick={() => router.push(resolveCartCheckoutPath())}
           >
-            Continue to checkout
+            {t("bag.checkout")}
           </button>
           <Link className="bag-text-link" href="/collections">
-            Keep browsing
+            {t("common.continueShopping")}
           </Link>
         </aside>
       </div>

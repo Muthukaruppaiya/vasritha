@@ -1,8 +1,37 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
-import { categoryBanners } from "../lib/mock-data";
+import { useEffect, useMemo, useState } from "react";
+import { useT } from "../lib/i18n/provider";
+import type { MessageKey } from "../lib/i18n/translate";
 
-function ShopNowBadge({ brand, slug }: { brand: string; slug: string }) {
+const FALLBACK_IMAGES: Record<string, string> = {
+  sarees: "/hero-silk.png",
+  jewelry: "/hero-jewelry.png",
+  "churidhars-salwars": "/hero-salwar.png",
+  handcrafted: "/catalog-brass-idol.png"
+};
+
+const TONES = ["brown", "wine", "clay", "umber"] as const;
+
+const TITLE_KEYS: Record<string, [MessageKey, MessageKey]> = {
+  sarees: ["home.titleSarees1", "home.titleSarees2"],
+  jewelry: ["home.titleJewelry1", "home.titleJewelry2"],
+  "churidhars-salwars": ["home.titleCasual1", "home.titleCasual2"],
+  handcrafted: ["home.titleHandcrafted1", "home.titleHandcrafted2"]
+};
+
+type Banner = {
+  slug: string;
+  brand: string;
+  titleLines: string[];
+  href: string;
+  image: string;
+  tone: (typeof TONES)[number];
+};
+
+function ShopNowBadge({ brand, slug, shopNow, collectionBy }: { brand: string; slug: string; shopNow: string; collectionBy: string }) {
   const arcId = `cat-arc-${slug}`;
 
   return (
@@ -13,25 +42,55 @@ function ShopNowBadge({ brand, slug }: { brand: string; slug: string }) {
         </defs>
         <text>
           <textPath href={`#${arcId}`} startOffset="50%" textAnchor="middle">
-            {`COLLECTION BY ${brand.toUpperCase()}`}
+            {`${collectionBy} ${brand.toUpperCase()}`}
           </textPath>
         </text>
       </svg>
-      <span className="cat-banner-shop">Shop Now</span>
+      <span className="cat-banner-shop">{shopNow}</span>
     </span>
   );
 }
 
 export function CategoryBanners() {
+  const t = useT();
+  const [rawRows, setRawRows] = useState<Array<{ slug: string; name: string }>>([]);
+
+  useEffect(() => {
+    fetch("/api/categories")
+      .then((res) => res.json())
+      .then((payload) => {
+        setRawRows((payload?.data || []) as Array<{ slug: string; name: string }>);
+      })
+      .catch(() => setRawRows([]));
+  }, []);
+
+  const banners: Banner[] = useMemo(
+    () =>
+      rawRows.map((row, index) => {
+        const keys = TITLE_KEYS[row.slug];
+        return {
+          slug: row.slug,
+          brand: "Vasritha",
+          titleLines: keys ? [t(keys[0]), t(keys[1])] : row.name.split(" "),
+          href: `/${row.slug}`,
+          image: FALLBACK_IMAGES[row.slug] || "/hero-silk.png",
+          tone: TONES[index % TONES.length]
+        };
+      }),
+    [rawRows, t]
+  );
+
+  if (!banners.length) return null;
+
   return (
     <section className="category-banners">
       <div className="shell category-banners-head" data-reveal>
-        <div className="eyebrow">Shop by category</div>
-        <h2>Every room of the boutique</h2>
+        <div className="eyebrow">{t("home.shopByCategory")}</div>
+        <h2>{t("home.everyRoom")}</h2>
       </div>
 
       <div className="category-banner-list">
-        {categoryBanners.map((banner, index) => (
+        {banners.map((banner, index) => (
           <Link
             key={banner.slug}
             href={banner.href}
@@ -46,7 +105,12 @@ export function CategoryBanners() {
                   <span key={line}>{line}</span>
                 ))}
               </span>
-              <ShopNowBadge brand={banner.brand} slug={banner.slug} />
+              <ShopNowBadge
+                brand={banner.brand}
+                slug={banner.slug}
+                shopNow={t("home.shopNow")}
+                collectionBy={t("home.collectionBy")}
+              />
             </span>
 
             <span className="cat-banner-media">
