@@ -1,4 +1,6 @@
 -- Vasritha local PostgreSQL schema (temporary — not Supabase)
+-- After create, apply integrity upgrade: db/local/optimize_v1.sql (npm run db:optimize)
+-- Relationship walkthrough for DBA review: docs/DATABASE.md
 create extension if not exists pgcrypto;
 
 create table if not exists public.users (
@@ -320,6 +322,9 @@ create table if not exists public.site_settings (
   social_links jsonb not null default '{}'::jsonb,
   seo_title text,
   seo_description text,
+  company_legal_name text,
+  company_address text,
+  company_gstin text,
   updated_at timestamptz not null default now()
 );
 
@@ -420,8 +425,11 @@ create table if not exists public.reviews (
   product_id uuid references public.products(id) on delete set null,
   customer_id uuid references public.customers(id) on delete set null,
   customer_name text not null,
+  reviewer_email text,
   rating integer not null check (rating between 1 and 5),
+  title text,
   body text not null,
+  image_path text,
   is_featured boolean not null default false,
   is_approved boolean not null default false,
   created_at timestamptz not null default now()
@@ -496,3 +504,15 @@ where code in (
   'accountant',
   'customer'
 );
+
+-- Performance indexes for storefront / admin catalogs
+create index if not exists products_status_idx on public.products (status);
+create index if not exists products_category_status_idx on public.products (category_id, status);
+create index if not exists products_featured_idx on public.products (is_featured) where is_featured = true;
+create index if not exists product_images_product_id_idx on public.product_images (product_id, sort_order);
+create index if not exists product_variants_product_id_idx on public.product_variants (product_id);
+create index if not exists orders_status_created_idx on public.orders (status, created_at desc);
+create index if not exists menu_items_menu_id_idx on public.menu_items (menu_id);
+create index if not exists banners_active_sort_idx on public.banners (is_active, sort_order);
+create index if not exists page_sections_page_active_idx on public.page_sections (page_slug, is_active, sort_order);
+

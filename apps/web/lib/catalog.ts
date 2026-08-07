@@ -44,6 +44,13 @@ export type StoreCategory = {
   lines: string[];
 };
 
+export type ListProductsOptions = {
+  categorySlug?: string;
+  limit?: number;
+  featuredOnly?: boolean;
+  mode?: "card" | "detail";
+};
+
 const CATEGORY_IMAGES: Record<string, string> = {
   sarees: "/hero-silk.png",
   jewelry: "/hero-jewelry.png",
@@ -103,35 +110,43 @@ type ImageRow = {
   sort_order: number;
 };
 
+function groupByProductId<T extends { product_id: string }>(rows: T[]) {
+  const map = new Map<string, T[]>();
+  for (const row of rows) {
+    const list = map.get(row.product_id);
+    if (list) list.push(row);
+    else map.set(row.product_id, [row]);
+  }
+  return map;
+}
+
 function mapProduct(
   row: ProductRow,
-  variants: VariantRow[],
-  images: ImageRow[]
+  variantsByProduct: Map<string, VariantRow[]>,
+  imagesByProduct: Map<string, ImageRow[]>,
+  mode: "card" | "detail" = "detail"
 ): StoreProduct {
-  const productVariants = variants
-    .filter((v) => v.product_id === row.id)
-    .map((v) => ({
-      id: v.id,
-      name: v.name,
-      sku: v.sku,
-      price: Number(v.price),
-      stock_quantity: Number(v.stock_quantity),
-      attributes: v.attributes || {}
-    }));
+  const productVariants = (variantsByProduct.get(row.id) || []).map((v) => ({
+    id: v.id,
+    name: v.name,
+    sku: v.sku,
+    price: Number(v.price),
+    stock_quantity: Number(v.stock_quantity),
+    attributes: v.attributes || {}
+  }));
 
-  const productImages = images
-    .filter((img) => img.product_id === row.id)
+  const productImages = (imagesByProduct.get(row.id) || [])
+    .slice()
     .sort((a, b) => a.sort_order - b.sort_order)
     .map((img) => img.storage_path);
 
   const imageSrc = productImages[0] || categoryImage(row.category_slug);
   const sizes =
-    productVariants.length > 0
-      ? productVariants.map((v) => v.name)
-      : ["Free Size"];
+    productVariants.length > 0 ? productVariants.map((v) => v.name) : ["Free Size"];
 
   const priceValue = Number(row.price);
   const compareAtValue = row.compare_at_price != null ? Number(row.compare_at_price) : undefined;
+  const isCard = mode === "card";
 
   return {
     id: row.id,
@@ -146,21 +161,61 @@ function mapProduct(
     priceValue,
     compareAtPrice: compareAtValue != null ? formatMoney(compareAtValue) : undefined,
     compareAtValue,
-    sizes,
+    sizes: isCard ? sizes.slice(0, 6) : sizes,
     imageSrc,
-    images: productImages.length ? productImages : [imageSrc],
+    images: isCard ? [imageSrc] : productImages.length ? productImages : [imageSrc],
     color: row.color || "",
     shortDescription: row.short_description || "",
-    description: row.description || "",
+    description: isCard ? "" : row.description || "",
     isFeatured: Boolean(row.is_featured),
     stock_quantity: Number(row.stock_quantity),
-    variants: productVariants
+    variants: isCard ? [] : productVariants
   };
 }
 
-async function loadVariantsAndImages(productIds: string[]) {
+async function loadVariantsAndImages(productIds: string[], mode: "card" | "detail") {
   if (!productIds.length) {
-    return { variants: [] as VariantRow[], images: [] as ImageRow[] };
+    return {
+      variantsByProduct: new Map<string, VariantRow[]>(),
+      imagesByProduct: new Map<string, ImageRow[]>()
+    };
+  }
+
+  if (mode === "card") {
+    const images = await query<ImageRow>(
+      `select distinct on (product_id) product_id, storage_path, sort_order
+       from product_images
+       where product_id = any($1::uuid[])
+       order by product_id, sort_order asc`,
+      [productIds]
+    );
+    const sizeRows = await query<{ product_id: string; name: string }>(
+      `select product_id, name
+       from product_variants
+       where product_id = any($1::uuid[])
+       order by name asc`,
+      [productIds]
+    );
+
+    const variantsByProduct = new Map<string, VariantRow[]>();
+    for (const row of sizeRows) {
+      const list = variantsByProduct.get(row.product_id) || [];
+      list.push({
+        id: `${row.product_id}-${row.name}`,
+        product_id: row.product_id,
+        name: row.name,
+        sku: "",
+        price: "0",
+        stock_quantity: 0,
+        attributes: {}
+      });
+      variantsByProduct.set(row.product_id, list);
+    }
+
+    return {
+      variantsByProduct,
+      imagesByProduct: groupByProductId(images)
+    };
   }
 
   const [variants, images] = await Promise.all([
@@ -180,11 +235,18 @@ async function loadVariantsAndImages(productIds: string[]) {
     )
   ]);
 
-  return { variants, images };
+  return {
+    variantsByProduct: groupByProductId(variants),
+    imagesByProduct: groupByProductId(images)
+  };
 }
 
-export async function listActiveProducts(options?: { categorySlug?: string }) {
+export async function listActiveProducts(options?: ListProductsOptions) {
   const categorySlug = options?.categorySlug ?? null;
+  const featuredOnly = Boolean(options?.featuredOnly);
+  const mode = options?.mode ?? "detail";
+  const limit = options?.limit && options.limit > 0 ? Math.min(options.limit, 200) : null;
+
   const rows = await query<ProductRow>(
     `select
        p.id, p.name, p.slug, p.description, p.short_description, p.color, p.is_featured,
@@ -194,14 +256,49 @@ export async function listActiveProducts(options?: { categorySlug?: string }) {
      from products p
      join categories c on c.id = p.category_id
      left join subcategories sc on sc.id = p.subcategory_id
-     where p.status::text = 'active'
+     where p.status = 'active'
        and ($1::text is null or c.slug = $1)
-     order by p.is_featured desc, p.created_at desc`,
-    [categorySlug]
+       and ($2::boolean = false or p.is_featured = true)
+     order by p.is_featured desc, p.created_at desc
+     ${limit ? `limit ${limit}` : ""}`,
+    [categorySlug, featuredOnly]
   );
 
-  const { variants, images } = await loadVariantsAndImages(rows.map((r) => r.id));
-  return rows.map((row) => mapProduct(row, variants, images));
+  const { variantsByProduct, imagesByProduct } = await loadVariantsAndImages(
+    rows.map((r) => r.id),
+    mode
+  );
+  return rows.map((row) => mapProduct(row, variantsByProduct, imagesByProduct, mode));
+}
+
+export async function listRelatedProducts(
+  categorySlug: string,
+  excludeSlug: string,
+  limit = 4
+) {
+  const safeLimit = Math.min(Math.max(limit, 1), 24);
+  const rows = await query<ProductRow>(
+    `select
+       p.id, p.name, p.slug, p.description, p.short_description, p.color, p.is_featured,
+       p.price::text, p.compare_at_price::text,
+       p.stock_quantity, c.slug as category_slug, c.name as category_name,
+       sc.name as subcategory_name
+     from products p
+     join categories c on c.id = p.category_id
+     left join subcategories sc on sc.id = p.subcategory_id
+     where p.status = 'active'
+       and c.slug = $1
+       and p.slug <> $2
+     order by p.is_featured desc, p.created_at desc
+     limit ${safeLimit}`,
+    [categorySlug, excludeSlug]
+  );
+
+  const { variantsByProduct, imagesByProduct } = await loadVariantsAndImages(
+    rows.map((r) => r.id),
+    "card"
+  );
+  return rows.map((row) => mapProduct(row, variantsByProduct, imagesByProduct, "card"));
 }
 
 export async function getProductBySlug(slug: string) {
@@ -214,29 +311,26 @@ export async function getProductBySlug(slug: string) {
      from products p
      join categories c on c.id = p.category_id
      left join subcategories sc on sc.id = p.subcategory_id
-     where p.slug = $1 and p.status::text = 'active'`,
+     where p.slug = $1 and p.status = 'active'`,
     [slug]
   );
   if (!row) return null;
 
-  const { variants, images } = await loadVariantsAndImages([row.id]);
-  return mapProduct(row, variants, images);
+  const { variantsByProduct, imagesByProduct } = await loadVariantsAndImages([row.id], "detail");
+  return mapProduct(row, variantsByProduct, imagesByProduct, "detail");
 }
 
-export async function listCategories(): Promise<StoreCategory[]> {
-  const rows = await query<{
+function mapCategoryRow(
+  row: {
     id: string;
     name: string;
     slug: string;
     description: string | null;
     sort_order: number;
-  }>(`select id, name, slug, description, sort_order from categories order by sort_order asc`);
-
-  const subcats = await query<{ category_id: string; name: string }>(
-    `select category_id, name from subcategories order by name asc`
-  );
-
-  return rows.map((row) => ({
+  },
+  subcats: Array<{ category_id: string; name: string }>
+): StoreCategory {
+  return {
     id: row.id,
     name: row.name,
     slug: row.slug,
@@ -245,16 +339,89 @@ export async function listCategories(): Promise<StoreCategory[]> {
     image: categoryImage(row.slug),
     subcategories: subcats.filter((s) => s.category_id === row.id).map((s) => s.name),
     lines: [row.name]
-  }));
+  };
+}
+
+export async function listCategories(): Promise<StoreCategory[]> {
+  const [rows, subcats] = await Promise.all([
+    query<{
+      id: string;
+      name: string;
+      slug: string;
+      description: string | null;
+      sort_order: number;
+    }>(`select id, name, slug, description, sort_order from categories order by sort_order asc`),
+    query<{ category_id: string; name: string }>(
+      `select category_id, name from subcategories order by name asc`
+    )
+  ]);
+
+  return rows.map((row) => mapCategoryRow(row, subcats));
 }
 
 export async function getCategoryBySlug(slug: string) {
-  const categories = await listCategories();
-  return categories.find((c) => c.slug === slug) ?? null;
+  const row = await queryOne<{
+    id: string;
+    name: string;
+    slug: string;
+    description: string | null;
+    sort_order: number;
+  }>(`select id, name, slug, description, sort_order from categories where slug = $1`, [slug]);
+  if (!row) return null;
+
+  const subcats = await query<{ category_id: string; name: string }>(
+    `select category_id, name from subcategories where category_id = $1 order by name asc`,
+    [row.id]
+  );
+
+  return mapCategoryRow(row, subcats);
 }
 
 export async function listCollections() {
   return query<{ id: string; name: string; slug: string; description: string | null }>(
     `select id, name, slug, description from collections order by name asc`
   );
+}
+
+export async function getStorefrontBootstrap() {
+  const [settings, menus, banners, sections, categories] = await Promise.all([
+    queryOne(`select * from site_settings limit 1`),
+    query<{ id: string } & Record<string, unknown>>(`select * from menus where is_active = true`),
+    query(`select * from banners where is_active = true order by sort_order`),
+    query<{ id: string } & Record<string, unknown>>(
+      `select * from page_sections where page_slug = 'home' and is_active = true order by sort_order`
+    ),
+    query(`select id, name, slug, description, sort_order from categories order by sort_order`)
+  ]);
+
+  const menuIds = menus.map((m) => m.id);
+  const sectionIds = sections.map((s) => s.id);
+
+  const [menuItems, sectionItems] = await Promise.all([
+    menuIds.length
+      ? query(`select * from menu_items where menu_id = any($1::uuid[])`, [menuIds])
+      : Promise.resolve([]),
+    sectionIds.length
+      ? query(
+          `select * from section_items where section_id = any($1::uuid[]) order by sort_order asc`,
+          [sectionIds]
+        )
+      : Promise.resolve([])
+  ]);
+
+  return {
+    settings,
+    menus: menus.map((menu) => ({
+      ...menu,
+      menu_items: menuItems.filter((item) => (item as { menu_id: string }).menu_id === menu.id)
+    })),
+    banners,
+    sections: sections.map((section) => ({
+      ...section,
+      section_items: sectionItems.filter(
+        (item) => (item as { section_id: string }).section_id === section.id
+      )
+    })),
+    categories
+  };
 }

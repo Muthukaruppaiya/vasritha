@@ -6,6 +6,11 @@ export async function GET(request: NextRequest) {
   const { error } = await requirePermission(request, "stock:operate");
   if (error) return error;
 
+  const { searchParams } = new URL(request.url);
+  const q = (searchParams.get("q") || "").trim();
+  const limitRaw = Number(searchParams.get("limit") || "100");
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 200) : 100;
+
   const [movements, stock] = await Promise.all([
     query(
       `select id, product_variant_id, type, quantity, reference_type, reference_id, note, created_by, created_at
@@ -25,7 +30,14 @@ export async function GET(request: NextRequest) {
          p.status as product_status
        from product_variants pv
        join products p on p.id = pv.product_id
-       order by p.name asc, pv.sku asc`
+       where (
+         $1::text = ''
+         or p.name ilike '%' || $1 || '%'
+         or coalesce(pv.sku, '') ilike '%' || $1 || '%'
+       )
+       order by p.name asc, pv.sku asc
+       limit ${limit}`,
+      [q]
     )
   ]);
 
@@ -38,7 +50,7 @@ export async function POST(request: NextRequest) {
 
   const body = (await request.json().catch(() => null)) as {
     productVariantId?: string;
-    type?: "sale" | "return" | "manual_adjustment" | "opening_stock";
+    type?: "sale" | "return" | "manual_adjustment" | "opening_stock" | "purchase";
     quantity?: number;
     note?: string;
   } | null;
@@ -62,16 +74,32 @@ export async function POST(request: NextRequest) {
   if (!variant) return fail("Variant not found", 404);
 
   const current = Number(variant.stock_quantity);
+  const absQty = Math.abs(Number(body.quantity));
   let nextQty = current;
-  if (body.type === "sale") nextQty = Math.max(0, current - Math.abs(body.quantity));
-  else if (body.type === "return" || body.type === "opening_stock") nextQty = current + Math.abs(body.quantity);
-  else nextQty = Math.max(0, current + body.quantity);
+  if (body.type === "sale") nextQty = Math.max(0, current - absQty);
+  else if (
+    body.type === "return" ||
+    body.type === "opening_stock" ||
+    body.type === "purchase"
+  ) {
+    nextQty = current + absQty;
+  } else nextQty = Math.max(0, current + Number(body.quantity));
+
+  const movementQty =
+    body.type === "sale" ? -absQty : body.type === "manual_adjustment" ? Number(body.quantity) : absQty;
 
   const movement = await queryOne(
     `insert into inventory_movements (product_variant_id, type, quantity, reference_type, note, created_by)
-     values ($1, $2, $3, 'manual', $4, $5)
+     values ($1, $2, $3, $4, $5, $6)
      returning *`,
-    [body.productVariantId, body.type, body.quantity, body.note ?? null, ctx.userId]
+    [
+      body.productVariantId,
+      body.type,
+      movementQty,
+      body.type === "purchase" ? "grn" : "manual",
+      body.note ?? null,
+      ctx.userId
+    ]
   );
 
   await query(`update product_variants set stock_quantity = $2 where id = $1`, [

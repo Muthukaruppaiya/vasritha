@@ -17,7 +17,11 @@ function easeInOutCubic(t: number) {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
-export function SareeCollections() {
+export function SareeCollections({
+  collections: initialCollections
+}: {
+  collections?: CollectionCard[];
+} = {}) {
   const t = useT();
   const pinRef = useRef<HTMLElement | null>(null);
   const stickyRef = useRef<HTMLDivElement | null>(null);
@@ -25,16 +29,21 @@ export function SareeCollections() {
   const [isMobile, setIsMobile] = useState(false);
   const [pinHeight, setPinHeight] = useState<number>();
   const [activeIndex, setActiveIndex] = useState(0);
-  const [collections, setCollections] = useState<CollectionCard[]>([]);
+  const [collections, setCollections] = useState<CollectionCard[]>(initialCollections || []);
 
   useEffect(() => {
+    if (initialCollections?.length) {
+      setCollections(initialCollections);
+      return;
+    }
+
     fetch("/api/collections")
       .then((res) => res.json())
       .then((payload) => {
         setCollections((payload?.data || []) as CollectionCard[]);
       })
       .catch(() => setCollections([]));
-  }, []);
+  }, [initialCollections]);
 
   useEffect(() => {
     const media = window.matchMedia(MOBILE_QUERY);

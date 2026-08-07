@@ -2,11 +2,24 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Footer, Header } from "../../components/storefront";
-import { CatalogProduct, ProductGlobe } from "../../components/product-globe";
+import type { CatalogProduct } from "../../components/product-globe";
 import { useT } from "../../lib/i18n/provider";
+
+const ProductGlobe = dynamic(
+  () => import("../../components/product-globe").then((mod) => mod.ProductGlobe),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="shell section">
+        <p className="muted">Loading collections…</p>
+      </div>
+    )
+  }
+);
 
 export default function CollectionsPage() {
   const t = useT();
@@ -14,11 +27,11 @@ export default function CollectionsPage() {
   const [products, setProducts] = useState<CatalogProduct[]>([]);
 
   useEffect(() => {
-    fetch("/api/products")
+    fetch("/api/products?mode=card&limit=24")
       .then((res) => res.json())
       .then((payload) => {
         const rows = (payload?.data || []) as CatalogProduct[];
-        setProducts(rows);
+        setProducts(rows.slice(0, 24));
       })
       .catch(() => setProducts([]));
   }, []);

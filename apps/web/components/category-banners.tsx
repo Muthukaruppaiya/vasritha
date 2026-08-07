@@ -51,18 +51,27 @@ function ShopNowBadge({ brand, slug, shopNow, collectionBy }: { brand: string; s
   );
 }
 
-export function CategoryBanners() {
+export function CategoryBanners({
+  categories
+}: {
+  categories?: Array<{ slug: string; name: string }>;
+} = {}) {
   const t = useT();
-  const [rawRows, setRawRows] = useState<Array<{ slug: string; name: string }>>([]);
+  const [rawRows, setRawRows] = useState<Array<{ slug: string; name: string }>>(categories || []);
 
   useEffect(() => {
+    if (categories?.length) {
+      setRawRows(categories);
+      return;
+    }
+
     fetch("/api/categories")
       .then((res) => res.json())
       .then((payload) => {
         setRawRows((payload?.data || []) as Array<{ slug: string; name: string }>);
       })
       .catch(() => setRawRows([]));
-  }, []);
+  }, [categories]);
 
   const banners: Banner[] = useMemo(
     () =>

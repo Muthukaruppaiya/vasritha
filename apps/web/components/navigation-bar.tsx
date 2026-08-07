@@ -14,13 +14,25 @@ function isActivePath(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export function NavigationBar() {
+export function NavigationBar({
+  categories
+}: {
+  categories?: Array<{ slug: string; name: string; description?: string }>;
+} = {}) {
   const t = useT();
   const { locale } = useLocale();
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const titleId = useId();
-  const [shopLinks, setShopLinks] = useState<Array<{ href: string; label: string; hint: string; slug: string }>>([]);
+  const [shopLinks, setShopLinks] = useState<Array<{ href: string; label: string; hint: string; slug: string }>>(
+    () =>
+      (categories || []).map((category) => ({
+        href: `/${category.slug}`,
+        slug: category.slug,
+        label: category.name,
+        hint: category.description || ""
+      }))
+  );
 
   const discoverLinks = useMemo(
     () => [
@@ -30,15 +42,29 @@ export function NavigationBar() {
     [t]
   );
 
+  const offerLink = useMemo(
+    () => ({ href: "/checkout", label: t("common.offers") }),
+    [t]
+  );
+
   const accountLinks = useMemo(
-    () => [
-      { href: "/checkout", label: t("common.offers") },
-      { href: "/account", label: t("common.myAccount") }
-    ],
+    () => [{ href: "/account", label: t("common.myAccount") }],
     [t]
   );
 
   useEffect(() => {
+    if (categories?.length) {
+      setShopLinks(
+        categories.map((category) => ({
+          href: `/${category.slug}`,
+          slug: category.slug,
+          label: category.name,
+          hint: category.description || ""
+        }))
+      );
+      return;
+    }
+
     fetch("/api/categories")
       .then((res) => res.json())
       .then((payload) => {
@@ -53,7 +79,7 @@ export function NavigationBar() {
         );
       })
       .catch(() => setShopLinks([]));
-  }, []);
+  }, [categories]);
 
   const localizedShopLinks = useMemo(
     () =>
@@ -68,9 +94,9 @@ export function NavigationBar() {
     () => [
       ...discoverLinks,
       ...localizedShopLinks.map(({ href, label }) => ({ href, label })),
-      ...accountLinks
+      offerLink
     ],
-    [localizedShopLinks, discoverLinks, accountLinks]
+    [localizedShopLinks, discoverLinks, offerLink]
   );
 
   useEffect(() => {
@@ -203,7 +229,7 @@ export function NavigationBar() {
           <div className="drawer-group">
             <p className="drawer-group-label">{t("nav.account")}</p>
             <div className="drawer-links">
-              {accountLinks.map((link, index) => (
+              {[offerLink, ...accountLinks].map((link, index) => (
                 <Link
                   key={link.href}
                   href={link.href}

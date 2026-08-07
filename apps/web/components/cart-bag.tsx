@@ -54,7 +54,7 @@ export function CartBag() {
   }, []);
 
   useEffect(() => {
-    fetch("/api/products")
+    fetch("/api/products?mode=card&limit=3")
       .then((res) => res.json())
       .then((payload) => {
         setSuggestions(((payload?.data || []) as SuggestProduct[]).slice(0, 3));

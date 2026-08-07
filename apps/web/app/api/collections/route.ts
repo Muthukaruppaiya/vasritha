@@ -1,4 +1,4 @@
-import { ok } from "../../../lib/auth/api";
+import { cachedOk } from "../../../lib/auth/api";
 import { listCollections } from "../../../lib/catalog";
 
 const COLLECTION_IMAGES: Record<string, { image: string; lines: string[] }> = {
@@ -25,5 +25,5 @@ export async function GET() {
       blurb: row.description || ""
     };
   });
-  return ok(data);
+  return cachedOk(data);
 }

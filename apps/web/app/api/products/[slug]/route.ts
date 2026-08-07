@@ -1,18 +1,19 @@
 import { NextRequest } from "next/server";
-import { fail, ok } from "../../../../lib/auth/api";
-import { getProductBySlug, listActiveProducts } from "../../../../lib/catalog";
+import { cachedOk, fail } from "../../../../lib/auth/api";
+import { getProductBySlug, listRelatedProducts } from "../../../../lib/catalog";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await context.params;
+  const includeRelated = new URL(request.url).searchParams.get("related") !== "0";
   const product = await getProductBySlug(slug);
   if (!product) return fail("Product not found", 404);
 
-  const related = (await listActiveProducts({ categorySlug: product.category }))
-    .filter((item) => item.slug !== product.slug)
-    .slice(0, 4);
+  const related = includeRelated
+    ? await listRelatedProducts(product.category, product.slug, 4)
+    : [];
 
-  return ok({ product, related });
+  return cachedOk({ product, related });
 }

@@ -25,6 +25,9 @@ type Settings = {
   free_shipping_min: string | null;
   seo_title: string | null;
   seo_description: string | null;
+  company_legal_name: string | null;
+  company_address: string | null;
+  company_gstin: string | null;
 };
 
 type RoleRow = {
@@ -43,7 +46,7 @@ const SYSTEM_TEMPLATES = ROLE_ORDER.filter((code) => code !== "customer").map((c
 }));
 
 export default function AdminSettingsPage() {
-  const [tab, setTab] = useState<"site" | "roles">("site");
+  const [tab, setTab] = useState<"site" | "company" | "roles">("site");
   const { data, error, loading, reload } = useAdminQuery<Settings>("/api/admin/settings");
   const rolesQuery = useAdminQuery<RoleRow[]>("/api/admin/roles");
   const [form, setForm] = useState<Settings>({
@@ -55,7 +58,10 @@ export default function AdminSettingsPage() {
     currency: "INR",
     free_shipping_min: "0",
     seo_title: "",
-    seo_description: ""
+    seo_description: "",
+    company_legal_name: "",
+    company_address: "",
+    company_gstin: ""
   });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -82,7 +88,10 @@ export default function AdminSettingsPage() {
       currency: data.currency || "INR",
       free_shipping_min: data.free_shipping_min ?? "0",
       seo_title: data.seo_title || "",
-      seo_description: data.seo_description || ""
+      seo_description: data.seo_description || "",
+      company_legal_name: data.company_legal_name || data.site_name || "",
+      company_address: data.company_address || "",
+      company_gstin: data.company_gstin || ""
     });
   }, [data]);
 
@@ -101,7 +110,7 @@ export default function AdminSettingsPage() {
     setSaving(false);
     if (result.error) setSaveError(result.error);
     else {
-      setMessage("Settings saved.");
+      setMessage(tab === "company" ? "Company details saved." : "Settings saved.");
       await reload();
     }
   };
@@ -167,6 +176,17 @@ export default function AdminSettingsPage() {
         </button>
         <button
           type="button"
+          className={tab === "company" ? "is-active" : ""}
+          onClick={() => {
+            setMessage("");
+            setSaveError("");
+            setTab("company");
+          }}
+        >
+          Company
+        </button>
+        <button
+          type="button"
           className={tab === "roles" ? "is-active" : ""}
           onClick={() => setTab("roles")}
         >
@@ -192,28 +212,6 @@ export default function AdminSettingsPage() {
                 <input
                   value={form.tagline || ""}
                   onChange={(e) => setForm((f) => ({ ...f, tagline: e.target.value }))}
-                />
-              </label>
-              <label>
-                <span>Support email</span>
-                <input
-                  type="email"
-                  value={form.support_email || ""}
-                  onChange={(e) => setForm((f) => ({ ...f, support_email: e.target.value }))}
-                />
-              </label>
-              <label>
-                <span>Support phone</span>
-                <input
-                  value={form.support_phone || ""}
-                  onChange={(e) => setForm((f) => ({ ...f, support_phone: e.target.value }))}
-                />
-              </label>
-              <label>
-                <span>WhatsApp</span>
-                <input
-                  value={form.whatsapp_number || ""}
-                  onChange={(e) => setForm((f) => ({ ...f, whatsapp_number: e.target.value }))}
                 />
               </label>
               <label>
@@ -252,6 +250,73 @@ export default function AdminSettingsPage() {
               <div className="admin-span-2">
                 <button className="btn" type="submit" disabled={saving}>
                   {saving ? "Saving…" : "Save settings"}
+                </button>
+              </div>
+            </form>
+          )}
+        </AdminPanel>
+      )}
+
+      {tab === "company" && (
+        <AdminPanel title="Company details">
+          {loading && <AdminLoading />}
+          {error && <AdminAlert>{error}</AdminAlert>}
+          {!loading && !error && (
+            <form className="admin-form-grid" onSubmit={onSave}>
+              <label className="admin-span-2">
+                <span>Legal / registered name</span>
+                <input
+                  value={form.company_legal_name || ""}
+                  onChange={(e) => setForm((f) => ({ ...f, company_legal_name: e.target.value }))}
+                  placeholder="Vasritha Boutique LLP"
+                />
+              </label>
+              <label className="admin-span-2">
+                <span>Registered address</span>
+                <textarea
+                  rows={3}
+                  value={form.company_address || ""}
+                  onChange={(e) => setForm((f) => ({ ...f, company_address: e.target.value }))}
+                  placeholder="Street, area, city, state, PIN"
+                />
+              </label>
+              <label>
+                <span>Phone</span>
+                <input
+                  value={form.support_phone || ""}
+                  onChange={(e) => setForm((f) => ({ ...f, support_phone: e.target.value }))}
+                  placeholder="+91…"
+                />
+              </label>
+              <label>
+                <span>Email</span>
+                <input
+                  type="email"
+                  value={form.support_email || ""}
+                  onChange={(e) => setForm((f) => ({ ...f, support_email: e.target.value }))}
+                />
+              </label>
+              <label>
+                <span>GSTIN</span>
+                <input
+                  value={form.company_gstin || ""}
+                  onChange={(e) => setForm((f) => ({ ...f, company_gstin: e.target.value.toUpperCase() }))}
+                  placeholder="22AAAAA0000A1Z5"
+                />
+              </label>
+              <label>
+                <span>Support WhatsApp</span>
+                <input
+                  value={form.whatsapp_number || ""}
+                  onChange={(e) => setForm((f) => ({ ...f, whatsapp_number: e.target.value }))}
+                  placeholder="919000000000"
+                />
+              </label>
+              {saveError && <AdminAlert>{saveError}</AdminAlert>}
+              {message && <AdminAlert tone="ok">{message}</AdminAlert>}
+              <div className="admin-span-2">
+                <button className="btn" type="submit" disabled={saving}>
+                  {saving ? "Saving…" : "Save company details"}
                 </button>
               </div>
             </form>

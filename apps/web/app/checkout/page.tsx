@@ -89,7 +89,7 @@ function CheckoutContent() {
         return;
       }
 
-      const res = await fetch(`/api/products/${encodeURIComponent(productSlug)}`);
+      const res = await fetch(`/api/products/${encodeURIComponent(productSlug)}?related=0`);
       const payload = await res.json().catch(() => ({}));
       const product = (payload?.data?.product || payload?.data) as StoreProduct | undefined;
       if (!product) {

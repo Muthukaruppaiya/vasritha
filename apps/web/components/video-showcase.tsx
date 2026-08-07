@@ -68,11 +68,11 @@ export function VideoShowcase() {
                 ref={(element) => {
                   videoRefs.current[index] = element;
                 }}
-                src={video.source}
+                src={isActive || Math.abs(position) <= 1 ? video.source : undefined}
                 muted
                 playsInline
                 autoPlay={isActive}
-                preload="metadata"
+                preload={isActive ? "metadata" : "none"}
                 onCanPlay={(event) => {
                   if (isActive) event.currentTarget.play().catch(() => undefined);
                 }}

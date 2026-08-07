@@ -38,6 +38,10 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status");
+  const limitRaw = Number(searchParams.get("limit") || "100");
+  const offsetRaw = Number(searchParams.get("offset") || "0");
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 200) : 100;
+  const offset = Number.isFinite(offsetRaw) ? Math.max(offsetRaw, 0) : 0;
 
   const data = await query(
     `select
@@ -45,17 +49,19 @@ export async function GET(request: NextRequest) {
        p.price, p.compare_at_price, p.status, p.stock_quantity, p.is_featured,
        p.category_id, p.subcategory_id, p.created_at, p.updated_at,
        c.name as category_name,
-       (
-         select pi.storage_path
-         from product_images pi
-         where pi.product_id = p.id
-         order by pi.sort_order asc
-         limit 1
-       ) as primary_image
+       img.storage_path as primary_image
      from products p
      left join categories c on c.id = p.category_id
+     left join lateral (
+       select pi.storage_path
+       from product_images pi
+       where pi.product_id = p.id
+       order by pi.sort_order asc
+       limit 1
+     ) img on true
      where ($1::text is null or p.status::text = $1)
-     order by p.created_at desc`,
+     order by p.created_at desc
+     limit ${limit} offset ${offset}`,
     [status]
   );
   return ok(data);

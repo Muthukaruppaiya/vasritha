@@ -14,7 +14,10 @@ const ALLOWED_FIELDS = [
   "free_shipping_min",
   "social_links",
   "seo_title",
-  "seo_description"
+  "seo_description",
+  "company_legal_name",
+  "company_address",
+  "company_gstin"
 ] as const;
 
 export async function GET() {

@@ -1,7 +1,7 @@
 /**
  * Apply local PostgreSQL schema and seed a default super admin.
  * Usage: npm run db:init
- * Requires DATABASE_URL (or defaults to postgresql://postgres:postgres@127.0.0.1:5432/vasritha)
+ * Requires DATABASE_URL (or defaults to postgresql://postgres:postgres@127.0.0.1:5433/vasritha)
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -16,7 +16,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, "..");
 const schemaPath = path.join(root, "db", "local", "schema.sql");
 const databaseUrl =
-  process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5432/vasritha";
+  process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5433/vasritha";
 
 const ADMIN_EMAIL = "admin@vasritha.local";
 const ADMIN_PASSWORD = "Admin@123";
@@ -29,6 +29,12 @@ try {
   await client.connect();
   await client.query(sql);
   console.log("Local PostgreSQL schema applied successfully.");
+
+  const optimizePath = path.join(root, "db", "local", "optimize_v1.sql");
+  if (fs.existsSync(optimizePath)) {
+    await client.query(fs.readFileSync(optimizePath, "utf8"));
+    console.log("DB optimize v1 applied.");
+  }
 
   const existing = await client.query(`select id from users where email = $1`, [ADMIN_EMAIL]);
   if (!existing.rowCount) {

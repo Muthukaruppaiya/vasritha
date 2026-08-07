@@ -26,10 +26,10 @@ function ProductSphere({ products, onProductChange, onProductSelect }: GlobeProp
   const frontProduct = useRef<CatalogProduct>(products[0]);
   const lastCheck = useRef(0);
   const atlasLayout = useMemo(() => {
-    const tileCount = Math.max(products.length, 48);
+    const tileCount = Math.max(products.length, 1);
     const columns = Math.ceil(Math.sqrt(tileCount * 2));
     const rows = Math.ceil(tileCount / columns);
-    const tileSize = Math.max(24, Math.floor(4096 / columns));
+    const tileSize = Math.max(32, Math.min(128, Math.floor(2048 / columns)));
     return { columns, rows, tileCount, tileSize };
   }, [products.length]);
 

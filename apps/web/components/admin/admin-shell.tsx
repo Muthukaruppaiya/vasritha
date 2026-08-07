@@ -14,6 +14,7 @@ import {
   Warehouse,
   TicketPercent,
   RotateCcw,
+  MessageSquareQuote,
   PanelsTopLeft,
   Settings,
   LogOut,
@@ -44,6 +45,7 @@ const nav = [
   { label: "Inventory", href: "/admin/inventory", icon: Warehouse },
   { label: "Coupons", href: "/admin/coupons", icon: TicketPercent },
   { label: "Returns", href: "/admin/returns", icon: RotateCcw },
+  { label: "Reviews", href: "/admin/reviews", icon: MessageSquareQuote },
   { label: "CMS", href: "/admin/cms", icon: PanelsTopLeft },
   { label: "Settings", href: "/admin/settings", icon: Settings }
 ];

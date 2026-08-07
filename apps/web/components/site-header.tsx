@@ -11,7 +11,11 @@ import { CartBagIcon, LoginIcon } from "./icons";
 import { LanguageSwitcher } from "./language-switcher";
 import { NavigationBar } from "./navigation-bar";
 
-export function Header() {
+export function Header({
+  categories
+}: {
+  categories?: Array<{ slug: string; name: string; description?: string }>;
+} = {}) {
   const t = useT();
   const [scrolled, setScrolled] = useState(false);
   const [bagCount, setBagCount] = useState(0);
@@ -62,13 +66,13 @@ export function Header() {
       </div>
       <header className="shell nav">
         <div className="nav-left">
-          <NavigationBar />
+          <NavigationBar categories={categories} />
           <Link className="search-link search-link--mobile" href="/sarees" aria-label={t("common.search")}>
             <Search size={21} strokeWidth={1.7} />
           </Link>
         </div>
         <Link className="nav-logo-link" href="/" aria-label="Vasritha home">
-          <img className="brand-logo" src="/vasritha-logo.png" alt="Vasritha — Timeless Elegance" />
+          <img className="brand-logo" src="/vasritha-logo-header.png" alt="Vasritha — Timeless Elegance" />
         </Link>
         <div className="actions">
           <LanguageSwitcher />

@@ -24,52 +24,63 @@ type SpotlightSection = {
   products: RawProduct[];
 };
 
-export function SpotlightCollections() {
+export function SpotlightCollections({
+  products: initialProducts
+}: {
+  products?: RawProduct[];
+} = {}) {
   const t = useT();
   const { locale } = useLocale();
   const [sections, setSections] = useState<SpotlightSection[]>([]);
 
   useEffect(() => {
-    fetch("/api/products")
+    const buildSections = (products: RawProduct[]) => {
+      if (!products.length) {
+        setSections([]);
+        return;
+      }
+
+      const featured = products.filter((product) => product.isFeatured);
+      const firstSource = featured.length ? featured : products;
+      const first = firstSource.slice(0, 4);
+
+      const secondSource = products.filter(
+        (product) => !featured.some((f) => f.slug === product.slug)
+      );
+      const second = (secondSource.length ? secondSource : products).slice(0, 4);
+
+      setSections([
+        {
+          id: "fast-selling",
+          eyebrow: t("home.mostLoved"),
+          title: t("home.fastSelling"),
+          lead: t("home.fastSellingLead"),
+          href: "/collections",
+          products: first
+        },
+        {
+          id: "new-arrivals",
+          eyebrow: t("home.newSeason"),
+          title: t("home.newArrivals"),
+          lead: t("home.newArrivalsLead"),
+          href: "/collections",
+          products: second.length ? second : first
+        }
+      ]);
+    };
+
+    if (initialProducts?.length) {
+      buildSections(initialProducts);
+      return;
+    }
+
+    fetch("/api/products?mode=card&limit=16")
       .then((res) => res.json())
       .then((payload) => {
-        const products = (payload?.data || []) as RawProduct[];
-
-        if (!products.length) {
-          setSections([]);
-          return;
-        }
-
-        const featured = products.filter((product) => product.isFeatured);
-        const firstSource = featured.length ? featured : products;
-        const first = firstSource.slice(0, 4);
-
-        const secondSource = products.filter(
-          (product) => !featured.some((f) => f.slug === product.slug)
-        );
-        const second = (secondSource.length ? secondSource : products).slice(0, 4);
-
-        setSections([
-          {
-            id: "fast-selling",
-            eyebrow: t("home.mostLoved"),
-            title: t("home.fastSelling"),
-            lead: t("home.fastSellingLead"),
-            href: "/collections",
-            products: first
-          },
-          {
-            id: "new-arrivals",
-            eyebrow: t("home.newSeason"),
-            title: t("home.newArrivals"),
-            lead: t("home.newArrivalsLead"),
-            href: "/collections",
-            products: second.length ? second : first
-          }
-        ]);
+        buildSections((payload?.data || []) as RawProduct[]);
       })
       .catch(() => setSections([]));
-  }, [t]);
+  }, [initialProducts, t]);
 
   const localizedSections = useMemo(
     () =>

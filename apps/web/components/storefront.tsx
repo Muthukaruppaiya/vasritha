@@ -13,11 +13,15 @@ export { Header } from "./site-header";
 type NavCategory = { name: string; slug: string };
 type NavCollection = { name: string; slug: string };
 
-export function Footer() {
+export function Footer({
+  categories: initialCategories
+}: {
+  categories?: NavCategory[];
+} = {}) {
   const t = useT();
   const { locale } = useLocale();
   const year = new Date().getFullYear();
-  const [categories, setCategories] = useState<NavCategory[]>([]);
+  const [categories, setCategories] = useState<NavCategory[]>(initialCategories || []);
   const collections: NavCollection[] = [
     { name: t("footer.kanchipuram"), slug: "sarees" },
     { name: t("footer.banarasi"), slug: "sarees" },
@@ -26,14 +30,19 @@ export function Footer() {
   ];
 
   useEffect(() => {
-    fetch("/api/storefront")
+    if (initialCategories?.length) {
+      setCategories(initialCategories);
+      return;
+    }
+
+    fetch("/api/categories")
       .then((res) => res.json())
       .then((payload) => {
-        const cats = (payload?.data?.categories || []) as NavCategory[];
+        const cats = (payload?.data || []) as NavCategory[];
         setCategories(cats);
       })
       .catch(() => setCategories([]));
-  }, []);
+  }, [initialCategories]);
 
   return (
     <footer className="footer" data-reveal>

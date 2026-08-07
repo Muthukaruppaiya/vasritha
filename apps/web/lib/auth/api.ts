@@ -22,8 +22,14 @@ function jsonError(message: string, status: number, extra?: Record<string, unkno
   return NextResponse.json({ error: message, ...extra }, { status });
 }
 
-export function ok<T>(data: T, status = 200) {
-  return NextResponse.json({ data }, { status });
+export function ok<T>(data: T, status = 200, headers?: HeadersInit) {
+  return NextResponse.json({ data }, { status, headers });
+}
+
+export function cachedOk<T>(data: T, maxAgeSeconds = 30) {
+  return ok(data, 200, {
+    "Cache-Control": `public, s-maxage=${maxAgeSeconds}, stale-while-revalidate=${maxAgeSeconds * 4}`
+  });
 }
 
 export function fail(message: string, status = 400, extra?: Record<string, unknown>) {

@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { fail, ok } from "../../../lib/auth/api";
+import { cachedOk, fail } from "../../../lib/auth/api";
 import { query, queryOne } from "../../../lib/db/pool";
 
 export async function GET(request: NextRequest) {
@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
       [slug]
     );
     if (!data) return fail("Category not found", 404);
-    return ok(data);
+    return cachedOk(data);
   }
 
   const filterSlug = category ?? null;
@@ -24,5 +24,5 @@ export async function GET(request: NextRequest) {
      order by sort_order asc`,
     [filterSlug]
   );
-  return ok(data);
+  return cachedOk(data);
 }
