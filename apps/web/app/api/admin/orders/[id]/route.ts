@@ -9,7 +9,8 @@ export async function GET(
   const { error } = await requireAnyPermission(request, [
     "orders:view",
     "orders:manage",
-    "pos:create"
+    "pos:create",
+    "invoices:print"
   ]);
   if (error) return error;
 

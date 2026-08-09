@@ -39,7 +39,8 @@ export default async function Home() {
   const navCategories = categories.map((category) => ({
     slug: category.slug,
     name: category.name,
-    description: category.description
+    description: category.description,
+    image: category.image
   }));
 
   return (

@@ -6,6 +6,7 @@ const ALLOWED_FIELDS = [
   "site_name",
   "tagline",
   "logo_path",
+  "header_logo_path",
   "favicon_path",
   "support_email",
   "support_phone",

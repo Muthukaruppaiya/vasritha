@@ -5,14 +5,26 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useT } from "../lib/i18n/provider";
 
-const slides = [
+const FALLBACK_SLIDES = [
   { image: "/hero-silk.png", alt: "Model wearing a Kanchipuram silk saree" },
   { image: "/hero-salwar.png", alt: "Model wearing an embroidered churidhar salwar suit" },
   { image: "/hero-jewelry.png", alt: "Model wearing traditional gold jewelry" }
 ];
 
+type HeroSlide = {
+  image: string;
+  alt: string;
+  title?: string | null;
+  subtitle?: string | null;
+  ctaLabel?: string | null;
+  ctaHref?: string | null;
+  cta2Label?: string | null;
+  cta2Href?: string | null;
+};
+
 export function HeroCarousel() {
   const t = useT();
+  const [slides, setSlides] = useState<HeroSlide[]>(FALLBACK_SLIDES);
   const [activeSlide, setActiveSlide] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const pointerStart = useRef<{ x: number; y: number } | null>(null);
@@ -24,17 +36,51 @@ export function HeroCarousel() {
   const pausedUntil = useRef(0);
 
   useEffect(() => {
+    fetch("/api/homepage-config")
+      .then((res) => res.json())
+      .then((payload) => {
+        const rows = (payload?.data?.heroSlides || []) as Array<{
+          image: string;
+          alt: string;
+          title?: string | null;
+          subtitle?: string | null;
+          ctaLabel?: string | null;
+          ctaHref?: string | null;
+          cta2Label?: string | null;
+          cta2Href?: string | null;
+        }>;
+        if (rows.length) {
+          setSlides(
+            rows.map((row) => ({
+              image: row.image,
+              alt: row.alt || "Vasritha",
+              title: row.title,
+              subtitle: row.subtitle,
+              ctaLabel: row.ctaLabel,
+              ctaHref: row.ctaHref,
+              cta2Label: row.cta2Label,
+              cta2Href: row.cta2Href
+            }))
+          );
+          setActiveSlide(0);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
     activeRef.current = activeSlide;
     applyTrackTransform(0);
   }, [activeSlide]);
 
   useEffect(() => {
+    if (slides.length < 2) return;
     const interval = window.setInterval(() => {
       if (Date.now() < pausedUntil.current || pointerStart.current) return;
       setActiveSlide((current) => (current + 1) % slides.length);
     }, 4000);
     return () => window.clearInterval(interval);
-  }, []);
+  }, [slides.length]);
 
   const applyTrackTransform = (offset: number, animate = true) => {
     const track = trackRef.current;
@@ -99,6 +145,18 @@ export function HeroCarousel() {
     else applyTrackTransform(0, true);
   };
 
+  const active = slides[activeSlide] || slides[0];
+  const title = active?.title || t("home.heroTitle");
+  const subtitle = active?.subtitle || t("home.heroLead");
+  const ctaLabel = active?.ctaLabel || t("home.exploreSarees");
+  const ctaHref = active?.ctaHref || "/sarees";
+  const cta2Label = active?.cta2Label || t("home.discoverJewelry");
+  const cta2Href = active?.cta2Href || "/jewelry";
+  const thumbnailSlides = slides
+    .map((slide, index) => ({ slide, index }))
+    .filter(({ index }) => index !== activeSlide)
+    .slice(0, 2);
+
   return (
     <section
       ref={sectionRef}
@@ -124,18 +182,18 @@ export function HeroCarousel() {
       </div>
       <div className="hero-copy">
         <div className="eyebrow">{t("home.heroEyebrow")}</div>
-        <h1>{t("home.heroTitle")}</h1>
-        <p>{t("home.heroLead")}</p>
-        <Link className="btn" href="/sarees">
-          {t("home.exploreSarees")}
+        <h1>{title}</h1>
+        <p>{subtitle}</p>
+        <Link className="btn" href={ctaHref}>
+          {ctaLabel}
         </Link>
-        <Link className="btn ghost" href="/jewelry">
-          {t("home.discoverJewelry")}
+        <Link className="btn ghost" href={cta2Href}>
+          {cta2Label}
         </Link>
       </div>
       <div className="hero-thumbnails" aria-hidden="true">
-        {slides.map((slide, index) => (
-          <div className={`hero-thumbnail ${index === activeSlide ? "is-active" : ""}`} key={slide.image}>
+        {thumbnailSlides.map(({ slide, index }) => (
+          <div className="hero-thumbnail" key={`${slide.image}-${index}`}>
             <Image src={slide.image} alt="" fill sizes="100px" draggable={false} />
           </div>
         ))}

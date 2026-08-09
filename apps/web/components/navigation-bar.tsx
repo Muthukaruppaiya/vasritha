@@ -7,8 +7,6 @@ import { useEffect, useId, useMemo, useState, type CSSProperties } from "react";
 import { useLocale, useT } from "../lib/i18n/provider";
 import { localizeCategoryName } from "../lib/i18n/catalog-local";
 
-const whatsappNumber = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? "919000000000";
-
 function isActivePath(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(`${href}/`);
@@ -24,6 +22,8 @@ export function NavigationBar({
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const titleId = useId();
+  const [brandLogo, setBrandLogo] = useState("/vasritha-logo.png");
+  const [whatsappHref, setWhatsappHref] = useState<string | null>(null);
   const [shopLinks, setShopLinks] = useState<Array<{ href: string; label: string; hint: string; slug: string }>>(
     () =>
       (categories || []).map((category) => ({
@@ -80,6 +80,35 @@ export function NavigationBar({
       })
       .catch(() => setShopLinks([]));
   }, [categories]);
+
+  useEffect(() => {
+    fetch("/api/site-branding")
+      .then((res) => res.json())
+      .then((payload) => {
+        const path = payload?.data?.logoPath as string | undefined;
+        if (path) setBrandLogo(path);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/integrations/public")
+      .then((res) => res.json())
+      .then((payload) => {
+        const wa = payload?.data?.whatsapp as
+          | { enabled?: boolean; phoneNumber?: string | null; prefillMessage?: string | null }
+          | undefined;
+        if (!wa?.enabled || !wa.phoneNumber) {
+          setWhatsappHref(null);
+          return;
+        }
+        const href = wa.prefillMessage
+          ? `https://wa.me/${wa.phoneNumber}?text=${encodeURIComponent(wa.prefillMessage)}`
+          : `https://wa.me/${wa.phoneNumber}`;
+        setWhatsappHref(href);
+      })
+      .catch(() => setWhatsappHref(null));
+  }, []);
 
   const localizedShopLinks = useMemo(
     () =>
@@ -165,7 +194,7 @@ export function NavigationBar({
 
         <div className="drawer-head">
           <Link href="/" className="drawer-brand" onClick={() => setOpen(false)}>
-            <img className="drawer-brand-mark" src="/vasritha-logo.png" alt="" />
+            <img className="drawer-brand-mark" src={brandLogo} alt="" />
             <span>
               <span className="drawer-brand-eyebrow">{t("nav.boutique")}</span>
               <span id={titleId} className="drawer-brand-name">
@@ -246,9 +275,11 @@ export function NavigationBar({
 
         <div className="drawer-foot">
           <p>{t("nav.needAdvice")}</p>
-          <a href={`https://wa.me/${whatsappNumber}`} target="_blank" rel="noreferrer">
-            {t("nav.chatWhatsapp")}
-          </a>
+          {whatsappHref ? (
+            <a href={whatsappHref} target="_blank" rel="noreferrer">
+              {t("nav.chatWhatsapp")}
+            </a>
+          ) : null}
         </div>
       </div>
     </nav>

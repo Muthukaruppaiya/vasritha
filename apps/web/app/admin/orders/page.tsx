@@ -6,7 +6,6 @@ import {
   Check,
   ChevronRight,
   Eye,
-  Globe,
   MapPin,
   Package,
   Phone,
@@ -136,6 +135,8 @@ function statusLabel(status: string) {
 export default function AdminOrdersPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [selected, setSelected] = useState<OrderDetail | null>(null);
   const [detailError, setDetailError] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
@@ -165,6 +166,37 @@ export default function AdminOrdersPage() {
     return rows.filter((row) => row.status === statusFilter);
   }, [data, statusFilter]);
 
+  const multiSelectEnabled = queue.length > 1;
+  const selectedOrders = useMemo(
+    () => queue.filter((order) => selectedIds.includes(order.id)),
+    [queue, selectedIds]
+  );
+  const allVisibleSelected =
+    multiSelectEnabled && queue.length > 0 && queue.every((order) => selectedIds.includes(order.id));
+  const bulkAdvanceable = useMemo(
+    () => selectedOrders.filter((order) => Boolean(NEXT_ACTION[order.status])),
+    [selectedOrders]
+  );
+  const bulkSameNext = useMemo(() => {
+    if (!bulkAdvanceable.length) return null;
+    const next = NEXT_ACTION[bulkAdvanceable[0].status]?.next;
+    if (!next) return null;
+    const same = bulkAdvanceable.every((order) => NEXT_ACTION[order.status]?.next === next);
+    return same ? next : null;
+  }, [bulkAdvanceable]);
+
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [statusFilter]);
+
+  useEffect(() => {
+    const visible = new Set(queue.map((order) => order.id));
+    setSelectedIds((current) => {
+      const next = current.filter((id) => visible.has(id));
+      return next.length === current.length ? current : next;
+    });
+  }, [queue]);
+
   const closeModal = () => {
     setSelected(null);
     setDetailError("");
@@ -182,6 +214,20 @@ export default function AdminOrdersPage() {
       document.body.style.overflow = "";
     };
   }, [selected]);
+
+  const toggleSelected = (orderId: string) => {
+    setSelectedIds((current) =>
+      current.includes(orderId) ? current.filter((id) => id !== orderId) : [...current, orderId]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (allVisibleSelected) {
+      setSelectedIds([]);
+      return;
+    }
+    setSelectedIds(queue.map((order) => order.id));
+  };
 
   const updateStatus = async (orderId: string, status: string, announce?: string) => {
     setUpdatingId(orderId);
@@ -217,6 +263,37 @@ export default function AdminOrdersPage() {
     if (action.next === "shipped") setDeskTab("courier");
   };
 
+  const advanceSelected = async () => {
+    if (!bulkAdvanceable.length) return;
+    setBulkBusy(true);
+    setDetailError("");
+    setStatusMessage("");
+    let done = 0;
+    let failed = 0;
+    for (const order of bulkAdvanceable) {
+      const action = NEXT_ACTION[order.status];
+      if (!action) continue;
+      const result = await adminFetch("/api/admin/orders", {
+        method: "PATCH",
+        json: { orderId: order.id, status: action.next }
+      });
+      if (result.error) failed += 1;
+      else done += 1;
+    }
+    setBulkBusy(false);
+    await reload();
+    setSelectedIds([]);
+    if (failed) {
+      setDetailError(`${done} updated, ${failed} failed.`);
+      return;
+    }
+    setStatusMessage(
+      bulkSameNext
+        ? `${done} order${done === 1 ? "" : "s"} → ${statusLabel(bulkSameNext)}`
+        : `${done} order${done === 1 ? "" : "s"} advanced`
+    );
+  };
+
   const openDetail = async (orderId: string) => {
     setDetailError("");
     setStatusMessage("");
@@ -247,16 +324,7 @@ export default function AdminOrdersPage() {
 
   return (
     <>
-      <AdminPageHeader
-        title="Online Orders"
-        description="Open an order popup to confirm, pack, print TVS LP 46 slips, and ship. Store counter sales stay on Store POS."
-      />
-
-      <div className="pos-channel-banner is-online">
-        <Globe size={16} />
-        <span>Online storefront sales</span>
-        <em>Click an order → update status → print invoice & courier label.</em>
-      </div>
+      <AdminPageHeader title="Online Orders" />
 
       <div className="orders-stats">
         <article>
@@ -298,6 +366,34 @@ export default function AdminOrdersPage() {
         </div>
       ) : null}
 
+      {multiSelectEnabled && selectedIds.length > 0 ? (
+        <div className="orders-bulk-bar">
+          <span>
+            <b>{selectedIds.length}</b> selected
+            {bulkAdvanceable.length
+              ? ` · ${bulkAdvanceable.length} can advance`
+              : " · none can advance"}
+          </span>
+          <div className="orders-bulk-actions">
+            <button
+              type="button"
+              className="btn"
+              disabled={bulkBusy || !bulkAdvanceable.length}
+              onClick={() => void advanceSelected()}
+            >
+              {bulkBusy
+                ? "Updating…"
+                : bulkSameNext
+                  ? `Mark ${statusLabel(bulkSameNext)}`
+                  : "Advance selected"}
+            </button>
+            <button type="button" className="btn ghost" disabled={bulkBusy} onClick={() => setSelectedIds([])}>
+              Clear
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <AdminPanel title="Order queue">
         {loading && <AdminLoading />}
         {error && <AdminAlert>{error}</AdminAlert>}
@@ -308,8 +404,18 @@ export default function AdminOrdersPage() {
           />
         )}
         {queue.length > 0 && (
-          <div className="orders-queue-list">
-            <div className="orders-queue-list-head" aria-hidden="true">
+          <div className={`orders-queue-list${multiSelectEnabled ? " has-multiselect" : ""}`}>
+            <div className="orders-queue-list-head" aria-hidden={!multiSelectEnabled}>
+              {multiSelectEnabled ? (
+                <label className="orders-queue-check">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={toggleSelectAll}
+                    aria-label="Select all visible orders"
+                  />
+                </label>
+              ) : null}
               <span>Order</span>
               <span>Customer</span>
               <span>Payment</span>
@@ -319,8 +425,22 @@ export default function AdminOrdersPage() {
             </div>
             {queue.map((order) => {
               const action = NEXT_ACTION[order.status];
+              const isChecked = selectedIds.includes(order.id);
               return (
-                <article key={order.id} className="orders-queue-row">
+                <article
+                  key={order.id}
+                  className={`orders-queue-row${isChecked ? " is-selected" : ""}`}
+                >
+                  {multiSelectEnabled ? (
+                    <label className="orders-queue-check">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleSelected(order.id)}
+                        aria-label={`Select ${order.order_number}`}
+                      />
+                    </label>
+                  ) : null}
                   <div className="orders-queue-col-order">
                     <strong>{order.order_number}</strong>
                     <p>{formatDate(order.created_at)}</p>
@@ -355,7 +475,7 @@ export default function AdminOrdersPage() {
                       <button
                         type="button"
                         className="orders-queue-row-next"
-                        disabled={updatingId === order.id || loadingDetail}
+                        disabled={updatingId === order.id || loadingDetail || bulkBusy}
                         onClick={() => void advanceStatus(order)}
                       >
                         {updatingId === order.id ? "…" : action.label}

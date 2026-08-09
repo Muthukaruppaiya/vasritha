@@ -178,27 +178,36 @@ export function ProductCard({
             {isListing ? localized.shortName : localized.name}
           </Link>
         </h3>
-        <div className="card-price-row">
-          <div className="price">{product.price}</div>
-          {product.compareAtPrice && <s className="card-compare">{product.compareAtPrice}</s>}
-        </div>
-        {isListing && (
-          <div className="card-actions">
-            {product.sizes.length > 1 ? (
-              <Link href={`/products/${product.slug}`} className="card-buy-link">
-                {t("common.selectSizeBuy")}
-              </Link>
-            ) : (
-              <BuyButton
-                productSlug={product.slug}
-                size={product.sizes[0]}
-                className="btn card-buy-btn"
-              >
-                {t("common.buy")}
-              </BuyButton>
-            )}
+        {isListing ? (
+          <p className="card-full-name" aria-hidden={localized.name === localized.shortName}>
+            {localized.name !== localized.shortName ? localized.name : "\u00A0"}
+          </p>
+        ) : null}
+        <div className="card-footer">
+          <div className="card-price-row">
+            <div className="price">{product.price}</div>
+            {product.compareAtPrice ? (
+              <s className="card-compare">{product.compareAtPrice}</s>
+            ) : null}
           </div>
-        )}
+          {isListing && (
+            <div className="card-actions">
+              {product.sizes.length > 1 ? (
+                <Link href={`/products/${product.slug}`} className="card-buy-link">
+                  {t("common.selectSizeBuy")}
+                </Link>
+              ) : (
+                <BuyButton
+                  productSlug={product.slug}
+                  size={product.sizes[0]}
+                  className="btn card-buy-btn"
+                >
+                  {t("common.buy")}
+                </BuyButton>
+              )}
+            </div>
+          )}
+        </div>
       </div>
     </article>
   );

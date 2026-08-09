@@ -32,6 +32,7 @@ export function ProductPurchase({
       variantId: selectedVariant?.id ?? null,
       slug: product.slug,
       name: product.name,
+      shortName: product.shortName,
       size,
       price: selectedVariant?.price ?? product.priceValue,
       compareAtPrice: product.compareAtValue,

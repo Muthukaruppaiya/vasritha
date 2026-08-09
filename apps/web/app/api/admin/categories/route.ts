@@ -4,7 +4,7 @@ import { query, queryOne } from "../../../../lib/db/pool";
 
 export async function GET() {
   const data = await query(
-    `select id, name, slug, description, sort_order, created_at
+    `select id, name, slug, description, image_path, sort_order, created_at
      from categories
      order by sort_order asc`
   );
@@ -20,15 +20,16 @@ export async function POST(request: NextRequest) {
     slug?: string;
     description?: string;
     sort_order?: number;
+    image_path?: string | null;
   } | null;
 
   if (!body?.name || !body?.slug) return fail("name and slug are required");
 
   const data = await queryOne(
-    `insert into categories (name, slug, description, sort_order)
-     values ($1, $2, $3, $4)
+    `insert into categories (name, slug, description, image_path, sort_order)
+     values ($1, $2, $3, $4, $5)
      returning *`,
-    [body.name, body.slug, body.description ?? null, body.sort_order ?? 0]
+    [body.name, body.slug, body.description ?? null, body.image_path ?? null, body.sort_order ?? 0]
   );
 
   await writeAuditLog({

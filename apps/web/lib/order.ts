@@ -7,6 +7,7 @@ export type OrderLine = {
   variantId?: string | null;
   slug: string;
   name: string;
+  shortName?: string;
   type: string;
   size: string;
   quantity: number;
@@ -50,6 +51,7 @@ export type PendingOrder = {
     variantId?: string | null;
     slug: string;
     name: string;
+    shortName?: string;
     type?: string;
     size: string;
     quantity: number;
@@ -65,11 +67,13 @@ export function buildOrderLines(pending: PendingOrder): OrderLine[] {
     variantId: item.variantId,
     slug: item.slug,
     name: item.name,
+    shortName: item.shortName || item.name,
     type: item.type || "",
     size: item.size,
     quantity: item.quantity,
     price: formatPrice(item.price),
-    compareAtPrice: item.compareAtPrice != null ? formatPrice(item.compareAtPrice) : undefined,
+    compareAtPrice:
+      item.compareAtPrice != null ? formatPrice(item.compareAtPrice * item.quantity) : undefined,
     imageSrc: item.imageSrc,
     lineTotal: item.price * item.quantity
   }));
@@ -144,6 +148,7 @@ export function cartItemsToPendingLines(items: CartItem[]): PendingOrder["items"
     variantId: item.variantId,
     slug: item.slug,
     name: item.name,
+    shortName: item.shortName || item.name,
     type: item.type,
     size: item.size,
     quantity: item.quantity,

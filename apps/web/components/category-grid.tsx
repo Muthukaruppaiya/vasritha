@@ -25,12 +25,16 @@ export function CategoryGrid() {
     fetch("/api/categories")
       .then((res) => res.json())
       .then((payload) => {
-        const rows = (payload?.data || []) as Array<{ slug: string; name: string }>;
+        const rows = (payload?.data || []) as Array<{
+          slug: string;
+          name: string;
+          image_path?: string | null;
+        }>;
         setCategories(
           rows.map((row) => ({
             slug: row.slug,
             name: row.name,
-            image: FALLBACK_IMAGES[row.slug] || "/hero-silk.png",
+            image: row.image_path || FALLBACK_IMAGES[row.slug] || "/hero-silk.png",
             lines: [row.name]
           }))
         );

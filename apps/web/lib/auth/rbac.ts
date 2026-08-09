@@ -343,14 +343,18 @@ export const ADMIN_NAV_PERMISSIONS: Record<string, Permission[]> = {
   "/admin/categories": ["categories:manage", "products:manage"],
   "/admin/orders": ["orders:view", "orders:manage", "orders:fulfill"],
   "/admin/billing": ["pos:create", "invoices:print"],
+  "/admin/invoices/online": ["invoices:print", "orders:view", "orders:manage"],
+  "/admin/invoices/store": ["invoices:print", "pos:create", "orders:view"],
   "/admin/customers": ["customers:search", "customers:support", "customers:manage"],
   "/admin/users": ["users:manage"],
   "/admin/inventory": ["stock:operate", "stock:approve", "purchases:operate"],
   "/admin/coupons": ["coupons:manage", "pricing:manage"],
   "/admin/returns": ["returns:handle", "returns:initiate"],
   "/admin/reviews": ["cms:manage"],
+  "/admin/configuration": ["cms:manage"],
   "/admin/cms": ["cms:manage"],
-  "/admin/settings": ["settings:business", "roles:manage", "config:all"]
+  "/admin/settings": ["settings:business", "roles:manage", "config:all"],
+  "/admin/integrations": ["settings:business", "config:all"]
 };
 
 export function permissionsForRoles(roles: AppRole[]): Set<Permission> {

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   Banknote,
   CreditCard,
@@ -9,7 +9,6 @@ import {
   Printer,
   ScanBarcode,
   Search,
-  Store,
   Trash2,
   X
 } from "lucide-react";
@@ -17,14 +16,12 @@ import {
   AdminAlert,
   AdminBadge,
   AdminEmpty,
-  AdminLoading,
   AdminPageHeader,
-  AdminPanel,
-  statusTone
+  AdminPanel
 } from "../../../components/admin/admin-ui";
 import { ThermalReceipt } from "../../../components/admin/thermal-receipt";
-import { adminFetch, formatDate, formatMoney } from "../../../lib/admin-api";
-import { useAdminQuery } from "../../../hooks/use-admin-query";
+import { adminFetch, formatMoney } from "../../../lib/admin-api";
+import Link from "next/link";
 
 type PosItem = {
   productId: string;
@@ -39,18 +36,6 @@ type PosItem = {
 };
 
 type CartLine = PosItem & { quantity: number; key: string };
-
-type PosSale = {
-  id: string;
-  order_number: string;
-  status: string;
-  payment_status: string;
-  subtotal: string;
-  discount_amount?: string;
-  total_amount: string;
-  channel?: string;
-  created_at: string;
-};
 
 type InvoiceOrder = {
   id: string;
@@ -133,11 +118,6 @@ export default function AdminBillingPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [lastInvoice, setLastInvoice] = useState<InvoiceOrder | null>(null);
-
-  const { data, error: historyError, loading, reload } = useAdminQuery<PosSale[]>(
-    "/api/admin/orders?channel=pos&paymentStatus=paid"
-  );
-  const storeSales = useMemo(() => (data || []).slice(0, 25), [data]);
 
   const itemCount = cart.reduce((sum, line) => sum + line.quantity, 0);
   const subtotal = cart.reduce((sum, line) => sum + line.price * line.quantity, 0);
@@ -257,16 +237,6 @@ export default function AdminBillingPage() {
     scanRef.current?.focus();
   };
 
-  const openInvoice = async (orderId: string) => {
-    setError("");
-    const result = await adminFetch<InvoiceOrder>(`/api/admin/orders/${orderId}`);
-    if (result.error || !result.data) {
-      setError(result.error || "Could not load invoice");
-      return;
-    }
-    setLastInvoice(result.data);
-  };
-
   const completeSale = async () => {
     if (!cart.length) {
       setError("Scan or search a product to start billing.");
@@ -303,7 +273,6 @@ export default function AdminBillingPage() {
       setDiscountType("percentage");
       setPaymentMethod("cash");
       setBusy(false);
-      await reload();
       scanRef.current?.focus();
       return;
     }
@@ -330,7 +299,6 @@ export default function AdminBillingPage() {
       setDiscountValue("0");
       setDiscountType("percentage");
       setPaymentMethod("cash");
-      await reload();
       scanRef.current?.focus();
       return;
     }
@@ -375,7 +343,6 @@ export default function AdminBillingPage() {
         setDiscountValue("0");
         setDiscountType("percentage");
         setPaymentMethod("cash");
-        await reload();
         scanRef.current?.focus();
       },
       modal: {
@@ -392,19 +359,12 @@ export default function AdminBillingPage() {
     <>
       <AdminPageHeader
         title="Store POS"
-        description="Physical store counter only — scan, discount, collect payment. Online orders live under Online Orders."
         actions={
           <button type="button" className="btn ghost" onClick={clearSale} disabled={busy}>
             New sale
           </button>
         }
       />
-
-      <div className="pos-channel-banner">
-        <Store size={16} />
-        <span>In-store walk-in sales</span>
-        <em>Online checkouts are handled on the Online Orders page.</em>
-      </div>
 
       <div className="pos-layout">
         <section className="pos-counter">
@@ -619,54 +579,10 @@ export default function AdminBillingPage() {
         </aside>
       </div>
 
-      <AdminPanel title="Today’s store sales" className="pos-history-panel">
-        {loading && <AdminLoading />}
-        {historyError && <AdminAlert>{historyError}</AdminAlert>}
-        {!loading && !historyError && !storeSales.length && (
-          <AdminEmpty
-            title="No store sales yet"
-            body="Completed in-store POS payments appear here. Online orders stay on Online Orders."
-          />
-        )}
-        {storeSales.length > 0 && (
-          <div className="admin-table-wrap">
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Invoice</th>
-                  <th>Date</th>
-                  <th>Payment</th>
-                  <th>Status</th>
-                  <th>Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {storeSales.map((order) => (
-                  <tr
-                    key={order.id}
-                    className={lastInvoice?.id === order.id ? "is-selected" : undefined}
-                    onClick={() => void openInvoice(order.id)}
-                  >
-                    <td>
-                      <b>INV-{order.order_number}</b>
-                    </td>
-                    <td>{formatDate(order.created_at)}</td>
-                    <td>
-                      <AdminBadge tone={statusTone(order.payment_status)}>
-                        {order.payment_status}
-                      </AdminBadge>
-                    </td>
-                    <td>
-                      <AdminBadge tone={statusTone(order.status)}>{order.status}</AdminBadge>
-                    </td>
-                    <td>{formatMoney(order.total_amount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </AdminPanel>
+      <p className="pos-invoice-link muted">
+        Need a past slip? Open{" "}
+        <Link href="/admin/invoices/store">Store Invoice</Link>.
+      </p>
 
       {lastInvoice && (
         <div className="pos-invoice-overlay" role="dialog" aria-modal="true">

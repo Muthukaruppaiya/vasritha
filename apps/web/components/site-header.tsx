@@ -20,12 +20,32 @@ export function Header({
   const [scrolled, setScrolled] = useState(false);
   const [bagCount, setBagCount] = useState(0);
   const [loggedIn, setLoggedIn] = useState(false);
+  const [headerLogo, setHeaderLogo] = useState("/vasritha-logo-header.png");
+  const [offerMessages, setOfferMessages] = useState<string[] | null>(null);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/site-branding")
+      .then((res) => res.json())
+      .then((payload) => {
+        const path = payload?.data?.headerLogoPath as string | undefined;
+        if (path) setHeaderLogo(path);
+      })
+      .catch(() => undefined);
+
+    fetch("/api/homepage-config")
+      .then((res) => res.json())
+      .then((payload) => {
+        const rows = (payload?.data?.offers || []) as Array<{ message: string }>;
+        if (rows.length) setOfferMessages(rows.map((row) => row.message));
+      })
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -52,16 +72,21 @@ export function Header({
     };
   }, []);
 
+  const fallbackOffers = [t("offers.firstOrder"), t("offers.freeShipping"), t("offers.jewelryOffer")];
+  const offers = offerMessages?.length ? offerMessages : fallbackOffers;
+
   return (
     <div className={`site-header ${scrolled ? "is-scrolled" : ""}`}>
       <div className="topbar" aria-label="Current Vasritha offers">
         <div className="offer-track">
-          <span>{t("offers.firstOrder")}</span>
-          <span>{t("offers.freeShipping")}</span>
-          <span>{t("offers.jewelryOffer")}</span>
-          <span aria-hidden="true">{t("offers.firstOrder")}</span>
-          <span aria-hidden="true">{t("offers.freeShipping")}</span>
-          <span aria-hidden="true">{t("offers.jewelryOffer")}</span>
+          {offers.map((message) => (
+            <span key={`live-${message}`}>{message}</span>
+          ))}
+          {offers.map((message) => (
+            <span key={`dup-${message}`} aria-hidden="true">
+              {message}
+            </span>
+          ))}
         </div>
       </div>
       <header className="shell nav">
@@ -72,7 +97,7 @@ export function Header({
           </Link>
         </div>
         <Link className="nav-logo-link" href="/" aria-label="Vasritha home">
-          <img className="brand-logo" src="/vasritha-logo-header.png" alt="Vasritha — Timeless Elegance" />
+          <img className="brand-logo" src={headerLogo} alt="Vasritha — Timeless Elegance" />
         </Link>
         <div className="actions">
           <LanguageSwitcher />

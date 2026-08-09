@@ -108,7 +108,7 @@ export function buildCheckoutPath(productSlug?: string, size?: string) {
 export function resolveAuthCheckoutPath(checkoutPath: string) {
   if (isLoggedIn() && hasSavedAddress()) return checkoutPath;
   if (isLoggedIn()) return `/account/address?next=${encodeURIComponent(checkoutPath)}`;
-  return `/account/register?next=${encodeURIComponent(checkoutPath)}`;
+  return `/login?next=${encodeURIComponent(checkoutPath)}`;
 }
 
 export function resolveBuyPath(productSlug?: string, size?: string) {

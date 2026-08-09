@@ -141,7 +141,7 @@ export default function AccountOrderDetailPage() {
         <nav className="account-crumbs">
           <Link href="/account">Your account</Link>
           <span>/</span>
-          <Link href="/account#orders">Your orders</Link>
+          <Link href="/account/orders">Your orders</Link>
           <span>/</span>
           <span>{order.order_number}</span>
         </nav>

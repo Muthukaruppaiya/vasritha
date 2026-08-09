@@ -22,7 +22,7 @@ const STATUS_DEFS: Array<{ labelKey: MessageKey; image: string; href: string }> 
 
 export function ArrivalStatusBar() {
   const t = useT();
-  const statuses = useMemo(
+  const fallbackStatuses = useMemo(
     () =>
       STATUS_DEFS.map((item) => ({
         label: t(item.labelKey),
@@ -31,6 +31,25 @@ export function ArrivalStatusBar() {
       })),
     [t]
   );
+  const [configured, setConfigured] = useState<Array<{ label: string; image: string; href: string }> | null>(
+    null
+  );
+
+  useEffect(() => {
+    fetch("/api/homepage-config")
+      .then((res) => res.json())
+      .then((payload) => {
+        const rows = (payload?.data?.statusStories || []) as Array<{
+          label: string;
+          image: string;
+          href: string;
+        }>;
+        if (rows.length) setConfigured(rows);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const statuses = configured?.length ? configured : fallbackStatuses;
 
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [progress, setProgress] = useState(0);

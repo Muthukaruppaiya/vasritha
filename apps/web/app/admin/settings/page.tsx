@@ -11,13 +11,15 @@ import {
   slugify
 } from "../../../components/admin/admin-ui";
 import { AdminFormModal } from "../../../components/admin/admin-form-modal";
-import { adminFetch, formatDate } from "../../../lib/admin-api";
+import { adminFetch, adminUpload, formatDate } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
 import { ROLE_META, ROLE_ORDER, type AppRole } from "../../../lib/auth/rbac";
 
 type Settings = {
   site_name: string | null;
   tagline: string | null;
+  logo_path?: string | null;
+  header_logo_path?: string | null;
   support_email: string | null;
   support_phone: string | null;
   whatsapp_number: string | null;
@@ -76,6 +78,9 @@ export default function AdminSettingsPage() {
   const [roleModalOpen, setRoleModalOpen] = useState(false);
   const [roleSaving, setRoleSaving] = useState(false);
   const [roleError, setRoleError] = useState("");
+  const [logoBusy, setLogoBusy] = useState<"header" | "logo" | null>(null);
+  const [logoMessage, setLogoMessage] = useState("");
+  const [logoError, setLogoError] = useState("");
 
   useEffect(() => {
     if (!data) return;
@@ -94,6 +99,39 @@ export default function AdminSettingsPage() {
       company_gstin: data.company_gstin || ""
     });
   }, [data]);
+
+  const onUploadLogo = async (kind: "header" | "logo", fileList: FileList | null) => {
+    const file = fileList?.[0];
+    if (!file) return;
+
+    setLogoBusy(kind);
+    setLogoMessage("");
+    setLogoError("");
+
+    if (kind === "header" && file.type !== "image/png") {
+      setLogoBusy(null);
+      setLogoError("Header logo must be a PNG file.");
+      return;
+    }
+
+    const body = new FormData();
+    body.append("kind", kind);
+    body.append("file", file);
+    const result = await adminUpload("/api/admin/settings/logo", body);
+    setLogoBusy(null);
+
+    if (result.error) {
+      setLogoError(result.error);
+      return;
+    }
+
+    setLogoMessage(
+      kind === "header"
+        ? "Header logo updated (website header only)."
+        : "Company logo updated (admin and other surfaces)."
+    );
+    await reload();
+  };
 
   const onSave = async (event: FormEvent) => {
     event.preventDefault();
@@ -262,64 +300,123 @@ export default function AdminSettingsPage() {
           {loading && <AdminLoading />}
           {error && <AdminAlert>{error}</AdminAlert>}
           {!loading && !error && (
-            <form className="admin-form-grid" onSubmit={onSave}>
-              <label className="admin-span-2">
-                <span>Legal / registered name</span>
-                <input
-                  value={form.company_legal_name || ""}
-                  onChange={(e) => setForm((f) => ({ ...f, company_legal_name: e.target.value }))}
-                  placeholder="Vasritha Boutique LLP"
-                />
-              </label>
-              <label className="admin-span-2">
-                <span>Registered address</span>
-                <textarea
-                  rows={3}
-                  value={form.company_address || ""}
-                  onChange={(e) => setForm((f) => ({ ...f, company_address: e.target.value }))}
-                  placeholder="Street, area, city, state, PIN"
-                />
-              </label>
-              <label>
-                <span>Phone</span>
-                <input
-                  value={form.support_phone || ""}
-                  onChange={(e) => setForm((f) => ({ ...f, support_phone: e.target.value }))}
-                  placeholder="+91…"
-                />
-              </label>
-              <label>
-                <span>Email</span>
-                <input
-                  type="email"
-                  value={form.support_email || ""}
-                  onChange={(e) => setForm((f) => ({ ...f, support_email: e.target.value }))}
-                />
-              </label>
-              <label>
-                <span>GSTIN</span>
-                <input
-                  value={form.company_gstin || ""}
-                  onChange={(e) => setForm((f) => ({ ...f, company_gstin: e.target.value.toUpperCase() }))}
-                  placeholder="22AAAAA0000A1Z5"
-                />
-              </label>
-              <label>
-                <span>Support WhatsApp</span>
-                <input
-                  value={form.whatsapp_number || ""}
-                  onChange={(e) => setForm((f) => ({ ...f, whatsapp_number: e.target.value }))}
-                  placeholder="919000000000"
-                />
-              </label>
-              {saveError && <AdminAlert>{saveError}</AdminAlert>}
-              {message && <AdminAlert tone="ok">{message}</AdminAlert>}
-              <div className="admin-span-2">
-                <button className="btn" type="submit" disabled={saving}>
-                  {saving ? "Saving…" : "Save company details"}
-                </button>
+            <>
+              <div className="admin-logo-grid">
+                <div className="admin-logo-card">
+                  <h3>Website header logo</h3>
+                  <p className="muted">PNG only. Shown in the storefront header.</p>
+                  <div className="admin-logo-preview admin-logo-preview--header">
+                    {data?.header_logo_path || data?.logo_path ? (
+                      <img
+                        src={data.header_logo_path || data.logo_path || ""}
+                        alt="Header logo"
+                      />
+                    ) : (
+                      <span className="muted">No header logo yet</span>
+                    )}
+                  </div>
+                  <label className="admin-file-btn">
+                    <span>{logoBusy === "header" ? "Uploading…" : "Upload PNG"}</span>
+                    <input
+                      type="file"
+                      accept="image/png,.png"
+                      disabled={logoBusy !== null}
+                      onChange={(e) => {
+                        void onUploadLogo("header", e.target.files);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                </div>
+
+                <div className="admin-logo-card">
+                  <h3>Company / brand logo</h3>
+                  <p className="muted">JPEG, PNG, WebP or GIF. Used in admin and other places.</p>
+                  <div className="admin-logo-preview">
+                    {data?.logo_path ? (
+                      <img src={data.logo_path} alt="Company logo" />
+                    ) : (
+                      <span className="muted">No company logo yet</span>
+                    )}
+                  </div>
+                  <label className="admin-file-btn">
+                    <span>{logoBusy === "logo" ? "Uploading…" : "Upload image"}</span>
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      disabled={logoBusy !== null}
+                      onChange={(e) => {
+                        void onUploadLogo("logo", e.target.files);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
+                </div>
               </div>
-            </form>
+              {logoError && <AdminAlert>{logoError}</AdminAlert>}
+              {logoMessage && <AdminAlert tone="ok">{logoMessage}</AdminAlert>}
+
+              <form className="admin-form-grid" onSubmit={onSave}>
+                <label className="admin-span-2">
+                  <span>Legal / registered name</span>
+                  <input
+                    value={form.company_legal_name || ""}
+                    onChange={(e) => setForm((f) => ({ ...f, company_legal_name: e.target.value }))}
+                    placeholder="Vasritha Boutique LLP"
+                  />
+                </label>
+                <label className="admin-span-2">
+                  <span>Registered address</span>
+                  <textarea
+                    rows={3}
+                    value={form.company_address || ""}
+                    onChange={(e) => setForm((f) => ({ ...f, company_address: e.target.value }))}
+                    placeholder="Street, area, city, state, PIN"
+                  />
+                </label>
+                <label>
+                  <span>Phone</span>
+                  <input
+                    value={form.support_phone || ""}
+                    onChange={(e) => setForm((f) => ({ ...f, support_phone: e.target.value }))}
+                    placeholder="+91…"
+                  />
+                </label>
+                <label>
+                  <span>Email</span>
+                  <input
+                    type="email"
+                    value={form.support_email || ""}
+                    onChange={(e) => setForm((f) => ({ ...f, support_email: e.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>GSTIN</span>
+                  <input
+                    value={form.company_gstin || ""}
+                    onChange={(e) =>
+                      setForm((f) => ({ ...f, company_gstin: e.target.value.toUpperCase() }))
+                    }
+                    placeholder="22AAAAA0000A1Z5"
+                  />
+                </label>
+                <label>
+                  <span>Support WhatsApp</span>
+                  <input
+                    value={form.whatsapp_number || ""}
+                    onChange={(e) => setForm((f) => ({ ...f, whatsapp_number: e.target.value }))}
+                    placeholder="919000000000"
+                  />
+                </label>
+                {saveError && <AdminAlert>{saveError}</AdminAlert>}
+                {message && <AdminAlert tone="ok">{message}</AdminAlert>}
+                <div className="admin-span-2">
+                  <button className="btn" type="submit" disabled={saving}>
+                    {saving ? "Saving…" : "Save company details"}
+                  </button>
+                </div>
+              </form>
+            </>
           )}
         </AdminPanel>
       )}
@@ -327,31 +424,61 @@ export default function AdminSettingsPage() {
       {tab === "roles" && (
         <>
           <AdminPanel title="Roles & rights (spec)">
-            <div className="admin-table-wrap">
-              <table className="admin-table roles-matrix-table">
-                <thead>
-                  <tr>
-                    <th>Role</th>
-                    <th>Purpose</th>
-                    <th>Typical permissions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ROLE_ORDER.map((code) => {
-                    const meta = ROLE_META[code as AppRole];
-                    return (
-                      <tr key={code}>
-                        <td>
-                          <b>{meta.name}</b>
-                          <div className="muted admin-sub">{code}</div>
-                        </td>
-                        <td>{meta.purpose}</td>
-                        <td>{meta.typicalPermissions}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <p className="roles-spec-lead muted">
+              Staff access is organised by role. Each role unlocks only the modules and actions listed
+              below.
+            </p>
+            <div className="roles-spec-grid">
+              {ROLE_ORDER.filter((code) => code !== "customer" && code !== "accountant").map(
+                (code) => {
+                  const meta = ROLE_META[code as AppRole];
+                  const permissions = meta.typicalPermissions
+                    .split(",")
+                    .map((item) => item.trim())
+                    .filter(Boolean);
+                  return (
+                    <article key={code} className="roles-spec-card">
+                      <div className="roles-spec-card-head">
+                        <div>
+                          <h3>{meta.name}</h3>
+                          <code>{code}</code>
+                        </div>
+                        {meta.mvp ? <AdminBadge tone="success">MVP</AdminBadge> : null}
+                      </div>
+                      <p className="roles-spec-purpose">{meta.purpose}</p>
+                      <div className="roles-spec-perms">
+                        {permissions.map((permission) => (
+                          <span key={permission} className="roles-spec-chip">
+                            {permission}
+                          </span>
+                        ))}
+                      </div>
+                      <p className="roles-spec-restricted muted">
+                        Restricted from: {meta.restrictedFrom}
+                      </p>
+                    </article>
+                  );
+                }
+              )}
+            </div>
+
+            <div className="roles-spec-extra">
+              <h4>Extended roles</h4>
+              <div className="roles-spec-extra-list">
+                {(["accountant", "customer"] as AppRole[]).map((code) => {
+                  const meta = ROLE_META[code];
+                  return (
+                    <div key={code} className="roles-spec-extra-item">
+                      <div>
+                        <strong>{meta.name}</strong>
+                        <code>{code}</code>
+                      </div>
+                      <p>{meta.purpose}</p>
+                      <span className="muted">{meta.typicalPermissions}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </AdminPanel>
 
@@ -384,7 +511,9 @@ export default function AdminSettingsPage() {
                               {meta?.purpose || role.description || "—"}
                             </div>
                           </td>
-                          <td>{role.code}</td>
+                          <td>
+                            <code className="roles-code">{role.code}</code>
+                          </td>
                           <td>
                             <AdminBadge tone={role.is_system ? "info" : "success"}>
                               {role.is_system ? "system" : "custom"}

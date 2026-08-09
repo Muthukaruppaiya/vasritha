@@ -81,6 +81,7 @@ function shortName(name: string) {
 type ProductRow = {
   id: string;
   name: string;
+  short_name: string | null;
   slug: string;
   description: string;
   short_description: string | null;
@@ -148,10 +149,11 @@ function mapProduct(
   const compareAtValue = row.compare_at_price != null ? Number(row.compare_at_price) : undefined;
   const isCard = mode === "card";
 
+  const curatedShort = row.short_name?.trim();
   return {
     id: row.id,
     name: row.name,
-    shortName: shortName(row.name),
+    shortName: curatedShort || shortName(row.name),
     slug: row.slug,
     category: row.category_slug,
     categoryName: row.category_name,
@@ -249,7 +251,7 @@ export async function listActiveProducts(options?: ListProductsOptions) {
 
   const rows = await query<ProductRow>(
     `select
-       p.id, p.name, p.slug, p.description, p.short_description, p.color, p.is_featured,
+       p.id, p.name, p.short_name, p.slug, p.description, p.short_description, p.color, p.is_featured,
        p.price::text, p.compare_at_price::text,
        p.stock_quantity, c.slug as category_slug, c.name as category_name,
        sc.name as subcategory_name
@@ -279,7 +281,7 @@ export async function listRelatedProducts(
   const safeLimit = Math.min(Math.max(limit, 1), 24);
   const rows = await query<ProductRow>(
     `select
-       p.id, p.name, p.slug, p.description, p.short_description, p.color, p.is_featured,
+       p.id, p.name, p.short_name, p.slug, p.description, p.short_description, p.color, p.is_featured,
        p.price::text, p.compare_at_price::text,
        p.stock_quantity, c.slug as category_slug, c.name as category_name,
        sc.name as subcategory_name
@@ -304,7 +306,7 @@ export async function listRelatedProducts(
 export async function getProductBySlug(slug: string) {
   const row = await queryOne<ProductRow>(
     `select
-       p.id, p.name, p.slug, p.description, p.short_description, p.color, p.is_featured,
+       p.id, p.name, p.short_name, p.slug, p.description, p.short_description, p.color, p.is_featured,
        p.price::text, p.compare_at_price::text,
        p.stock_quantity, c.slug as category_slug, c.name as category_name,
        sc.name as subcategory_name
@@ -326,6 +328,7 @@ function mapCategoryRow(
     name: string;
     slug: string;
     description: string | null;
+    image_path?: string | null;
     sort_order: number;
   },
   subcats: Array<{ category_id: string; name: string }>
@@ -336,7 +339,7 @@ function mapCategoryRow(
     slug: row.slug,
     description: row.description || "",
     sort_order: row.sort_order,
-    image: categoryImage(row.slug),
+    image: row.image_path || categoryImage(row.slug),
     subcategories: subcats.filter((s) => s.category_id === row.id).map((s) => s.name),
     lines: [row.name]
   };
@@ -349,8 +352,11 @@ export async function listCategories(): Promise<StoreCategory[]> {
       name: string;
       slug: string;
       description: string | null;
+      image_path: string | null;
       sort_order: number;
-    }>(`select id, name, slug, description, sort_order from categories order by sort_order asc`),
+    }>(
+      `select id, name, slug, description, image_path, sort_order from categories order by sort_order asc`
+    ),
     query<{ category_id: string; name: string }>(
       `select category_id, name from subcategories order by name asc`
     )
@@ -365,8 +371,12 @@ export async function getCategoryBySlug(slug: string) {
     name: string;
     slug: string;
     description: string | null;
+    image_path: string | null;
     sort_order: number;
-  }>(`select id, name, slug, description, sort_order from categories where slug = $1`, [slug]);
+  }>(
+    `select id, name, slug, description, image_path, sort_order from categories where slug = $1`,
+    [slug]
+  );
   if (!row) return null;
 
   const subcats = await query<{ category_id: string; name: string }>(

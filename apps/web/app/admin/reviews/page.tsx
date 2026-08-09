@@ -56,7 +56,6 @@ export default function AdminReviewsPage() {
     <>
       <AdminPageHeader
         title="Reviews"
-        description="Approve customer product reviews before they appear on the website. New submissions also notify the company support email."
       />
 
       <div className="admin-tabs">

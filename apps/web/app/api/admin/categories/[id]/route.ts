@@ -4,7 +4,7 @@ import { queryOne } from "../../../../../lib/db/pool";
 
 type Params = { params: Promise<{ id: string }> };
 
-const ALLOWED_FIELDS = ["name", "slug", "description", "sort_order"] as const;
+const ALLOWED_FIELDS = ["name", "slug", "description", "image_path", "sort_order"] as const;
 
 export async function PATCH(request: NextRequest, { params }: Params) {
   const { error, ctx } = await requirePermission(request, "categories:manage");
@@ -53,7 +53,19 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   const before = await queryOne(`select * from categories where id = $1`, [id]);
   if (!before) return fail("Category not found", 404);
 
-  await queryOne(`delete from categories where id = $1 returning id`, [id]);
+  const linked = await queryOne<{ count: string }>(
+    `select count(*)::text as count from products where category_id = $1`,
+    [id]
+  );
+  if (Number(linked?.count || 0) > 0) {
+    return fail("Cannot delete category while products are assigned to it. Move or delete those products first.", 409);
+  }
+
+  try {
+    await queryOne(`delete from categories where id = $1 returning id`, [id]);
+  } catch {
+    return fail("Could not delete category. It may still be referenced by other records.", 409);
+  }
 
   await writeAuditLog({
     actorUserId: ctx.userId,

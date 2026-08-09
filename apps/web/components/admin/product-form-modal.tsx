@@ -19,6 +19,7 @@ export type ProductFormImage = {
 export type ProductFormValues = {
   id?: string;
   name: string;
+  short_name: string;
   slug: string;
   sku: string;
   barcode: string;
@@ -201,6 +202,7 @@ export function ProductFormModal({
 
     const payload = {
       name: form.name.trim(),
+      short_name: form.short_name.trim(),
       slug: form.slug || slugify(form.name),
       sku: form.sku.trim() || generateSku(),
       barcode: form.barcode.trim() || barcodeFromSku(form.sku.trim() || form.name) || generateSku().replace(/-/g, ""),
@@ -274,6 +276,16 @@ export function ProductFormModal({
                   }))
                 }
               />
+            </label>
+
+            <label>
+              <span>Short name</span>
+              <input
+                value={form.short_name}
+                onChange={(e) => setForm((f) => ({ ...f, short_name: e.target.value }))}
+                placeholder="Shown on listing cards"
+              />
+              <small className="admin-field-hint">Optional. e.g. Aarohi Kanchipuram</small>
             </label>
 
             <label>
@@ -398,6 +410,7 @@ export function ProductFormModal({
                 value={form.compare_at_price}
                 onChange={(e) => setForm((f) => ({ ...f, compare_at_price: e.target.value }))}
               />
+              <small className="admin-field-hint">Shown with a strikethrough next to the selling price.</small>
             </label>
 
             <label>
@@ -525,6 +538,7 @@ export function blankProductForm(categoryId = ""): ProductFormValues {
   const sku = generateSku();
   return {
     name: "",
+    short_name: "",
     slug: "",
     sku,
     barcode: barcodeFromSku(sku) || sku.replace(/-/g, ""),

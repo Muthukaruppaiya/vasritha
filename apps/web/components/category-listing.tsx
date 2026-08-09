@@ -39,6 +39,7 @@ export function CategoryListing({
           name: string;
           slug: string;
           description?: string;
+          image_path?: string | null;
         }>;
         setOtherCategories(
           rows
@@ -49,7 +50,7 @@ export function CategoryListing({
               slug: row.slug,
               description: row.description || "",
               sort_order: 0,
-              image: FALLBACK[row.slug] || "/hero-silk.png",
+              image: row.image_path || FALLBACK[row.slug] || "/hero-silk.png",
               subcategories: [],
               lines: [row.name]
             }))

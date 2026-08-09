@@ -9,6 +9,7 @@ const ALLOWED_FIELDS = [
   "slug",
   "sku",
   "barcode",
+  "short_name",
   "short_description",
   "color",
   "description",

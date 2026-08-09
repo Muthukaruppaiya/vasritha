@@ -13,12 +13,15 @@ import {
 } from "../../lib/customer-session";
 import { cartItemsToPendingLines, createPendingFromCheckout } from "../../lib/order";
 import type { StoreProduct } from "../../lib/catalog";
+import { useLocale } from "../../lib/i18n/provider";
+import { localizeProductFields, localizeSize } from "../../lib/i18n/catalog-local";
 
 type CheckoutLine = {
   productId: string;
   variantId?: string | null;
   slug: string;
   name: string;
+  shortName: string;
   type: string;
   size: string;
   quantity: number;
@@ -31,6 +34,7 @@ type CheckoutLine = {
 function CheckoutContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { locale } = useLocale();
   const fromCart = searchParams.get("from") === "cart";
   const productSlug = searchParams.get("product") ?? "";
   const size = searchParams.get("size") ?? "";
@@ -47,10 +51,11 @@ function CheckoutContent() {
     0
   );
   const savings = Math.max(0, compareTotal - orderTotal);
+  const itemCount = lineItems.reduce((sum, item) => sum + item.quantity, 0);
 
   useEffect(() => {
     if (!isLoggedIn()) {
-      router.replace(`/account/register?next=${encodeURIComponent(nextCheckout)}`);
+      router.replace(`/login?next=${encodeURIComponent(nextCheckout)}`);
       return;
     }
     if (!getCachedAddress()?.id) {
@@ -71,6 +76,7 @@ function CheckoutContent() {
             variantId: item.variantId,
             slug: item.slug,
             name: item.name,
+            shortName: item.shortName || item.name,
             type: item.type || "",
             size: item.size,
             quantity: item.quantity,
@@ -106,6 +112,7 @@ function CheckoutContent() {
           variantId: variant?.id ?? null,
           slug: product.slug,
           name: product.name,
+          shortName: product.shortName || product.name,
           type: product.type,
           size: size || variant?.name || product.sizes[0] || "Free Size",
           quantity: 1,
@@ -135,6 +142,7 @@ function CheckoutContent() {
           variantId: item.variantId,
           slug: item.slug,
           name: item.name,
+          shortName: item.shortName,
           type: item.type,
           size: item.size,
           quantity: item.quantity,
@@ -149,36 +157,48 @@ function CheckoutContent() {
 
   if (!ready || !session) {
     return (
-      <main className="shell section checkout-page" data-reveal>
-        <p className="muted">Preparing your secure checkout…</p>
+      <main className="checkout-page" data-reveal>
+        <div className="shell section checkout-page-inner">
+          <p className="muted">Preparing your secure checkout…</p>
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="shell section checkout-page" data-reveal>
+    <main className="checkout-page" data-reveal>
+      <div className="shell section checkout-page-inner">
+      <nav className="checkout-progress" aria-label="Checkout steps">
+        <span className="is-current">Summary</span>
+        <span>Payment</span>
+        <span>Confirmed</span>
+      </nav>
+
       <header className="checkout-hero">
         <p className="eyebrow">Secure checkout</p>
         <h1>Order summary</h1>
         <p className="muted checkout-lead">
-          Review your details, then continue to Razorpay payment.
+          Confirm your details, then continue to Razorpay.
         </p>
       </header>
 
       <div className="checkout-layout">
-        <section className="checkout-panel" aria-labelledby="checkout-customer">
-          <div className="checkout-block">
-            <h2 id="checkout-customer">Customer</h2>
+        <section className="checkout-details" aria-label="Customer and delivery">
+          <article className="checkout-surface">
+            <p className="checkout-kicker">Customer</p>
             <p className="checkout-value">{session.name}</p>
             <p className="muted checkout-meta">{session.email}</p>
             <p className="muted checkout-meta">{session.phone}</p>
-          </div>
+          </article>
 
-          <div className="checkout-block">
+          <article className="checkout-surface">
             <div className="checkout-block-head">
-              <h2>Delivery address</h2>
-              <Link className="checkout-edit" href={`/account/address?next=${encodeURIComponent(nextCheckout)}`}>
-                Change address
+              <p className="checkout-kicker">Delivery address</p>
+              <Link
+                className="checkout-edit"
+                href={`/account/address?next=${encodeURIComponent(nextCheckout)}`}
+              >
+                Change
               </Link>
             </div>
             <p className="checkout-value">
@@ -188,23 +208,44 @@ function CheckoutContent() {
             <p className="muted checkout-meta">
               {session.address.city}, {session.address.state} {session.address.pincode}
             </p>
-          </div>
+          </article>
         </section>
 
-        <section className="checkout-panel" aria-labelledby="checkout-items">
-          <div className="checkout-block">
-            <h2 id="checkout-items">{lineItems.length > 1 ? "Items" : "Item"}</h2>
-            <ul className="checkout-items">
-              {lineItems.map((item) => (
+        <section className="checkout-bag" aria-labelledby="checkout-items">
+          <div className="checkout-bag-head">
+            <div>
+              <p className="checkout-kicker">Your bag</p>
+              <h2 id="checkout-items">
+                {itemCount} {itemCount === 1 ? "item" : "items"}
+              </h2>
+            </div>
+          </div>
+
+          <ul className="checkout-items">
+            {lineItems.map((item) => {
+              const localized = localizeProductFields(
+                {
+                  slug: item.slug,
+                  name: item.name,
+                  shortName: item.shortName,
+                  type: item.type
+                },
+                locale
+              );
+              const sizeLabel = localizeSize(item.size, locale);
+              return (
                 <li key={`${item.productId}-${item.size}`}>
                   <div className="checkout-item-media">
-                    <Image src={item.imageSrc} alt={item.name} fill sizes="88px" />
+                    <Image src={item.imageSrc} alt={localized.name} fill sizes="96px" />
                   </div>
                   <div className="checkout-item-copy">
-                    <strong>{item.name}</strong>
+                    <strong>{localized.shortName}</strong>
+                    {localized.name !== localized.shortName ? (
+                      <p className="checkout-item-fullname">{localized.name}</p>
+                    ) : null}
                     <p className="muted checkout-meta">
-                      {item.type}
-                      {item.size ? ` · Size ${item.size}` : ""}
+                      {localized.type}
+                      {item.size ? ` · Size ${sizeLabel}` : ""}
                       {item.quantity > 1 ? ` · Qty ${item.quantity}` : ""}
                     </p>
                     <div className="checkout-price-row">
@@ -215,11 +256,15 @@ function CheckoutContent() {
                     </div>
                   </div>
                 </li>
-              ))}
-            </ul>
-          </div>
+              );
+            })}
+          </ul>
 
           <div className="checkout-totals">
+            <div className="checkout-total-line">
+              <span>Subtotal</span>
+              <span>{formatPrice(orderTotal)}</span>
+            </div>
             {savings > 0 && (
               <div className="checkout-total-line checkout-save-line">
                 <span>You save</span>
@@ -236,9 +281,12 @@ function CheckoutContent() {
             <button className="btn checkout-pay" type="submit">
               Continue to payment
             </button>
-            <p className="muted checkout-secure-note">Next: Razorpay test checkout · Cards, UPI & netbanking</p>
+            <p className="muted checkout-secure-note">
+              Razorpay · Cards, UPI & netbanking · Test mode
+            </p>
           </form>
         </section>
+      </div>
       </div>
     </main>
   );
@@ -250,8 +298,10 @@ export default function CheckoutPage() {
       <Header />
       <Suspense
         fallback={
-          <main className="shell section checkout-page">
-            <p className="muted">Loading checkout…</p>
+          <main className="checkout-page">
+            <div className="shell section checkout-page-inner">
+              <p className="muted">Loading checkout…</p>
+            </div>
           </main>
         }
       >

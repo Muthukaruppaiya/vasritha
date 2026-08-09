@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
 
   if (slug) {
     const data = await queryOne(
-      `select id, name, slug, description, sort_order from categories where slug = $1`,
+      `select id, name, slug, description, image_path, sort_order from categories where slug = $1`,
       [slug]
     );
     if (!data) return fail("Category not found", 404);
@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
 
   const filterSlug = category ?? null;
   const data = await query(
-    `select id, name, slug, description, sort_order
+    `select id, name, slug, description, image_path, sort_order
      from categories
      where ($1::text is null or slug = $1)
      order by sort_order asc`,

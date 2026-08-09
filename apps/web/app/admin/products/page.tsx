@@ -40,6 +40,7 @@ type Product = {
   category_name?: string | null;
   primary_image?: string | null;
   short_description?: string;
+  short_name?: string;
   color?: string | null;
   description?: string;
   is_featured?: boolean;
@@ -251,6 +252,7 @@ export default function AdminProductsPage() {
       compare_at_price: product.compare_at_price ? String(product.compare_at_price) : "",
       stock_quantity: String(product.stock_quantity ?? 0),
       status: product.status,
+      short_name: product.short_name || "",
       short_description: product.short_description || "",
       color: product.color || "",
       description: product.description || "",

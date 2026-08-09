@@ -132,7 +132,10 @@ function LoginGate() {
       <p className="muted">{t("auth.signInLead")}</p>
       <LoginForm />
       <p className="login-footnote">
-        {t("auth.noAccount")} <Link href="/account/register">{t("auth.createOne")}</Link>
+        {t("auth.noAccount")}{" "}
+        <Link href={`/account/register?next=${encodeURIComponent(nextPath)}`}>
+          {t("auth.createOne")}
+        </Link>
       </p>
     </>
   );

@@ -1,7 +1,10 @@
 /**
  * Lightweight outbound email helper.
- * Uses SMTP when SMTP_HOST / SMTP_USER / SMTP_PASS are set; otherwise logs to console.
+ * Uses admin Email integration when enabled; falls back to SMTP_* env vars.
+ * Skips sending when the email integration is disabled.
  */
+import { getIntegration, type EmailConfig } from "./integrations";
+
 type MailInput = {
   to: string | string[];
   subject: string;
@@ -13,21 +16,37 @@ export async function sendMail(input: MailInput): Promise<{ sent: boolean; skipp
   const to = Array.isArray(input.to) ? input.to.filter(Boolean) : [input.to].filter(Boolean);
   if (!to.length) return { sent: false, skipped: "No recipients" };
 
-  const host = process.env.SMTP_HOST;
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
-  const from = process.env.SMTP_FROM || process.env.SMTP_USER || "noreply@vasritha.local";
-  const port = Number(process.env.SMTP_PORT || 587);
+  const integration = await getIntegration<EmailConfig>("email");
+  if (integration && !integration.is_enabled) {
+    console.info("[mail:skipped]", {
+      to,
+      subject: input.subject,
+      reason: "Email integration disabled"
+    });
+    return { sent: false, skipped: "Email integration disabled" };
+  }
+
+  const cfg = integration?.config || {};
+  const host = String(cfg.host || process.env.SMTP_HOST || "");
+  const user = String(cfg.user || process.env.SMTP_USER || "");
+  const pass = String(cfg.pass || process.env.SMTP_PASS || "");
+  const from =
+    String(cfg.from || process.env.SMTP_FROM || process.env.SMTP_USER || "") ||
+    "noreply@vasritha.local";
+  const port = Number(cfg.port || process.env.SMTP_PORT || 587);
 
   if (!host || !user || !pass) {
     console.info("[mail:skipped]", {
       to,
       subject: input.subject,
       text: input.text,
-      reason: "SMTP not configured (set SMTP_HOST, SMTP_USER, SMTP_PASS)"
+      reason: "SMTP not configured (enable Email integration or set SMTP_HOST, SMTP_USER, SMTP_PASS)"
     });
     return { sent: false, skipped: "SMTP not configured" };
   }
+
+  // If no integration row yet, allow env-based send (backward compatible).
+  // If row exists and is enabled, proceed with merged config above.
 
   try {
     const nodemailer = await import("nodemailer");

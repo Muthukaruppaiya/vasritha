@@ -15,6 +15,11 @@
     "db:patch:roles": "node --env-file=apps/web/.env.local scripts/patch-roles-rights.mjs",
     "db:patch:company": "node --env-file=apps/web/.env.local scripts/patch-company-details.mjs",
     "db:patch:reviews": "node --env-file=apps/web/.env.local scripts/patch-reviews.mjs",
+    "db:patch:short-name": "node --env-file=apps/web/.env.local scripts/patch-products-short-name.mjs",
+    "db:patch:branding": "node --env-file=apps/web/.env.local scripts/patch-branding-assets.mjs",
+    "db:patch:homepage-config": "node --env-file=apps/web/.env.local scripts/patch-homepage-config.mjs",
+    "db:seed:homepage-config": "node --env-file=apps/web/.env.local scripts/seed-homepage-config.mjs",
+    "db:patch:integrations": "node --env-file=apps/web/.env.local scripts/patch-integrations.mjs",
     "db:reset": "docker compose down -v && docker compose up -d postgres && node scripts/init-local-db.mjs"
   }
 }

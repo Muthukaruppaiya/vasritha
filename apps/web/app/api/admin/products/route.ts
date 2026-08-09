@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
 
   const data = await query(
     `select
-       p.id, p.name, p.slug, p.sku, p.barcode, p.short_description, p.color, p.description,
+       p.id, p.name, p.slug, p.sku, p.barcode, p.short_name, p.short_description, p.color, p.description,
        p.price, p.compare_at_price, p.status, p.stock_quantity, p.is_featured,
        p.category_id, p.subcategory_id, p.created_at, p.updated_at,
        c.name as category_name,
@@ -85,9 +85,9 @@ export async function POST(request: NextRequest) {
 
   const data = await queryOne<{ id: string }>(
     `insert into products
-       (name, slug, sku, barcode, category_id, subcategory_id, short_description, color, description,
+       (name, slug, sku, barcode, category_id, subcategory_id, short_name, short_description, color, description,
         price, compare_at_price, status, stock_quantity, is_featured)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
      returning *`,
     [
       String(body.name),
@@ -96,6 +96,7 @@ export async function POST(request: NextRequest) {
       barcode,
       String(body.category_id),
       body.subcategory_id ? String(body.subcategory_id) : null,
+      body.short_name ? String(body.short_name).trim() : "",
       body.short_description ? String(body.short_description) : "",
       body.color ? String(body.color).trim() : "",
       body.description ? String(body.description) : "",

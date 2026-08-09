@@ -31,7 +31,24 @@ type Banner = {
   tone: (typeof TONES)[number];
 };
 
-function ShopNowBadge({ brand, slug, shopNow, collectionBy }: { brand: string; slug: string; shopNow: string; collectionBy: string }) {
+type CategoryRow = {
+  slug: string;
+  name: string;
+  image?: string | null;
+  image_path?: string | null;
+};
+
+function ShopNowBadge({
+  brand,
+  slug,
+  shopNow,
+  collectionBy
+}: {
+  brand: string;
+  slug: string;
+  shopNow: string;
+  collectionBy: string;
+}) {
   const arcId = `cat-arc-${slug}`;
 
   return (
@@ -51,13 +68,17 @@ function ShopNowBadge({ brand, slug, shopNow, collectionBy }: { brand: string; s
   );
 }
 
+function resolveImage(row: CategoryRow) {
+  return row.image || row.image_path || FALLBACK_IMAGES[row.slug] || "/hero-silk.png";
+}
+
 export function CategoryBanners({
   categories
 }: {
-  categories?: Array<{ slug: string; name: string }>;
+  categories?: CategoryRow[];
 } = {}) {
   const t = useT();
-  const [rawRows, setRawRows] = useState<Array<{ slug: string; name: string }>>(categories || []);
+  const [rawRows, setRawRows] = useState<CategoryRow[]>(categories || []);
 
   useEffect(() => {
     if (categories?.length) {
@@ -68,7 +89,7 @@ export function CategoryBanners({
     fetch("/api/categories")
       .then((res) => res.json())
       .then((payload) => {
-        setRawRows((payload?.data || []) as Array<{ slug: string; name: string }>);
+        setRawRows((payload?.data || []) as CategoryRow[]);
       })
       .catch(() => setRawRows([]));
   }, [categories]);
@@ -82,7 +103,7 @@ export function CategoryBanners({
           brand: "Vasritha",
           titleLines: keys ? [t(keys[0]), t(keys[1])] : row.name.split(" "),
           href: `/${row.slug}`,
-          image: FALLBACK_IMAGES[row.slug] || "/hero-silk.png",
+          image: resolveImage(row),
           tone: TONES[index % TONES.length]
         };
       }),

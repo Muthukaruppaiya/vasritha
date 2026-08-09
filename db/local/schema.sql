@@ -65,6 +65,7 @@ create table if not exists public.categories (
   name text not null unique,
   slug text not null unique,
   description text,
+  image_path text,
   sort_order integer not null default 0,
   created_at timestamptz not null default now()
 );
@@ -90,6 +91,7 @@ create table if not exists public.products (
   category_id uuid not null references public.categories(id),
   subcategory_id uuid references public.subcategories(id),
   name text not null,
+  short_name text not null default '',
   slug text not null unique,
   sku text unique,
   barcode text unique,
@@ -313,6 +315,7 @@ create table if not exists public.site_settings (
   site_name text not null default 'Vasritha',
   tagline text,
   logo_path text,
+  header_logo_path text,
   favicon_path text,
   support_email text,
   support_phone text,

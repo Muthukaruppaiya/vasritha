@@ -69,6 +69,31 @@ export async function adminFetch<T = unknown>(
   };
 }
 
+export async function adminUpload<T = unknown>(path: string, formData: FormData) {
+  const token = getAdminToken();
+  const headers = new Headers();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  const res = await fetch(path, {
+    method: "POST",
+    headers,
+    body: formData
+  });
+
+  const payload = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return {
+      status: res.status,
+      error: (payload as { error?: string }).error || res.statusText || "Upload failed"
+    };
+  }
+
+  return {
+    status: res.status,
+    data: (payload as { data: T }).data
+  };
+}
+
 export function formatMoney(value: number | string | null | undefined) {
   const amount = Number(value ?? 0);
   return `₹${amount.toLocaleString("en-IN")}`;

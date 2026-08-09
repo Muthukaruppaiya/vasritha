@@ -4,7 +4,7 @@ export const ml: Messages = {
   common: {
     home: "ഹോം",
     collections: "കളക്ഷനുകൾ",
-    allCollections: "എല്ലാ കളക്ഷനുകളും",
+    allCollections: "കളക്ഷനുകൾ",
     offers: "ഓഫറുകൾ",
     myAccount: "എന്റെ അക്കൗണ്ട്",
     search: "കാറ്റലോഗ് തിരയുക",

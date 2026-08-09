@@ -7,6 +7,7 @@ export type CartItem = {
   variantId?: string | null;
   slug: string;
   name: string;
+  shortName?: string;
   size: string;
   quantity: number;
   price: number;
@@ -62,6 +63,7 @@ export function addToCart(item: Omit<CartItem, "quantity"> & { quantity?: number
       variantId: item.variantId ?? null,
       slug: item.slug,
       name: item.name,
+      shortName: item.shortName,
       size: item.size,
       quantity,
       price: item.price,

@@ -102,7 +102,6 @@ export default function AdminUsersPage() {
       <AdminPageHeader
         eyebrow=""
         title="Users"
-        description="Staff and admin accounts with console access. Storefront shoppers are listed under Customers."
         actions={
           <button type="button" className="btn" onClick={openCreate}>
             + New user

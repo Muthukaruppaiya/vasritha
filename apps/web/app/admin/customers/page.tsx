@@ -12,6 +12,8 @@ import {
 import { formatDate, formatMoney } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
 
+type CustomerChannel = "online" | "offline";
+
 type CustomerRow = {
   id: string;
   full_name: string;
@@ -21,25 +23,27 @@ type CustomerRow = {
   order_count: string;
   total_spent: string;
   last_order_at: string | null;
+  customer_channel: CustomerChannel;
 };
 
 export default function AdminCustomersPage() {
   const [q, setQ] = useState("");
   const [submitted, setSubmitted] = useState("");
+  const [channelFilter, setChannelFilter] = useState<"all" | CustomerChannel>("all");
 
-  const path = useMemo(
-    () => `/api/admin/customers${submitted ? `?q=${encodeURIComponent(submitted)}` : ""}`,
-    [submitted]
-  );
+  const path = useMemo(() => {
+    const params = new URLSearchParams();
+    if (submitted) params.set("q", submitted);
+    if (channelFilter !== "all") params.set("type", channelFilter);
+    const qs = params.toString();
+    return `/api/admin/customers${qs ? `?${qs}` : ""}`;
+  }, [submitted, channelFilter]);
+
   const { data, error, loading } = useAdminQuery<CustomerRow[]>(path);
 
   return (
     <>
-      <AdminPageHeader
-        eyebrow=""
-        title="Customers"
-        description="Storefront shoppers who registered or placed orders. Staff accounts live under Users."
-      />
+      <AdminPageHeader eyebrow="" title="Customers" />
 
       <form
         className="admin-toolbar"
@@ -61,13 +65,37 @@ export default function AdminCustomersPage() {
         </button>
       </form>
 
+      <div className="admin-tabs">
+        <button
+          type="button"
+          className={channelFilter === "all" ? "is-active" : ""}
+          onClick={() => setChannelFilter("all")}
+        >
+          All
+        </button>
+        <button
+          type="button"
+          className={channelFilter === "online" ? "is-active" : ""}
+          onClick={() => setChannelFilter("online")}
+        >
+          Online
+        </button>
+        <button
+          type="button"
+          className={channelFilter === "offline" ? "is-active" : ""}
+          onClick={() => setChannelFilter("offline")}
+        >
+          Store / Offline
+        </button>
+      </div>
+
       <AdminPanel title="Customer directory">
         {loading && <AdminLoading />}
         {error && <AdminAlert>{error}</AdminAlert>}
         {!loading && !(data || []).length && (
           <AdminEmpty
             title="No customers found"
-            body="Customers appear here when shoppers create an account on the storefront."
+            body="Customers appear here when shoppers register online or when walk-in sales are billed at the store."
           />
         )}
         {(data || []).length > 0 && (
@@ -76,6 +104,7 @@ export default function AdminCustomersPage() {
               <thead>
                 <tr>
                   <th>Name</th>
+                  <th>Type</th>
                   <th>Email</th>
                   <th>Phone</th>
                   <th>Orders</th>
@@ -87,10 +116,16 @@ export default function AdminCustomersPage() {
               <tbody>
                 {(data || []).map((customer) => {
                   const orderCount = Number(customer.order_count || 0);
+                  const isOffline = customer.customer_channel === "offline";
                   return (
                     <tr key={customer.id}>
                       <td>
                         <b>{customer.full_name}</b>
+                      </td>
+                      <td>
+                        <AdminBadge tone={isOffline ? "warn" : "success"}>
+                          {isOffline ? "Store / Offline" : "Online"}
+                        </AdminBadge>
                       </td>
                       <td>{customer.email}</td>
                       <td>{customer.phone || "—"}</td>

@@ -4,7 +4,7 @@ export const ta: Messages = {
   common: {
     home: "முகப்பு",
     collections: "தொகுப்புகள்",
-    allCollections: "அனைத்து தொகுப்புகள்",
+    allCollections: "தொகுப்புகள்",
     offers: "சலுகைகள்",
     myAccount: "என் கணக்கு",
     search: "பட்டியலை தேடு",

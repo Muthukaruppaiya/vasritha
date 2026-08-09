@@ -10,6 +10,7 @@ const DATABASE_URL =
 const catalog = [
   {
     name: "Aarohi Kanchipuram Silk",
+    shortName: "Aarohi Kanchipuram",
     slug: "aarohi-kanchipuram-silk",
     category: "sarees",
     color: "Crimson Red",
@@ -21,6 +22,7 @@ const catalog = [
   },
   {
     name: "Nandini Banarasi Weave",
+    shortName: "Nandini Banarasi",
     slug: "nandini-banarasi-weave",
     category: "sarees",
     color: "Blush Pink",
@@ -32,6 +34,7 @@ const catalog = [
   },
   {
     name: "Meera Soft Silk",
+    shortName: "Meera Soft",
     slug: "meera-soft-silk",
     category: "sarees",
     color: "Ivory Cream",
@@ -43,6 +46,7 @@ const catalog = [
   },
   {
     name: "Sundari Cotton Weave",
+    shortName: "Sundari Cotton",
     slug: "sundari-cotton-weave",
     category: "sarees",
     color: "Indigo Blue",
@@ -54,6 +58,7 @@ const catalog = [
   },
   {
     name: "Lakshmi Temple Bangles",
+    shortName: "Lakshmi Bangles",
     slug: "lakshmi-temple-bangles",
     category: "jewelry",
     color: "Antique Gold",
@@ -65,6 +70,7 @@ const catalog = [
   },
   {
     name: "Chandrika Earrings",
+    shortName: "Chandrika Earrings",
     slug: "chandrika-earrings",
     category: "jewelry",
     color: "Gold",
@@ -76,6 +82,7 @@ const catalog = [
   },
   {
     name: "Navratna Temple Necklace",
+    shortName: "Navratna Necklace",
     slug: "navratna-temple-necklace",
     category: "jewelry",
     color: "Multicolour",
@@ -87,6 +94,7 @@ const catalog = [
   },
   {
     name: "Hand-carved Lotus Panel",
+    shortName: "Lotus Panel",
     slug: "hand-carved-lotus-panel",
     category: "handcrafted",
     color: "Natural Wood",
@@ -98,6 +106,7 @@ const catalog = [
   },
   {
     name: "Brass Ganesha Idol",
+    shortName: "Brass Ganesha",
     slug: "brass-ganesha-idol",
     category: "handcrafted",
     color: "Antique Brass",
@@ -129,13 +138,14 @@ async function main() {
       if (productId) {
         await client.query(
           `update products
-           set name = $2, description = $3, color = $4, price = $5, compare_at_price = $6,
+           set name = $2, short_name = $3, description = $4, color = $5, price = $6, compare_at_price = $7,
                status = 'active', stock_quantity = greatest(stock_quantity, 20),
-               category_id = $7, updated_at = now()
+               category_id = $8, updated_at = now()
            where id = $1`,
           [
             productId,
             item.name,
+            item.shortName || "",
             item.description,
             item.color || "",
             item.price,
@@ -146,11 +156,12 @@ async function main() {
       } else {
         const inserted = await client.query(
           `insert into products
-             (name, slug, category_id, description, color, price, compare_at_price, status, stock_quantity)
-           values ($1, $2, $3, $4, $5, $6, $7, 'active', 25)
+             (name, short_name, slug, category_id, description, color, price, compare_at_price, status, stock_quantity)
+           values ($1, $2, $3, $4, $5, $6, $7, $8, 'active', 25)
            returning id`,
           [
             item.name,
+            item.shortName || "",
             item.slug,
             category.rows[0].id,
             item.description,
