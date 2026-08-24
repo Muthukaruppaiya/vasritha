@@ -1,6 +1,11 @@
 import { NextRequest } from "next/server";
 import { fail, ok, requirePermission, writeAuditLog } from "../../../../../lib/auth/api";
 import { withTransaction } from "../../../../../lib/db/pool";
+import {
+  createProductUnits,
+  ensureProductUnitsSchema,
+  syncSellableStock
+} from "../../../../../lib/product-units";
 
 type InwardLine = {
   productVariantId?: string;
@@ -43,22 +48,48 @@ export async function POST(request: NextRequest) {
   ].filter(Boolean);
   const note = noteParts.join(" · ") || null;
 
+  await ensureProductUnitsSchema();
+
   try {
     const result = await withTransaction(async (db) => {
       const movements: Array<Record<string, unknown>> = [];
-      const updated: Array<{ productVariantId: string; stockQuantity: number }> = [];
+      const updated: Array<{ productVariantId: string; stockQuantity: number; unitsCreated: number }> = [];
+      const createdItems: Array<Record<string, unknown>> = [];
 
       for (const line of lines) {
-        const variant = await db.queryOne<{ id: string; stock_quantity: number }>(
-          `select id, stock_quantity from product_variants where id = $1 for update`,
+        const variant = await db.queryOne<{
+          id: string;
+          product_id: string;
+          sku: string;
+        }>(
+          `select id, product_id, sku from product_variants where id = $1 for update`,
           [line.productVariantId]
         );
         if (!variant) {
           throw new Error(`Variant not found: ${line.productVariantId}`);
         }
 
+        const tagged = await db.queryOne<{ tag: string | null; sku: string | null }>(
+          `select tag, sku from products where id = $1`,
+          [variant.product_id]
+        );
+
         const qty = Math.trunc(Math.abs(line.quantity));
-        const nextQty = Number(variant.stock_quantity) + qty;
+        const items = await createProductUnits(db, {
+          productId: variant.product_id,
+          variantId: variant.id,
+          tag: tagged?.tag || tagged?.sku || variant.sku,
+          sku: tagged?.sku || variant.sku,
+          count: qty
+        });
+        createdItems.push(...(items as unknown as Record<string, unknown>[]));
+
+        await syncSellableStock(db, variant.id);
+
+        const stockRow = await db.queryOne<{ stock_quantity: number }>(
+          `select stock_quantity from product_variants where id = $1`,
+          [variant.id]
+        );
 
         const movement = await db.queryOne(
           `insert into inventory_movements
@@ -68,16 +99,15 @@ export async function POST(request: NextRequest) {
           [line.productVariantId, qty, note, ctx.userId]
         );
 
-        await db.query(`update product_variants set stock_quantity = $2 where id = $1`, [
-          line.productVariantId,
-          nextQty
-        ]);
-
         if (movement) movements.push(movement as Record<string, unknown>);
-        updated.push({ productVariantId: line.productVariantId, stockQuantity: nextQty });
+        updated.push({
+          productVariantId: line.productVariantId,
+          stockQuantity: Number(stockRow?.stock_quantity || 0),
+          unitsCreated: items.length
+        });
       }
 
-      return { movements, updated };
+      return { movements, updated, createdItems };
     });
 
     await writeAuditLog({
@@ -89,7 +119,8 @@ export async function POST(request: NextRequest) {
         supplier: supplier || null,
         billNo: billNo || null,
         note,
-        lines: result.updated
+        lines: result.updated,
+        units: result.createdItems.length
       }
     });
 
@@ -97,7 +128,8 @@ export async function POST(request: NextRequest) {
       {
         count: result.movements.length,
         movements: result.movements,
-        stock: result.updated
+        stock: result.updated,
+        items: result.createdItems
       },
       201
     );

@@ -26,6 +26,7 @@ import Link from "next/link";
 type PosItem = {
   productId: string;
   variantId: string | null;
+  itemId?: string | null;
   name: string;
   sku: string | null;
   barcode: string | null;
@@ -79,7 +80,8 @@ declare global {
   }
 }
 
-function lineKey(item: Pick<PosItem, "productId" | "variantId">) {
+function lineKey(item: Pick<PosItem, "productId" | "variantId" | "itemId">) {
+  if (item.itemId) return `item:${item.itemId}`;
   return `${item.productId}:${item.variantId || "base"}`;
 }
 
@@ -252,7 +254,8 @@ export default function AdminBillingPage() {
         items: cart.map((line) => ({
           productId: line.productId,
           variantId: line.variantId,
-          quantity: line.quantity
+          itemId: line.itemId || null,
+          quantity: line.itemId ? 1 : line.quantity
         })),
         discountType,
         discountValue: discountRaw,
@@ -472,6 +475,7 @@ export default function AdminBillingPage() {
                         type="button"
                         aria-label="Increase quantity"
                         onClick={() => setQty(line.key, line.quantity + 1)}
+                        disabled={Boolean(line.itemId) || line.quantity >= line.stock}
                         disabled={line.quantity >= line.stock}
                       >
                         <Plus size={14} />

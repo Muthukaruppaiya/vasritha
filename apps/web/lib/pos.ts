@@ -1,4 +1,5 @@
 import { query, queryOne } from "./db/pool";
+import { lookupUnitByCode } from "./product-units";
 
 export const WALK_IN_EMAIL = "pos@vasritha.local";
 export const WALK_IN_NAME = "Walk-in Customer";
@@ -43,6 +44,7 @@ export async function getWalkInCustomerId() {
 export type PosSellable = {
   productId: string;
   variantId: string | null;
+  itemId?: string | null;
   name: string;
   sku: string | null;
   barcode: string | null;
@@ -58,6 +60,24 @@ export async function lookupSellable(q: string): Promise<PosSellable[]> {
 
   const exact = term.toUpperCase();
   const like = `%${term}%`;
+
+  const unit = await lookupUnitByCode(exact).catch(() => null);
+  if (unit) {
+    return [
+      {
+        productId: unit.product_id,
+        variantId: unit.variant_id,
+        itemId: unit.item_id,
+        name: unit.name,
+        sku: unit.unit_code,
+        barcode: unit.barcode,
+        variantName: unit.tag,
+        price: Number(unit.price),
+        stock: 1,
+        imageSrc: unit.image_path
+      }
+    ];
+  }
 
   // Prefer exact barcode / SKU matches first.
   const exactRows = await query<{
@@ -184,6 +204,7 @@ function mapSellable(row: {
   return {
     productId: row.product_id,
     variantId: row.variant_id,
+    itemId: null,
     name: row.name,
     sku: hasVariant ? row.variant_sku || row.product_sku : row.product_sku,
     barcode: hasVariant ? row.variant_barcode || row.product_barcode : row.product_barcode,

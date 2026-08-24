@@ -23,6 +23,7 @@ import {
   ProductFormModal,
   ProductFormValues
 } from "../../../components/admin/product-form-modal";
+import { ProductDetailModal } from "../../../components/admin/product-detail-modal";
 import { adminFetch, formatDate, formatMoney, getAdminToken } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
 
@@ -45,6 +46,7 @@ type Product = {
   description?: string;
   is_featured?: boolean;
   created_at: string;
+  unit_count?: number;
 };
 
 type Category = { id: string; name: string; slug: string };
@@ -98,6 +100,7 @@ export default function AdminProductsPage() {
   const [formValues, setFormValues] = useState<ProductFormValues>(blankProductForm());
   const [formImages, setFormImages] = useState<ProductFormImage[]>([]);
   const [loadingEdit, setLoadingEdit] = useState(false);
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   const { data: products, error, loading, reload } = useAdminQuery<Product[]>("/api/admin/products");
   const { data: categories } = useAdminQuery<Category[]>("/api/admin/categories");
@@ -231,6 +234,10 @@ export default function AdminProductsPage() {
     const result = await adminFetch<
       Product & {
         product_images?: Array<{ id: string; storage_path: string }>;
+        tag?: string | null;
+        sku_prefix?: string | null;
+        label_size?: "accessory" | "dress";
+        image_upload_token?: string;
       }
     >(`/api/admin/products/${productId}`);
     setLoadingEdit(false);
@@ -247,6 +254,10 @@ export default function AdminProductsPage() {
       barcode:
         product.barcode ||
         (product.sku || `VAS${product.id.slice(0, 8)}`).replace(/[^A-Za-z0-9]/g, "").toUpperCase(),
+      tag: product.tag || product.sku || "",
+      sku_prefix: product.sku_prefix || "VAS",
+      label_size: product.label_size === "accessory" ? "accessory" : "dress",
+      image_upload_token: product.image_upload_token,
       category_id: product.category_id,
       price: String(product.price ?? ""),
       compare_at_price: product.compare_at_price ? String(product.compare_at_price) : "",
@@ -575,25 +586,38 @@ export default function AdminProductsPage() {
                       />
                     </td>
                     <td>
-                      <div className="admin-product-cell">
-                        {product.primary_image ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={product.primary_image} alt="" className="admin-product-thumb" />
-                        ) : (
-                          <span className="admin-product-thumb admin-product-thumb--empty" />
-                        )}
-                        <div>
-                          <b>{product.name}</b>
-                          <div className="muted admin-sub">{product.slug}</div>
-                          {product.is_featured ? (
-                            <div className="admin-sub admin-fast-tag">Fast selling</div>
-                          ) : null}
+                      <button
+                        type="button"
+                        className="admin-product-open"
+                        onClick={() => setDetailId(product.id)}
+                      >
+                        <div className="admin-product-cell">
+                          {product.primary_image ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={product.primary_image} alt="" className="admin-product-thumb" />
+                          ) : (
+                            <span className="admin-product-thumb admin-product-thumb--empty" />
+                          )}
+                          <div>
+                            <b>{product.name}</b>
+                            <div className="muted admin-sub">{product.slug}</div>
+                            {product.is_featured ? (
+                              <div className="admin-sub admin-fast-tag">Fast selling</div>
+                            ) : null}
+                          </div>
                         </div>
-                      </div>
+                      </button>
                     </td>
                     <td>
                       <div>{product.sku || "—"}</div>
                       <div className="muted admin-sub">{product.barcode || ""}</div>
+                      <button
+                        type="button"
+                        className="admin-text-link"
+                        onClick={() => setDetailId(product.id)}
+                      >
+                        {Number(product.unit_count || 0)} unique barcodes
+                      </button>
                     </td>
                     <td>
                       {product.color ? (
@@ -631,6 +655,9 @@ export default function AdminProductsPage() {
                     <td>{formatDate(product.created_at)}</td>
                     <td>
                       <div className="admin-row-actions">
+                        <button type="button" onClick={() => setDetailId(product.id)}>
+                          Details
+                        </button>
                         <button type="button" onClick={() => void openEdit(product.id)}>
                           Edit
                         </button>
@@ -669,6 +696,15 @@ export default function AdminProductsPage() {
           </div>
         )}
       </AdminPanel>
+
+      <ProductDetailModal
+        productId={detailId}
+        onClose={() => setDetailId(null)}
+        onEdit={(id) => {
+          setDetailId(null);
+          void openEdit(id);
+        }}
+      />
 
       <ProductFormModal
         open={modalOpen}

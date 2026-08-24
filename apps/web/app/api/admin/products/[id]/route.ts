@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { fail, ok, requirePermission, writeAuditLog } from "../../../../../lib/auth/api";
 import { query, queryOne } from "../../../../../lib/db/pool";
+import { listProductItems, recordPriceHistory } from "../../../../../lib/product-units";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -9,6 +10,9 @@ const ALLOWED_FIELDS = [
   "slug",
   "sku",
   "barcode",
+  "tag",
+  "sku_prefix",
+  "label_size",
   "short_name",
   "short_description",
   "color",
@@ -18,7 +22,6 @@ const ALLOWED_FIELDS = [
   "price",
   "compare_at_price",
   "status",
-  "stock_quantity",
   "is_featured"
 ] as const;
 
@@ -31,12 +34,13 @@ export async function GET(request: NextRequest, { params }: Params) {
   const product = await queryOne(`select * from products where id = $1`, [id]);
   if (!product) return fail("Product not found", 404);
 
-  const [variants, images] = await Promise.all([
+  const [variants, images, items] = await Promise.all([
     query(`select * from product_variants where product_id = $1`, [id]),
-    query(`select * from product_images where product_id = $1 order by sort_order asc`, [id])
+    query(`select * from product_images where product_id = $1 order by sort_order asc`, [id]),
+    listProductItems(id).catch(() => [])
   ]);
 
-  return ok({ ...product, product_variants: variants, product_images: images });
+  return ok({ ...product, product_variants: variants, product_images: images, product_items: items });
 }
 
 export async function PATCH(request: NextRequest, { params }: Params) {
@@ -47,7 +51,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return fail("Invalid body");
 
-  const before = await queryOne(`select * from products where id = $1`, [id]);
+  const before = await queryOne<{ id: string; price: string }>(`select * from products where id = $1`, [id]);
   if (!before) return fail("Product not found", 404);
 
   const updates: string[] = [];
@@ -86,17 +90,21 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (existing) {
       await query(
         `update product_variants
-         set sku = $2, barcode = $3, price = $4, stock_quantity = $5
+         set sku = $2, barcode = $3, price = $4
          where id = $1`,
-        [existing.id, sku, barcode, Number(data.price), Number(data.stock_quantity)]
+        [existing.id, sku, barcode, Number(data.price)]
       );
     } else {
       await query(
         `insert into product_variants (product_id, name, sku, barcode, price, stock_quantity, attributes)
-         values ($1, 'Default', $2, $3, $4, $5, '{}'::jsonb)`,
-        [id, sku, barcode, Number(data.price), Number(data.stock_quantity)]
+         values ($1, 'Default', $2, $3, $4, 0, '{}'::jsonb)`,
+        [id, sku, barcode, Number(data.price)]
       );
     }
+  }
+
+  if (data && "price" in (body || {}) && Number(data.price) !== Number(before.price)) {
+    await recordPriceHistory(id, Number(data.price));
   }
 
   await writeAuditLog({

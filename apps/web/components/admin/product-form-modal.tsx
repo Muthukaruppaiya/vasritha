@@ -5,6 +5,7 @@ import JsBarcode from "jsbarcode";
 import { Printer, RefreshCw, Trash2, Upload, X } from "lucide-react";
 import { AdminAlert, slugify } from "./admin-ui";
 import { adminFetch, getAdminToken } from "../../lib/admin-api";
+import { printProductStickers } from "../../lib/print-stickers";
 
 export type ProductFormCategory = { id: string; name: string; slug: string };
 
@@ -23,6 +24,10 @@ export type ProductFormValues = {
   slug: string;
   sku: string;
   barcode: string;
+  tag: string;
+  sku_prefix: string;
+  label_size: "accessory" | "dress";
+  image_upload_token?: string;
   category_id: string;
   price: string;
   compare_at_price: string;
@@ -67,6 +72,10 @@ export function ProductFormModal({
   const [images, setImages] = useState<ProductFormImage[]>(initialImages);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [units, setUnits] = useState<
+    Array<{ id: string; unit_code: string; barcode: string; status?: string; label_printed?: boolean }>
+  >([]);
+  const [printBusy, setPrintBusy] = useState(false);
   const barcodeRef = useRef<SVGSVGElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -75,31 +84,51 @@ export function ProductFormModal({
     setForm(initial);
     setImages(initialImages);
     setError("");
+    setUnits([]);
   }, [open, initial, initialImages]);
 
   useEffect(() => {
-    if (!open || !barcodeRef.current || !form.barcode) return;
+    if (!open || !form.id) return;
+    void (async () => {
+      const result = await adminFetch<{
+        items: Array<{
+          id: string;
+          unit_code: string;
+          barcode: string;
+          status?: string;
+          label_printed?: boolean;
+        }>;
+      }>(`/api/admin/products/${form.id}/items`);
+      if (result.data?.items) setUnits(result.data.items);
+    })();
+  }, [open, form.id]);
+
+  useEffect(() => {
+    if (!open || !barcodeRef.current) return;
+    const value = (units[0]?.barcode || form.barcode || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+    if (!value) return;
     try {
-      JsBarcode(barcodeRef.current, form.barcode, {
+      JsBarcode(barcodeRef.current, value, {
         format: "CODE128",
         width: 2,
-        height: 64,
+        height: 56,
         displayValue: true,
-        fontSize: 14,
-        margin: 8
+        fontSize: 12,
+        margin: 4
       });
     } catch {
       // invalid barcode characters — ignore until valid
     }
-  }, [open, form.barcode]);
+  }, [open, form.barcode, units]);
 
   if (!open) return null;
 
   const regenerateCodes = () => {
-    const sku = generateSku();
+    const sku = `${form.sku_prefix || "VAS"}-${Date.now().toString().slice(-8)}`;
     setForm((current) => ({
       ...current,
       sku,
+      tag: current.tag || sku,
       barcode: barcodeFromSku(sku) || sku.replace(/-/g, "")
     }));
   };
@@ -141,28 +170,69 @@ export function ProductFormModal({
     setImages((current) => current.filter((_, i) => i !== index));
   };
 
-  const printBarcode = () => {
-    if (!form.barcode) return;
-    const svg = barcodeRef.current;
-    if (!svg) return;
-    const markup = svg.outerHTML;
-    const win = window.open("", "_blank", "noopener,noreferrer,width=480,height=360");
-    if (!win) return;
-    win.document.write(`<!doctype html><html><head><title>Barcode ${form.barcode}</title>
-      <style>
-        body{font-family:sans-serif;display:grid;place-items:center;min-height:100vh;margin:0}
-        .card{text-align:center}
-        h1{font-size:16px;margin:0 0 12px}
-        p{margin:8px 0 0;font-size:12px;color:#555}
-      </style></head><body>
-      <div class="card">
-        <h1>${form.name || "Vasritha product"}</h1>
-        ${markup}
-        <p>Code: ${form.sku || "—"} · Barcode: ${form.barcode}</p>
-      </div>
-      <script>window.onload=()=>{window.print();}</script>
-      </body></html>`);
-    win.document.close();
+  const reloadUnits = async (productId: string) => {
+    const result = await adminFetch<{
+      items: Array<{
+        id: string;
+        unit_code: string;
+        barcode: string;
+        status?: string;
+        label_printed?: boolean;
+      }>;
+    }>(`/api/admin/products/${productId}/items`);
+    if (result.data?.items) setUnits(result.data.items);
+    return result.data?.items || [];
+  };
+
+  const printStickers = async (kind: "pending" | "all" | "family") => {
+    setError("");
+    setPrintBusy(true);
+    try {
+      if (kind === "family") {
+        const code = (form.barcode || form.sku).replace(/[^A-Za-z0-9]/g, "").toUpperCase();
+        if (!code) throw new Error("Enter a product code before printing.");
+        printProductStickers({
+          price: form.price,
+          labelSize: form.label_size,
+          items: [{ unit_code: form.sku || code, barcode: code }]
+        });
+        return;
+      }
+
+      let rows = units;
+      if (form.id) {
+        rows = await reloadUnits(form.id);
+      }
+      const sellable = rows.filter((u) => !u.status || u.status === "to_sell");
+      const pending = sellable.filter((u) => !u.label_printed);
+      const chosen = kind === "pending" ? pending : sellable;
+      if (!chosen.length) {
+        throw new Error(
+          kind === "pending"
+            ? "No unprinted stickers left. Use Print all, or inward more stock."
+            : "No unique barcodes yet. Set opening stock and save, or inward stock."
+        );
+      }
+      printProductStickers({
+        price: form.price,
+        labelSize: form.label_size,
+        items: chosen
+      });
+      if (form.id && chosen.some((row) => row.id)) {
+        await adminFetch(`/api/admin/products/${form.id}/items`, {
+          method: "PATCH",
+          json: {
+            itemIds: chosen.map((row) => row.id).filter(Boolean),
+            label_printed: true
+          }
+        });
+        await reloadUnits(form.id);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not print barcodes");
+    } finally {
+      setPrintBusy(false);
+    }
   };
 
   const uploadPendingImages = async (productId: string) => {
@@ -188,12 +258,6 @@ export function ProductFormModal({
     setSaving(true);
     setError("");
 
-    if (images.length < 3) {
-      setError("Add at least 3 product images before saving");
-      setSaving(false);
-      return;
-    }
-
     if (!form.color.trim()) {
       setError("Enter a colour for this product");
       setSaving(false);
@@ -206,6 +270,9 @@ export function ProductFormModal({
       slug: form.slug || slugify(form.name),
       sku: form.sku.trim() || generateSku(),
       barcode: form.barcode.trim() || barcodeFromSku(form.sku.trim() || form.name) || generateSku().replace(/-/g, ""),
+      tag: (form.tag.trim() || form.sku.trim()).toUpperCase(),
+      sku_prefix: (form.sku_prefix || "VAS").toUpperCase(),
+      label_size: form.label_size,
       category_id: form.category_id,
       price: Number(form.price),
       compare_at_price: form.compare_at_price ? Number(form.compare_at_price) : null,
@@ -219,12 +286,24 @@ export function ProductFormModal({
 
     try {
       if (mode === "create") {
-        const created = await adminFetch<{ id: string }>("/api/admin/products", {
+        const created = await adminFetch<{
+          id: string;
+          image_upload_token?: string;
+          product_items?: Array<{ id: string; unit_code: string; barcode: string; status?: string }>;
+        }>("/api/admin/products", {
           method: "POST",
           json: payload
         });
         if (created.error || !created.data?.id) throw new Error(created.error || "Create failed");
         await uploadPendingImages(created.data.id);
+        setForm((f) => ({
+          ...f,
+          id: created.data!.id,
+          image_upload_token: created.data!.image_upload_token
+        }));
+        setUnits(created.data.product_items || []);
+        onSaved();
+        return;
       } else if (form.id) {
         const updated = await adminFetch(`/api/admin/products/${form.id}`, {
           method: "PATCH",
@@ -328,6 +407,28 @@ export function ProductFormModal({
             </label>
 
             <label>
+              <span>SKU prefix</span>
+              <select
+                value={form.sku_prefix}
+                onChange={(e) => setForm((f) => ({ ...f, sku_prefix: e.target.value.toUpperCase() }))}
+              >
+                <option value="VAS">VAS</option>
+                <option value="PADH">PADH</option>
+                <option value="VRSH">VRSH</option>
+              </select>
+            </label>
+
+            <label>
+              <span>Connecting tag</span>
+              <input
+                value={form.tag}
+                onChange={(e) => setForm((f) => ({ ...f, tag: e.target.value.toUpperCase() }))}
+                placeholder="Same tag on every unique piece"
+              />
+              <small className="admin-field-hint">Connects all unique barcodes of this product.</small>
+            </label>
+
+            <label>
               <span>Product code (SKU)</span>
               <div className="admin-input-with-action">
                 <input
@@ -347,18 +448,37 @@ export function ProductFormModal({
                   <RefreshCw size={15} />
                 </button>
               </div>
-              <small className="admin-field-hint">Barcode updates automatically when you change the product code.</small>
+              <small className="admin-field-hint">Family code. Each piece gets its own unique barcode from this.</small>
             </label>
 
             <label>
-              <span>Barcode</span>
+              <span>Label size</span>
+              <select
+                value={form.label_size}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, label_size: e.target.value as "accessory" | "dress" }))
+                }
+              >
+                <option value="dress">Dress / saree (standard)</option>
+                <option value="accessory">Accessory (small printer)</option>
+              </select>
+            </label>
+
+            <label>
+              <span>Family barcode</span>
               <div className="admin-input-with-action">
                 <input
                   required
                   value={form.barcode}
                   onChange={(e) => setForm((f) => ({ ...f, barcode: e.target.value.toUpperCase() }))}
                 />
-                <button type="button" className="admin-icon-btn" title="Print barcode" onClick={printBarcode}>
+                <button
+                  type="button"
+                  className="admin-icon-btn"
+                  title="Print barcode sticker"
+                  onClick={() => void printStickers("family")}
+                  disabled={printBusy}
+                >
                   <Printer size={15} />
                 </button>
               </div>
@@ -414,13 +534,19 @@ export function ProductFormModal({
             </label>
 
             <label>
-              <span>Stock</span>
+              <span>Opening stock (unique pieces)</span>
               <input
                 type="number"
                 min="0"
                 value={form.stock_quantity}
                 onChange={(e) => setForm((f) => ({ ...f, stock_quantity: e.target.value }))}
+                disabled={Boolean(form.id)}
               />
+              <small className="admin-field-hint">
+                {form.id
+                  ? "Add more unique barcodes from Inventory → Inward."
+                  : "10 stock = 10 unique barcode stickers."}
+              </small>
             </label>
 
             <label className="admin-span-2 admin-check-field">
@@ -462,17 +588,97 @@ export function ProductFormModal({
 
           <div className="admin-barcode-preview">
             <div className="admin-barcode-preview-head">
-              <strong>Barcode preview</strong>
-              <button type="button" className="admin-text-link" onClick={printBarcode}>
-                Print barcode
+              <strong>Barcode stickers</strong>
+              <span className="muted">
+                {units.filter((u) => !u.status || u.status === "to_sell").length} unique
+                {units.some((u) => !u.label_printed && (!u.status || u.status === "to_sell"))
+                  ? ` · ${units.filter((u) => !u.label_printed && (!u.status || u.status === "to_sell")).length} not printed`
+                  : ""}
+              </span>
+            </div>
+            <div className="admin-sticker-actions">
+              <button
+                type="button"
+                className="btn"
+                disabled={printBusy}
+                onClick={() => void printStickers("pending")}
+              >
+                {printBusy ? "Printing…" : "Print new stickers"}
+              </button>
+              <button
+                type="button"
+                className="admin-ghost-btn"
+                disabled={printBusy}
+                onClick={() => void printStickers("all")}
+              >
+                Print all unique
+              </button>
+              <button
+                type="button"
+                className="admin-ghost-btn"
+                disabled={printBusy}
+                onClick={() => void printStickers("family")}
+              >
+                Print sample size
               </button>
             </div>
-            <svg ref={barcodeRef} />
+            <small className="admin-field-hint">
+              Uses {form.label_size === "accessory" ? "small accessory" : "standard dress"} sticker size. Allow the print dialog — it no longer needs a popup window.
+            </small>
+            <svg ref={barcodeRef} className="admin-barcode-live" />
+            {units.length ? (
+              <div className="admin-unit-list">
+                {units.map((unit) => (
+                  <button
+                    key={unit.id}
+                    type="button"
+                    className="admin-unit-row"
+                    onClick={() => {
+                      if (!barcodeRef.current) return;
+                      try {
+                        JsBarcode(barcodeRef.current, unit.barcode, {
+                          format: "CODE128",
+                          width: 2,
+                          height: 56,
+                          displayValue: true,
+                          fontSize: 12,
+                          margin: 4
+                        });
+                      } catch {
+                        // ignore
+                      }
+                    }}
+                  >
+                    {unit.unit_code} · {unit.barcode}
+                    {unit.status ? ` · ${unit.status}` : ""}
+                    {unit.label_printed ? " · printed" : " · not printed"}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="muted">Save with stock, or inward later, to generate unique barcodes.</p>
+            )}
           </div>
+
+          {form.image_upload_token ? (
+            <div className="admin-qr-box">
+              <strong>Scan to upload photos</strong>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                alt="Upload QR"
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
+                  `${typeof window !== "undefined" ? window.location.origin : ""}/part/${form.image_upload_token || ""}`
+                )}`}
+              />
+              <small className="admin-field-hint">
+                Phone camera opens image upload for this product.
+              </small>
+            </div>
+          ) : null}
 
           <div className="admin-image-uploader">
             <div className="admin-barcode-preview-head">
-              <strong>Images (min 3, max 5)</strong>
+              <strong>Images (optional now — QR or upload, max 5)</strong>
               <span className="muted">{images.length}/5</span>
             </div>
             <div className="admin-image-grid">
@@ -513,11 +719,13 @@ export function ProductFormModal({
 
           <div className="admin-modal-actions">
             <button type="button" className="admin-ghost-btn" onClick={onClose}>
-              Cancel
+              {mode === "create" && form.id ? "Done" : "Cancel"}
             </button>
-            <button className="btn" type="submit" disabled={saving}>
-              {saving ? "Saving…" : mode === "create" ? "Create product" : "Save changes"}
-            </button>
+            {!(mode === "create" && form.id) ? (
+              <button className="btn" type="submit" disabled={saving}>
+                {saving ? "Saving…" : mode === "create" ? "Create product" : "Save changes"}
+              </button>
+            ) : null}
           </div>
         </form>
       </div>
@@ -542,6 +750,9 @@ export function blankProductForm(categoryId = ""): ProductFormValues {
     slug: "",
     sku,
     barcode: barcodeFromSku(sku) || sku.replace(/-/g, ""),
+    tag: sku,
+    sku_prefix: "VAS",
+    label_size: "dress",
     category_id: categoryId,
     price: "",
     compare_at_price: "",

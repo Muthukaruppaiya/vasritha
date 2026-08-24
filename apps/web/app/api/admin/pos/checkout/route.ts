@@ -2,10 +2,16 @@ import { NextRequest } from "next/server";
 import { fail, ok, requirePermission, writeAuditLog } from "../../../../../lib/auth/api";
 import { query, queryOne } from "../../../../../lib/db/pool";
 import { ensurePosSchema, getWalkInCustomerId } from "../../../../../lib/pos";
+import {
+  allocateSellableItems,
+  markItemsSold,
+  syncSellableStock
+} from "../../../../../lib/product-units";
 
 type CheckoutLine = {
   productId: string;
   variantId?: string | null;
+  itemId?: string | null;
   quantity: number;
 };
 
@@ -17,34 +23,53 @@ type CheckoutBody = {
 };
 
 async function deductStock(
-  items: Array<{ variant_id: string | null; product_id: string; quantity: number }>,
+  db: {
+    query: typeof query;
+    queryOne: typeof queryOne;
+  },
+  items: Array<{
+    variant_id: string | null;
+    product_id: string;
+    quantity: number;
+    item_id?: string | null;
+  }>,
   actorUserId: string,
   orderId: string
 ) {
   for (const item of items) {
     if (item.variant_id) {
-      const variant = await queryOne<{ stock_quantity: number }>(
-        `select stock_quantity from product_variants where id = $1`,
-        [item.variant_id]
-      );
-      if (!variant || Number(variant.stock_quantity) < item.quantity) {
-        throw new Error("Insufficient stock for a line item");
+      let unitIds: string[] = [];
+      if (item.item_id) {
+        unitIds = [item.item_id];
+      } else {
+        const allocated = await allocateSellableItems(db, item.variant_id, item.quantity);
+        if (allocated.length < item.quantity) {
+          throw new Error("Insufficient unique pieces for a line item");
+        }
+        unitIds = allocated.map((row) => row.id);
       }
-      await query(`update product_variants set stock_quantity = stock_quantity - $2 where id = $1`, [
-        item.variant_id,
-        item.quantity
-      ]);
-      await query(
+      if (unitIds.length) {
+        await markItemsSold(db, unitIds, orderId);
+        await syncSellableStock(db, item.variant_id);
+      } else {
+        const variant = await db.queryOne<{ stock_quantity: number }>(
+          `select stock_quantity from product_variants where id = $1`,
+          [item.variant_id]
+        );
+        if (!variant || Number(variant.stock_quantity) < item.quantity) {
+          throw new Error("Insufficient stock for a line item");
+        }
+        await db.query(`update product_variants set stock_quantity = stock_quantity - $2 where id = $1`, [
+          item.variant_id,
+          item.quantity
+        ]);
+      }
+      await db.query(
         `insert into inventory_movements (product_variant_id, type, quantity, reference_type, reference_id, created_by)
          values ($1, 'sale', $2, 'order', $3, $4)`,
         [item.variant_id, item.quantity, orderId, actorUserId]
       );
     }
-
-    await query(
-      `update products set stock_quantity = greatest(0, stock_quantity - $2) where id = $1`,
-      [item.product_id, item.quantity]
-    );
   }
 }
 
@@ -68,6 +93,7 @@ export async function POST(request: NextRequest) {
     const orderItems: Array<{
       product_id: string;
       variant_id: string | null;
+      item_id: string | null;
       product_name: string;
       variant_name: string | null;
       sku: string | null;
@@ -80,6 +106,7 @@ export async function POST(request: NextRequest) {
 
     for (const line of items) {
       const quantity = Math.max(1, Math.floor(Number(line.quantity) || 1));
+      const itemId = line.itemId ? String(line.itemId) : null;
       const product = await queryOne<{
         id: string;
         name: string;
@@ -145,6 +172,7 @@ export async function POST(request: NextRequest) {
       orderItems.push({
         product_id: product.id,
         variant_id: variantId,
+        item_id: itemId,
         product_name: product.name,
         variant_name: variantName,
         sku,
@@ -221,10 +249,12 @@ export async function POST(request: NextRequest) {
         [order.id, `cash_${Date.now()}`, total]
       );
       await deductStock(
+        { query, queryOne },
         orderItems.map((item) => ({
           variant_id: item.variant_id,
           product_id: item.product_id,
-          quantity: item.quantity
+          quantity: item.quantity,
+          item_id: item.item_id
         })),
         ctx.userId,
         order.id
