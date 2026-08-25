@@ -3,7 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { useT } from "../lib/i18n/provider";
+import { useLocale, useT } from "../lib/i18n/provider";
+import { localizeCategoryName } from "../lib/i18n/catalog-local";
 import type { MessageKey } from "../lib/i18n/translate";
 
 const FALLBACK_IMAGES: Record<string, string> = {
@@ -36,6 +37,8 @@ type CategoryRow = {
   name: string;
   image?: string | null;
   image_path?: string | null;
+  nameI18n?: Record<string, string>;
+  name_i18n?: Record<string, string>;
 };
 
 function ShopNowBadge({
@@ -78,6 +81,7 @@ export function CategoryBanners({
   categories?: CategoryRow[];
 } = {}) {
   const t = useT();
+  const { locale } = useLocale();
   const [rawRows, setRawRows] = useState<CategoryRow[]>(categories || []);
 
   useEffect(() => {
@@ -98,16 +102,22 @@ export function CategoryBanners({
     () =>
       rawRows.map((row, index) => {
         const keys = TITLE_KEYS[row.slug];
+        const customName = localizeCategoryName(
+          row.slug,
+          locale,
+          row.name,
+          row.nameI18n || row.name_i18n
+        );
         return {
           slug: row.slug,
           brand: "Vasritha",
-          titleLines: keys ? [t(keys[0]), t(keys[1])] : row.name.split(" "),
+          titleLines: keys ? [t(keys[0]), t(keys[1])] : customName.split(" "),
           href: `/${row.slug}`,
           image: resolveImage(row),
           tone: TONES[index % TONES.length]
         };
       }),
-    [rawRows, t]
+    [rawRows, t, locale]
   );
 
   if (!banners.length) return null;

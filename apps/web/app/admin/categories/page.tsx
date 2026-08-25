@@ -12,6 +12,17 @@ import {
 import { AdminFormModal } from "../../../components/admin/admin-form-modal";
 import { adminFetch, adminUpload, formatDate } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
+import {
+  findPredefinedCategory,
+  PREDEFINED_CATEGORIES
+} from "../../../lib/i18n/predefined-categories";
+
+type Subcategory = {
+  id: string;
+  name: string;
+  slug: string;
+  sort_order: number;
+};
 
 type Category = {
   id: string;
@@ -21,13 +32,33 @@ type Category = {
   image_path: string | null;
   sort_order: number;
   created_at: string;
+  name_i18n?: Record<string, string> | null;
+  subcategories?: Subcategory[];
 };
 
+const TRANSLATION_LOCALES = [
+  ["ta", "Tamil"],
+  ["ml", "Malayalam"],
+  ["kn", "Kannada"],
+  ["hi", "Hindi"],
+  ["pa", "Punjabi"],
+  ["gu", "Gujarati"]
+] as const;
+
 const blankForm = () => ({
+  template: "",
   name: "",
   slug: "",
   description: "",
-  sort_order: "0"
+  sort_order: "0",
+  names: {
+    ta: "",
+    ml: "",
+    kn: "",
+    hi: "",
+    pa: "",
+    gu: ""
+  }
 });
 
 export default function AdminCategoriesPage() {
@@ -42,6 +73,13 @@ export default function AdminCategoriesPage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState("");
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [subModalOpen, setSubModalOpen] = useState(false);
+  const [subParent, setSubParent] = useState<Category | null>(null);
+  const [subEditing, setSubEditing] = useState<Subcategory | null>(null);
+  const [subSaving, setSubSaving] = useState(false);
+  const [subError, setSubError] = useState("");
+  const [subForm, setSubForm] = useState({ name: "", slug: "", sort_order: "0" });
+  const [deletingSubId, setDeletingSubId] = useState<string | null>(null);
 
   const isEdit = Boolean(editing);
 
@@ -58,10 +96,19 @@ export default function AdminCategoriesPage() {
   const openEdit = (category: Category) => {
     setEditing(category);
     setForm({
+      template: findPredefinedCategory(category.slug)?.slug || "custom",
       name: category.name,
       slug: category.slug,
       description: category.description || "",
-      sort_order: String(category.sort_order ?? 0)
+      sort_order: String(category.sort_order ?? 0),
+      names: {
+        ta: category.name_i18n?.ta || "",
+        ml: category.name_i18n?.ml || "",
+        kn: category.name_i18n?.kn || "",
+        hi: category.name_i18n?.hi || "",
+        pa: category.name_i18n?.pa || "",
+        gu: category.name_i18n?.gu || ""
+      }
     });
     setImageFile(null);
     setImagePreview(category.image_path || "");
@@ -89,8 +136,36 @@ export default function AdminCategoriesPage() {
     setImagePreview(editing?.image_path || "");
   };
 
+  const applyTemplate = (slug: string) => {
+    if (!slug || slug === "custom") {
+      setForm((current) => ({ ...current, template: slug }));
+      return;
+    }
+    const preset = PREDEFINED_CATEGORIES.find((category) => category.slug === slug);
+    if (!preset) return;
+    setForm((current) => ({
+      ...current,
+      template: slug,
+      name: preset.names.en,
+      slug: preset.slug,
+      description: current.description || preset.description,
+      names: {
+        ta: preset.names.ta,
+        ml: preset.names.ml,
+        kn: preset.names.kn,
+        hi: preset.names.hi,
+        pa: preset.names.pa,
+        gu: preset.names.gu
+      }
+    }));
+  };
+
   const onSubmit = async (event: FormEvent) => {
     event.preventDefault();
+    if (!isEdit && !form.template) {
+      setFormError("Choose a predefined category. Translations are applied automatically.");
+      return;
+    }
     if (!isEdit && !imageFile) {
       setFormError("Background image is required for the category banner.");
       return;
@@ -99,11 +174,18 @@ export default function AdminCategoriesPage() {
     setSaving(true);
     setFormError("");
 
+    const preset = form.template && form.template !== "custom"
+      ? findPredefinedCategory(form.template)
+      : null;
     const payload = {
-      name: form.name,
-      slug: form.slug || slugify(form.name),
-      description: form.description || null,
-      sort_order: Number(form.sort_order || 0)
+      name: preset?.names.en || form.name,
+      slug: preset?.slug || form.slug || slugify(form.name),
+      description: form.description || preset?.description || null,
+      sort_order: Number(form.sort_order || 0),
+      name_i18n: preset?.names || {
+        en: form.name,
+        ...form.names
+      }
     };
 
     if (isEdit && editing) {
@@ -182,6 +264,76 @@ export default function AdminCategoriesPage() {
     await reload();
   };
 
+  const openAddSub = (category: Category) => {
+    setSubParent(category);
+    setSubEditing(null);
+    setSubForm({ name: "", slug: "", sort_order: String((category.subcategories || []).length) });
+    setSubError("");
+    setSubModalOpen(true);
+  };
+
+  const openEditSub = (category: Category, child: Subcategory) => {
+    setSubParent(category);
+    setSubEditing(child);
+    setSubForm({
+      name: child.name,
+      slug: child.slug,
+      sort_order: String(child.sort_order ?? 0)
+    });
+    setSubError("");
+    setSubModalOpen(true);
+  };
+
+  const closeSubModal = () => {
+    setSubModalOpen(false);
+    setSubParent(null);
+    setSubEditing(null);
+    setSubForm({ name: "", slug: "", sort_order: "0" });
+    setSubError("");
+  };
+
+  const onSubSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!subParent) return;
+    setSubSaving(true);
+    setSubError("");
+    const payload = {
+      category_id: subParent.id,
+      name: subForm.name.trim(),
+      slug: subForm.slug || slugify(`${subParent.slug}-${subForm.name}`),
+      sort_order: Number(subForm.sort_order || 0)
+    };
+
+    const result = subEditing
+      ? await adminFetch(`/api/admin/subcategories/${subEditing.id}`, {
+          method: "PATCH",
+          json: payload
+        })
+      : await adminFetch("/api/admin/subcategories", { method: "POST", json: payload });
+
+    setSubSaving(false);
+    if (result.error) {
+      setSubError(result.error);
+      return;
+    }
+    closeSubModal();
+    await reload();
+  };
+
+  const onDeleteSub = async (child: Subcategory) => {
+    const ok = window.confirm(`Delete subcategory “${child.name}”?`);
+    if (!ok) return;
+    setDeletingSubId(child.id);
+    setActionError("");
+    const result = await adminFetch(`/api/admin/subcategories/${child.id}`, { method: "DELETE" });
+    setDeletingSubId(null);
+    if (result.error) {
+      setActionError(result.error);
+      return;
+    }
+    await reload();
+  };
+
   const onReplaceImage = async (categoryId: string, fileList: FileList | null) => {
     const file = fileList?.[0];
     if (!file) return;
@@ -233,6 +385,38 @@ export default function AdminCategoriesPage() {
                 <h3>{category.name}</h3>
                 <p className="muted">{category.slug}</p>
                 <p>{category.description || "No description yet."}</p>
+                <div className="admin-child-list">
+                  <div className="admin-child-list-head">
+                    <strong>Subcategories</strong>
+                    <button type="button" onClick={() => openAddSub(category)}>
+                      + Add
+                    </button>
+                  </div>
+                  {(category.subcategories || []).length === 0 ? (
+                    <p className="muted admin-sub">No children yet. Add Silk, Cotton, Earrings, etc.</p>
+                  ) : (
+                    <ul>
+                      {(category.subcategories || []).map((child) => (
+                        <li key={child.id}>
+                          <span>{child.name}</span>
+                          <span>
+                            <button type="button" onClick={() => openEditSub(category, child)}>
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="admin-danger-btn"
+                              disabled={deletingSubId === child.id}
+                              onClick={() => void onDeleteSub(child)}
+                            >
+                              {deletingSubId === child.id ? "…" : "Delete"}
+                            </button>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
                 <p className="muted admin-sub">Added {formatDate(category.created_at)}</p>
                 <div className="admin-row-actions">
                   <button type="button" onClick={() => openEdit(category)}>
@@ -276,11 +460,32 @@ export default function AdminCategoriesPage() {
         onClose={closeModal}
         onSubmit={onSubmit}
       >
+        <label className="admin-span-2">
+          <span>Category</span>
+          <select
+            required={!isEdit}
+            value={form.template}
+            onChange={(e) => applyTemplate(e.target.value)}
+          >
+            <option value="">{isEdit ? "Keep current name" : "Choose a predefined category"}</option>
+            {PREDEFINED_CATEGORIES.map((category) => (
+              <option key={category.slug} value={category.slug}>
+                {category.names.en}
+              </option>
+            ))}
+            <option value="custom">Custom name (not auto-translated)</option>
+          </select>
+          <span className="muted admin-sub">
+            Predefined categories switch language automatically (English, Tamil, Malayalam, Kannada,
+            Hindi, Punjabi, Gujarati).
+          </span>
+        </label>
         <label>
-          <span>Name</span>
+          <span>Name (English / default)</span>
           <input
             required
             value={form.name}
+            readOnly={Boolean(form.template && form.template !== "custom")}
             onChange={(e) =>
               setForm((f) => ({
                 ...f,
@@ -295,6 +500,7 @@ export default function AdminCategoriesPage() {
           <input
             required
             value={form.slug}
+            readOnly={Boolean(form.template && form.template !== "custom")}
             onChange={(e) => setForm((f) => ({ ...f, slug: slugify(e.target.value) }))}
           />
         </label>
@@ -306,6 +512,22 @@ export default function AdminCategoriesPage() {
             onChange={(e) => setForm((f) => ({ ...f, sort_order: e.target.value }))}
           />
         </label>
+        {(!form.template || form.template === "custom") &&
+          TRANSLATION_LOCALES.map(([code, label]) => (
+          <label key={code}>
+            <span>Name ({label})</span>
+            <input
+              value={form.names[code]}
+              placeholder={form.name || "Same as English"}
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  names: { ...f.names, [code]: e.target.value }
+                }))
+              }
+            />
+          </label>
+        ))}
         <label className="admin-span-2">
           <span>Background image{isEdit ? " (optional)" : ""}</span>
           <input
@@ -329,6 +551,49 @@ export default function AdminCategoriesPage() {
             rows={3}
             value={form.description}
             onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+          />
+        </label>
+      </AdminFormModal>
+
+      <AdminFormModal
+        open={subModalOpen}
+        title={subEditing ? "Edit subcategory" : "Add subcategory"}
+        eyebrow={subParent ? `Child of ${subParent.name}` : "Catalogue"}
+        submitLabel={subEditing ? "Save changes" : "Create subcategory"}
+        savingLabel={subEditing ? "Saving…" : "Creating…"}
+        saving={subSaving}
+        error={subError}
+        onClose={closeSubModal}
+        onSubmit={onSubSubmit}
+      >
+        <label className="admin-span-2">
+          <span>Name</span>
+          <input
+            required
+            value={subForm.name}
+            onChange={(e) =>
+              setSubForm((f) => ({
+                ...f,
+                name: e.target.value,
+                slug: subEditing ? f.slug : slugify(`${subParent?.slug || ""}-${e.target.value}`)
+              }))
+            }
+          />
+        </label>
+        <label>
+          <span>Slug</span>
+          <input
+            required
+            value={subForm.slug}
+            onChange={(e) => setSubForm((f) => ({ ...f, slug: slugify(e.target.value) }))}
+          />
+        </label>
+        <label>
+          <span>Sort order</span>
+          <input
+            type="number"
+            value={subForm.sort_order}
+            onChange={(e) => setSubForm((f) => ({ ...f, sort_order: e.target.value }))}
           />
         </label>
       </AdminFormModal>

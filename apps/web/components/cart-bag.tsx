@@ -15,6 +15,7 @@ import {
 import { resolveCartCheckoutPath } from "../lib/customer-session";
 import { useLocale, useT } from "../lib/i18n/provider";
 import { localizeCategoryName, localizeProductFields, localizeSize } from "../lib/i18n/catalog-local";
+import { getAppliedCoupon, type AppliedCoupon } from "../lib/applied-coupon";
 
 type SuggestProduct = {
   slug: string;
@@ -33,6 +34,7 @@ export function CartBag() {
   const [items, setItems] = useState<CartItem[]>([]);
   const [ready, setReady] = useState(false);
   const [suggestions, setSuggestions] = useState<SuggestProduct[]>([]);
+  const [appliedVoucher, setAppliedVoucher] = useState<AppliedCoupon | null>(null);
 
   const browseLinks = [
     { href: "/sarees", label: localizeCategoryName("sarees", locale) },
@@ -44,6 +46,7 @@ export function CartBag() {
   useEffect(() => {
     const sync = () => setItems(getCartItems());
     sync();
+    setAppliedVoucher(getAppliedCoupon());
     setReady(true);
     window.addEventListener(CART_EVENT, sync);
     window.addEventListener("storage", sync);
@@ -233,6 +236,11 @@ export function CartBag() {
 
         <aside className="bag-summary">
           <h2>{t("checkout.checkout")}</h2>
+          {appliedVoucher ? (
+            <p className="voucher-applied">
+              Gift voucher <strong>{appliedVoucher.code}</strong> is ready. It applies when you pay.
+            </p>
+          ) : null}
           <div className="bag-summary-row">
             <span>{t("bag.subtotal")}</span>
             <strong>{formatPrice(subtotal)}</strong>

@@ -3,7 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { useT } from "../lib/i18n/provider";
+import { useLocale, useT } from "../lib/i18n/provider";
+import { cmsOrT } from "../lib/i18n/cms-local";
 
 const FALLBACK_SLIDES = [
   { image: "/hero-silk.png", alt: "Model wearing a Kanchipuram silk saree" },
@@ -24,6 +25,7 @@ type HeroSlide = {
 
 export function HeroCarousel() {
   const t = useT();
+  const { locale } = useLocale();
   const [slides, setSlides] = useState<HeroSlide[]>(FALLBACK_SLIDES);
   const [activeSlide, setActiveSlide] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -146,11 +148,11 @@ export function HeroCarousel() {
   };
 
   const active = slides[activeSlide] || slides[0];
-  const title = active?.title || t("home.heroTitle");
-  const subtitle = active?.subtitle || t("home.heroLead");
-  const ctaLabel = active?.ctaLabel || t("home.exploreSarees");
+  const title = cmsOrT(locale, active?.title, "home.heroTitle");
+  const subtitle = cmsOrT(locale, active?.subtitle, "home.heroLead");
+  const ctaLabel = cmsOrT(locale, active?.ctaLabel, "home.exploreSarees");
   const ctaHref = active?.ctaHref || "/sarees";
-  const cta2Label = active?.cta2Label || t("home.discoverJewelry");
+  const cta2Label = cmsOrT(locale, active?.cta2Label, "home.discoverJewelry");
   const cta2Href = active?.cta2Href || "/jewelry";
   const thumbnailSlides = slides
     .map((slide, index) => ({ slide, index }))

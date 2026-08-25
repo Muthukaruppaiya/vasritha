@@ -40,12 +40,14 @@ export type StoreCategory = {
   description: string;
   sort_order: number;
   image: string;
-  subcategories: string[];
+  subcategories: Array<{ id: string; name: string; slug: string }>;
   lines: string[];
+  nameI18n?: Record<string, string>;
 };
 
 export type ListProductsOptions = {
   categorySlug?: string;
+  subcategorySlug?: string;
   limit?: number;
   featuredOnly?: boolean;
   mode?: "card" | "detail";
@@ -93,6 +95,7 @@ type ProductRow = {
   category_slug: string;
   category_name: string;
   subcategory_name: string | null;
+  subcategory_slug: string | null;
 };
 
 type VariantRow = {
@@ -245,6 +248,7 @@ async function loadVariantsAndImages(productIds: string[], mode: "card" | "detai
 
 export async function listActiveProducts(options?: ListProductsOptions) {
   const categorySlug = options?.categorySlug ?? null;
+  const subcategorySlug = options?.subcategorySlug ?? null;
   const featuredOnly = Boolean(options?.featuredOnly);
   const mode = options?.mode ?? "detail";
   const limit = options?.limit && options.limit > 0 ? Math.min(options.limit, 200) : null;
@@ -254,16 +258,18 @@ export async function listActiveProducts(options?: ListProductsOptions) {
        p.id, p.name, p.short_name, p.slug, p.description, p.short_description, p.color, p.is_featured,
        p.price::text, p.compare_at_price::text,
        p.stock_quantity, c.slug as category_slug, c.name as category_name,
-       sc.name as subcategory_name
+       sc.name as subcategory_name,
+       sc.slug as subcategory_slug
      from products p
      join categories c on c.id = p.category_id
      left join subcategories sc on sc.id = p.subcategory_id
      where p.status = 'active'
        and ($1::text is null or c.slug = $1)
-       and ($2::boolean = false or p.is_featured = true)
+       and ($2::text is null or sc.slug = $2)
+       and ($3::boolean = false or p.is_featured = true)
      order by p.is_featured desc, p.created_at desc
      ${limit ? `limit ${limit}` : ""}`,
-    [categorySlug, featuredOnly]
+    [categorySlug, subcategorySlug, featuredOnly]
   );
 
   const { variantsByProduct, imagesByProduct } = await loadVariantsAndImages(
@@ -284,7 +290,8 @@ export async function listRelatedProducts(
        p.id, p.name, p.short_name, p.slug, p.description, p.short_description, p.color, p.is_featured,
        p.price::text, p.compare_at_price::text,
        p.stock_quantity, c.slug as category_slug, c.name as category_name,
-       sc.name as subcategory_name
+       sc.name as subcategory_name,
+       sc.slug as subcategory_slug
      from products p
      join categories c on c.id = p.category_id
      left join subcategories sc on sc.id = p.subcategory_id
@@ -309,7 +316,8 @@ export async function getProductBySlug(slug: string) {
        p.id, p.name, p.short_name, p.slug, p.description, p.short_description, p.color, p.is_featured,
        p.price::text, p.compare_at_price::text,
        p.stock_quantity, c.slug as category_slug, c.name as category_name,
-       sc.name as subcategory_name
+       sc.name as subcategory_name,
+       sc.slug as subcategory_slug
      from products p
      join categories c on c.id = p.category_id
      left join subcategories sc on sc.id = p.subcategory_id
@@ -330,8 +338,9 @@ function mapCategoryRow(
     description: string | null;
     image_path?: string | null;
     sort_order: number;
+    name_i18n?: Record<string, string> | null;
   },
-  subcats: Array<{ category_id: string; name: string }>
+  subcats: Array<{ id: string; category_id: string; name: string; slug: string }>
 ): StoreCategory {
   return {
     id: row.id,
@@ -340,8 +349,11 @@ function mapCategoryRow(
     description: row.description || "",
     sort_order: row.sort_order,
     image: row.image_path || categoryImage(row.slug),
-    subcategories: subcats.filter((s) => s.category_id === row.id).map((s) => s.name),
-    lines: [row.name]
+    subcategories: subcats
+      .filter((s) => s.category_id === row.id)
+      .map((s) => ({ id: s.id, name: s.name, slug: s.slug })),
+    lines: [row.name],
+    nameI18n: row.name_i18n || {}
   };
 }
 
@@ -354,11 +366,12 @@ export async function listCategories(): Promise<StoreCategory[]> {
       description: string | null;
       image_path: string | null;
       sort_order: number;
+      name_i18n: Record<string, string> | null;
     }>(
-      `select id, name, slug, description, image_path, sort_order from categories order by sort_order asc`
+      `select id, name, slug, description, image_path, sort_order, name_i18n from categories order by sort_order asc`
     ),
-    query<{ category_id: string; name: string }>(
-      `select category_id, name from subcategories order by name asc`
+    query<{ id: string; category_id: string; name: string; slug: string }>(
+      `select id, category_id, name, slug from subcategories order by name asc`
     )
   ]);
 
@@ -373,14 +386,15 @@ export async function getCategoryBySlug(slug: string) {
     description: string | null;
     image_path: string | null;
     sort_order: number;
+    name_i18n: Record<string, string> | null;
   }>(
-    `select id, name, slug, description, image_path, sort_order from categories where slug = $1`,
+    `select id, name, slug, description, image_path, sort_order, name_i18n from categories where slug = $1`,
     [slug]
   );
   if (!row) return null;
 
-  const subcats = await query<{ category_id: string; name: string }>(
-    `select category_id, name from subcategories where category_id = $1 order by name asc`,
+  const subcats = await query<{ id: string; category_id: string; name: string; slug: string }>(
+    `select id, category_id, name, slug from subcategories where category_id = $1 order by name asc`,
     [row.id]
   );
 

@@ -2,7 +2,8 @@
 
 import { Play } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useT } from "../lib/i18n/provider";
+import { useLocale, useT } from "../lib/i18n/provider";
+import { localizeVideoSubtitle, localizeVideoTitle } from "../lib/i18n/cms-local";
 import type { MessageKey } from "../lib/i18n/translate";
 
 const VIDEO_DEFS: Array<{ titleKey: MessageKey; subtitleKey: MessageKey; source: string }> = [
@@ -14,6 +15,7 @@ const VIDEO_DEFS: Array<{ titleKey: MessageKey; subtitleKey: MessageKey; source:
 
 export function VideoShowcase() {
   const t = useT();
+  const { locale } = useLocale();
   const [activeIndex, setActiveIndex] = useState(0);
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
   const [configured, setConfigured] = useState<
@@ -56,7 +58,11 @@ export function VideoShowcase() {
       .catch(() => undefined);
   }, []);
 
-  const videos = configured?.length ? configured : fallbackVideos;
+  const videos = (configured?.length ? configured : fallbackVideos).map((item) => ({
+    ...item,
+    title: localizeVideoTitle(locale, item.title),
+    subtitle: localizeVideoSubtitle(locale, item.subtitle)
+  }));
 
   useEffect(() => {
     videoRefs.current.forEach((video, index) => {

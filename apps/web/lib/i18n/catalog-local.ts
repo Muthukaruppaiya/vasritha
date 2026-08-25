@@ -1,4 +1,8 @@
 import type { Locale } from "./config";
+import type { CategoryNameI18n } from "./category-names";
+import { CATEGORY_I18N, TYPE_I18N } from "./predefined-categories";
+
+export { CATEGORY_I18N, TYPE_I18N } from "./predefined-categories";
 
 export type CatalogText = {
   name: string;
@@ -9,47 +13,109 @@ export type CatalogText = {
   color?: string;
 };
 
-/** Category slug → localized label */
-export const CATEGORY_I18N: Record<string, Partial<Record<Locale, string>>> = {
-  sarees: { en: "Sarees", ta: "புடவைகள்", ml: "സാരികൾ", kn: "ಸೀರೆಗಳು" },
-  jewelry: { en: "Jewelry", ta: "நகைகள்", ml: "ആഭരണങ്ങൾ", kn: "ಆಭರಣಗಳು" },
-  "churidhars-salwars": {
-    en: "Churidhars & Salwars",
-    ta: "சுரிதார்கள் & சல்வார்கள்",
-    ml: "ചുരിദാറുകളും സൽവാറുകളും",
-    kn: "ಚುರಿದಾರ್ & ಸಲ್ವಾರ್"
+export const COLOR_I18N: Record<string, Partial<Record<Locale, string>>> = {
+  "Crimson Red": {
+    en: "Crimson Red",
+    ta: "கிரிம்சன் சிவப்பு",
+    ml: "ക്രിംസൺ ചുവപ്പ്",
+    kn: "ಕ್ರಿಮ್ಸನ್ ಕೆಂಪು",
+    hi: "क्रिमसन लाल",
+    pa: "ਕ੍ਰਿਮਸਨ ਲਾਲ",
+    gu: "ક્રિમસન લાલ"
   },
-  handcrafted: {
-    en: "Handcrafted",
-    ta: "கைவினைப் பொருட்கள்",
-    ml: "കരകൗശലം",
-    kn: "ಕೈಕೆಲಸ"
+  "Blush Pink": {
+    en: "Blush Pink",
+    ta: "பிளஷ் பிங்க்",
+    ml: "ബ്ലഷ് പിങ്ക്",
+    kn: "ಬ್ಲಶ್ ಪಿಂಕ್",
+    hi: "ब्लश पिंक",
+    pa: "ਬਲਸ਼ ਗੁਲਾਬੀ",
+    gu: "બ્લશ પિંક"
+  },
+  "Ivory Cream": {
+    en: "Ivory Cream",
+    ta: "ஐவரி கிரீம்",
+    ml: "ഐവറി ക്രീം",
+    kn: "ಐವರಿ ಕ್ರೀಮ್",
+    hi: "आइवरी क्रीम",
+    pa: "ਆਈਵਰੀ ਕਰੀਮ",
+    gu: "આઇવરી ક્રીમ"
+  },
+  "Indigo Blue": {
+    en: "Indigo Blue",
+    ta: "இண்டிகோ நீலம்",
+    ml: "ഇൻഡിഗോ നീല",
+    kn: "ಇಂಡಿಗೋ ನೀಲಿ",
+    hi: "इंडिगो नीला",
+    pa: "ਇੰਡੀਗੋ ਨੀਲਾ",
+    gu: "ઇન્ડિગો વાદળી"
+  },
+  "Antique Gold": {
+    en: "Antique Gold",
+    ta: "ஆன்டிக் தங்கம்",
+    ml: "ആന്റിക് സ്വർണം",
+    kn: "ಆಂಟಿಕ್ ಚಿನ್ನ",
+    hi: "एंटीक गोल्ड",
+    pa: "ਐਂਟੀਕ ਸੋਨਾ",
+    gu: "એન્ટિક ગોલ્ડ"
+  },
+  Gold: {
+    en: "Gold",
+    ta: "தங்கம்",
+    ml: "സ്വർണം",
+    kn: "ಚಿನ್ನ",
+    hi: "सोना",
+    pa: "ਸੋਨਾ",
+    gu: "સોનું"
+  },
+  Multicolour: {
+    en: "Multicolour",
+    ta: "பல நிறம்",
+    ml: "മൾട്ടികളർ",
+    kn: "ಬಹುವರ್ಣ",
+    hi: "बहुरंगी",
+    pa: "ਬਹੁਰੰਗੀ",
+    gu: "બહુરંગી"
+  },
+  "Natural Wood": {
+    en: "Natural Wood",
+    ta: "இயற்கை மரம்",
+    ml: "പ്രകൃതി മരം",
+    kn: "ನೈಸರ್ಗಿಕ ಮರ",
+    hi: "प्राकृतिक लकड़ी",
+    pa: "ਕੁਦਰਤੀ ਲੱਕੜ",
+    gu: "કુદરતી લાકડું"
+  },
+  "Antique Brass": {
+    en: "Antique Brass",
+    ta: "ஆன்டிக் பித்தளை",
+    ml: "ആന്റിക് താമ്രം",
+    kn: "ಆಂಟಿಕ್ ಹಿತ್ತಾಳೆ",
+    hi: "एंटीक पीतल",
+    pa: "ਐਂਟੀਕ ਪਿੱਤਲ",
+    gu: "એન્ટિક પિત્તળ"
   }
 };
 
-/** Common product-type labels shown on cards */
-export const TYPE_I18N: Record<string, Partial<Record<Locale, string>>> = {
-  Sarees: CATEGORY_I18N.sarees,
-  Jewelry: CATEGORY_I18N.jewelry,
-  Handcrafted: CATEGORY_I18N.handcrafted,
-  "Churidhars & Salwars": CATEGORY_I18N["churidhars-salwars"]
-};
-
-export const COLOR_I18N: Record<string, Partial<Record<Locale, string>>> = {
-  "Crimson Red": { en: "Crimson Red", ta: "கிரிம்சன் சிவப்பு", ml: "ക്രിംസൺ ചുവപ്പ്", kn: "ಕ್ರಿಮ್ಸನ್ ಕೆಂಪು" },
-  "Blush Pink": { en: "Blush Pink", ta: "பிளஷ் பிங்க்", ml: "ബ്ലഷ് പിങ്ക്", kn: "ಬ್ಲಶ್ ಪಿಂಕ್" },
-  "Ivory Cream": { en: "Ivory Cream", ta: "ஐவரி கிரீம்", ml: "ഐവറി ക്രീം", kn: "ಐವರಿ ಕ್ರೀಮ್" },
-  "Indigo Blue": { en: "Indigo Blue", ta: "இண்டிகோ நீலம்", ml: "ഇൻഡിഗോ നീല", kn: "ಇಂಡಿಗೋ ನೀಲಿ" },
-  "Antique Gold": { en: "Antique Gold", ta: "ஆன்டிக் தங்கம்", ml: "ആന്റിക് സ്വർണം", kn: "ಆಂಟಿಕ್ ಚಿನ್ನ" },
-  Gold: { en: "Gold", ta: "தங்கம்", ml: "സ്വർണം", kn: "ಚಿನ್ನ" },
-  Multicolour: { en: "Multicolour", ta: "பல நிறம்", ml: "മൾട്ടികളർ", kn: "ಬಹುವರ್ಣ" },
-  "Natural Wood": { en: "Natural Wood", ta: "இயற்கை மரம்", ml: "പ്രകൃതി മരം", kn: "ನೈಸರ್ಗಿಕ ಮರ" },
-  "Antique Brass": { en: "Antique Brass", ta: "ஆன்டிக் பித்தளை", ml: "ആന്റിക് താമ്രം", kn: "ಆಂಟಿಕ್ ಹಿತ್ತಾಳೆ" }
-};
-
 export const SIZE_I18N: Record<string, Partial<Record<Locale, string>>> = {
-  "Free Size": { en: "Free Size", ta: "ஃப்ரீ சைஸ்", ml: "ഫ്രീ സൈസ്", kn: "ಫ್ರೀ ಸೈಜ್" },
-  "One Size": { en: "One Size", ta: "ஒரே அளவு", ml: "ഒരു സൈസ്", kn: "ಒಂದೇ ಗಾತ್ರ" }
+  "Free Size": {
+    en: "Free Size",
+    ta: "ஃப்ரீ சைஸ்",
+    ml: "ഫ്രീ സൈസ്",
+    kn: "ಫ್ರೀ ಸೈಜ್",
+    hi: "फ्री साइज़",
+    pa: "ਫ੍ਰੀ ਸਾਈਜ਼",
+    gu: "ફ્રી સાઇઝ"
+  },
+  "One Size": {
+    en: "One Size",
+    ta: "ஒரே அளவு",
+    ml: "ഒരു സൈസ്",
+    kn: "ಒಂದೇ ಗಾತ್ರ",
+    hi: "एक साइज़",
+    pa: "ਇੱਕ ਸਾਈਜ਼",
+    gu: "એક સાઇઝ"
+  }
 };
 
 /** Product slug → localized catalogue copy */
@@ -82,6 +148,27 @@ export const PRODUCT_I18N: Record<string, Partial<Record<Locale, CatalogText>>> 
       type: "ಸೀರೆಗಳು",
       description: "ದೇವಸ್ಥಾನ ಬಾರ್ಡರ್ ಜರಿ ನೇಯ್ಗೆಯೊಂದಿಗೆ ರಾಜಸಿ ಕೆಂಪು ರೇಷ್ಮೆ ಸೀರೆ.",
       color: "ಕ್ರಿಮ್ಸನ್ ಕೆಂಪು"
+    },
+    hi: {
+      name: "आरोही कांचीपुरम सिल्क",
+      shortName: "आरोही कांचीपुरम",
+      type: "साड़ियाँ",
+      description: "मंदिर बॉर्डर जरी बुनाई वाली शाही क्रिमसन रेशमी साड़ी।",
+      color: "क्रिमसन लाल"
+    },
+    pa: {
+      name: "ਆਰੋਹੀ ਕਾਂਚੀਪੁਰਮ ਸਿਲਕ",
+      shortName: "ਆਰੋਹੀ ਕਾਂਚੀਪੁਰਮ",
+      type: "ਸਾੜੀਆਂ",
+      description: "ਮੰਦਰ ਬਾਰਡਰ ਜਰੀ ਬੁਣਾਈ ਵਾਲੀ ਸ਼ਾਹੀ ਕ੍ਰਿਮਸਨ ਰੇਸ਼ਮੀ ਸਾੜੀ।",
+      color: "ਕ੍ਰਿਮਸਨ ਲਾਲ"
+    },
+    gu: {
+      name: "આરોહી કાંચીપુરમ સિલ્ક",
+      shortName: "આરોહી કાંચીપુરમ",
+      type: "સાડીઓ",
+      description: "મંદિર બોર્ડર ઝરી વણાટવાળી શાહી ક્રિમસન રેશમી સાડી.",
+      color: "ક્રિમસન લાલ"
     }
   },
   "nandini-banarasi-weave": {
@@ -112,6 +199,27 @@ export const PRODUCT_I18N: Record<string, Partial<Record<Locale, CatalogText>>> 
       type: "ಸೀರೆಗಳು",
       description: "ಆಚರಣೆಗಳನ್ನು ಸುಲಭಗೊಳಿಸುವ ಕ್ಲಾಸಿಕ್ ಬನಾರಸಿ ಸಿಲ್ವೆಟ್.",
       color: "ಬ್ಲಶ್ ಪಿಂಕ್"
+    },
+    hi: {
+      name: "नंदिनी बनारसी वीव",
+      shortName: "नंदिनी बनारसी",
+      type: "साड़ियाँ",
+      description: "उत्सवों के लिए सहज क्लासिक बनारसी सिल्हूट।",
+      color: "ब्लश पिंक"
+    },
+    pa: {
+      name: "ਨੰਦਿਨੀ ਬਨਾਰਸੀ ਵੀਵ",
+      shortName: "ਨੰਦਿਨੀ ਬਨਾਰਸੀ",
+      type: "ਸਾੜੀਆਂ",
+      description: "ਜਸ਼ਨਾਂ ਲਈ ਆਸਾਨ ਕਲਾਸਿਕ ਬਨਾਰਸੀ ਸਿਲੂਏਟ।",
+      color: "ਬਲਸ਼ ਗੁਲਾਬੀ"
+    },
+    gu: {
+      name: "નંદિની બનારસી વીવ",
+      shortName: "નંદિની બનારસી",
+      type: "સાડીઓ",
+      description: "ઉજવણી માટે સહજ ક્લાસિક બનારસી સિલુએટ.",
+      color: "બ્લશ પિંક"
     }
   },
   "meera-soft-silk": {
@@ -142,6 +250,27 @@ export const PRODUCT_I18N: Record<string, Partial<Record<Locale, CatalogText>>> 
       type: "ಸೀರೆಗಳು",
       description: "ದಿನವಿಡೀ ಸೊಬಗಿಗಾಗಿ ಹಗುರವಾದ, ಸುಂದರವಾದ ಡ್ರೇಪ್.",
       color: "ಐವರಿ ಕ್ರೀಮ್"
+    },
+    hi: {
+      name: "मीरा सॉफ्ट सिल्क",
+      shortName: "मीरा सॉफ्ट",
+      type: "साड़ियाँ",
+      description: "पूरे दिन की खूबसूरती के लिए हल्की, सुंदर ड्रेप।",
+      color: "आइवरी क्रीम"
+    },
+    pa: {
+      name: "ਮੀਰਾ ਸਾਫਟ ਸਿਲਕ",
+      shortName: "ਮੀਰਾ ਸਾਫਟ",
+      type: "ਸਾੜੀਆਂ",
+      description: "ਪੂਰੇ ਦਿਨ ਦੀ ਸੁੰਦਰਤਾ ਲਈ ਹਲਕੀ, ਸੋਹਣੀ ਡ੍ਰੇਪ।",
+      color: "ਆਈਵਰੀ ਕਰੀਮ"
+    },
+    gu: {
+      name: "મીરા સોફ્ટ સિલ્ક",
+      shortName: "મીરા સોફ્ટ",
+      type: "સાડીઓ",
+      description: "આખા દિવસની ભવ્યતા માટે હળવી, સુંદર ડ્રેપ.",
+      color: "આઇવરી ક્રીમ"
     }
   },
   "sundari-cotton-weave": {
@@ -172,6 +301,27 @@ export const PRODUCT_I18N: Record<string, Partial<Record<Locale, CatalogText>>> 
       type: "ಸೀರೆಗಳು",
       description: "ಶಾಂತ ಸೊಬಗಿನ ಬಾರ್ಡರ್‌ನೊಂದಿಗೆ ಉಸಿರಾಡುವ ಕೈಮಗ್ಗ ಹತ್ತಿ.",
       color: "ಇಂಡಿಗೋ ನೀಲಿ"
+    },
+    hi: {
+      name: "सुंदरी कॉटन वीव",
+      shortName: "सुंदरी कॉटन",
+      type: "साड़ियाँ",
+      description: "शांत सुंदर बॉर्डर वाली साँस लेने योग्य हथकरघा कॉटन।",
+      color: "इंडिगो नीला"
+    },
+    pa: {
+      name: "ਸੁੰਦਰੀ ਕਾਟਨ ਵੀਵ",
+      shortName: "ਸੁੰਦਰੀ ਕਾਟਨ",
+      type: "ਸਾੜੀਆਂ",
+      description: "ਸ਼ਾਂਤ ਸੁੰਦਰ ਬਾਰਡਰ ਵਾਲੀ ਸਾਹ ਲੈਣ ਵਾਲੀ ਹੱਥਕੱਘ ਕਾਟਨ।",
+      color: "ਇੰਡੀਗੋ ਨੀਲਾ"
+    },
+    gu: {
+      name: "સુંદરી કોટન વીવ",
+      shortName: "સુંદરી કોટન",
+      type: "સાડીઓ",
+      description: "શાંત સુંદર બોર્ડરવાળી શ્વાસ લેતી હાથઘૂંટ કોટન.",
+      color: "ઇન્ડિગો વાદળી"
     }
   },
   "lakshmi-temple-bangles": {
@@ -202,6 +352,27 @@ export const PRODUCT_I18N: Record<string, Partial<Record<Locale, CatalogText>>> 
       type: "ಆಭರಣಗಳು",
       description: "ಸೂಕ್ಷ್ಮ ದೇವಸ್ಥಾನ ಮೋಟಿಫ್‌ಗಳೊಂದಿಗೆ ಆಂಟಿಕ್ ಫಿನಿಷ್ ಬಳೆಗಳು.",
       color: "ಆಂಟಿಕ್ ಚಿನ್ನ"
+    },
+    hi: {
+      name: "लक्ष्मी टेम्पल चूड़ियाँ",
+      shortName: "लक्ष्मी टेम्पल",
+      type: "ज्वेलरी",
+      description: "नाज़ुक मंदिर रूपांकनों वाली एंटीक फिनिश चूड़ियाँ।",
+      color: "एंटीक गोल्ड"
+    },
+    pa: {
+      name: "ਲਕਸ਼ਮੀ ਮੰਦਰ ਚੂੜੀਆਂ",
+      shortName: "ਲਕਸ਼ਮੀ ਮੰਦਰ",
+      type: "ਗਹਿਣੇ",
+      description: "ਨਾਜ਼ੁਕ ਮੰਦਰ ਰੂਪਾਂ ਵਾਲੀਆਂ ਐਂਟੀਕ ਫਿਨਿਸ਼ ਚੂੜੀਆਂ।",
+      color: "ਐਂਟੀਕ ਸੋਨਾ"
+    },
+    gu: {
+      name: "લક્ષ્મી મંદિર ચૂડીઓ",
+      shortName: "લક્ષ્મી મંદિર",
+      type: "દાગીના",
+      description: "નાજુક મંદિર મોટિફવાળી એન્ટિક ફિનિશ ચૂડીઓ.",
+      color: "એન્ટિક ગોલ્ડ"
     }
   },
   "chandrika-earrings": {
@@ -232,6 +403,27 @@ export const PRODUCT_I18N: Record<string, Partial<Record<Locale, CatalogText>>> 
       type: "ಆಭರಣಗಳು",
       description: "ಸಂದರ್ಭದ ನೋಟವನ್ನು ಪೂರ್ಣಗೊಳಿಸುವ ಹೊಳೆಯುವ ಸೊಗಸಾದ ಜೋಡಿ.",
       color: "ಚಿನ್ನ"
+    },
+    hi: {
+      name: "चंद्रिका झुमके",
+      shortName: "चंद्रिका झुमके",
+      type: "ज्वेलरी",
+      description: "अवसर लुक पूरा करने वाली चमकदार सुंदर जोड़ी।",
+      color: "सोना"
+    },
+    pa: {
+      name: "ਚੰਦਰਿਕਾ ਵਾਲੀਆਂ",
+      shortName: "ਚੰਦਰਿਕਾ ਵਾਲੀਆਂ",
+      type: "ਗਹਿਣੇ",
+      description: "ਮੌਕੇ ਵਾਲਾ ਲੁੱਕ ਪੂਰਾ ਕਰਨ ਵਾਲੀ ਚਮਕਦਾਰ ਸੋਹਣੀ ਜੋੜੀ।",
+      color: "ਸੋਨਾ"
+    },
+    gu: {
+      name: "ચંદ્રિકા કુંડળ",
+      shortName: "ચંદ્રિકા કુંડળ",
+      type: "દાગીના",
+      description: "પ્રસંગનો લુક પૂર્ણ કરતી ચમકતી સુંદર જોડી.",
+      color: "સોનું"
     }
   },
   "navratna-temple-necklace": {
@@ -262,6 +454,27 @@ export const PRODUCT_I18N: Record<string, Partial<Record<Locale, CatalogText>>> 
       type: "ಆಭರಣಗಳು",
       description: "ಸಮೃದ್ಧ ಸಾಂಪ್ರದಾಯಿಕ ವಿವರಗಳೊಂದಿಗೆ ಸ್ಟೇಟ್‌ಮೆಂಟ್ ದೇವಸ್ಥಾನ ಹಾರ.",
       color: "ಬಹುವರ್ಣ"
+    },
+    hi: {
+      name: "नवरत्न टेम्पल हार",
+      shortName: "नवरत्न टेम्पल",
+      type: "ज्वेलरी",
+      description: "पारंपरिक विवरणों वाला स्टेटमेंट मंदिर हार।",
+      color: "बहुरंगी"
+    },
+    pa: {
+      name: "ਨਵਰਤਨ ਮੰਦਰ ਹਾਰ",
+      shortName: "ਨਵਰਤਨ ਮੰਦਰ",
+      type: "ਗਹਿਣੇ",
+      description: "ਰਵਾਇਤੀ ਵੇਰਵਿਆਂ ਵਾਲਾ ਸਟੇਟਮੈਂਟ ਮੰਦਰ ਹਾਰ।",
+      color: "ਬਹੁਰੰਗੀ"
+    },
+    gu: {
+      name: "નવરત્ન મંદિર હાર",
+      shortName: "નવરત્ન મંદિર",
+      type: "દાગીના",
+      description: "પરંપરાગત વિગતો સાથે સ્ટેટમેન્ટ મંદિર હાર.",
+      color: "બહુરંગી"
     }
   },
   "hand-carved-lotus-panel": {
@@ -292,6 +505,27 @@ export const PRODUCT_I18N: Record<string, Partial<Record<Locale, CatalogText>>> 
       type: "ಕೈಕೆಲಸ",
       description: "ಕಮಲವನ್ನು ಆಚರಿಸುವ ಬೆಚ್ಚಗಿನ ಕೈಮುಗಿಸಿದ ಮರದ ಫಲಕ.",
       color: "ನೈಸರ್ಗಿಕ ಮರ"
+    },
+    hi: {
+      name: "हस्त-नक्काशी कमल पैनल",
+      shortName: "हस्त-नक्काशी कमल",
+      type: "हस्तशिल्प",
+      description: "कमल का उत्सव मनाने वाला गर्म हाथ-तैयार लकड़ी पैनल।",
+      color: "प्राकृतिक लकड़ी"
+    },
+    pa: {
+      name: "ਹੱਥ-ਨੱਕਾਸ਼ੀ ਕਮਲ ਪੈਨਲ",
+      shortName: "ਹੱਥ-ਨੱਕਾਸ਼ੀ ਕਮਲ",
+      type: "ਹੱਥ-ਕਲਾ",
+      description: "ਕਮਲ ਦਾ ਜਸ਼ਨ ਮਨਾਉਣ ਵਾਲਾ ਗਰਮ ਹੱਥ-ਤਿਆਰ ਲੱਕੜ ਪੈਨਲ।",
+      color: "ਕੁਦਰਤੀ ਲੱਕੜ"
+    },
+    gu: {
+      name: "હાથ-નક્કાશી કમળ પેનલ",
+      shortName: "હાથ-નક્કાશી કમળ",
+      type: "હસ્તકલા",
+      description: "કમળની ઉજવણી કરતું ગરમ હાથ-તૈયાર લાકડાનું પેનલ.",
+      color: "કુદરતી લાકડું"
     }
   },
   "brass-ganesha-idol": {
@@ -322,6 +556,27 @@ export const PRODUCT_I18N: Record<string, Partial<Record<Locale, CatalogText>>> 
       type: "ಕೈಕೆಲಸ",
       description: "ಪ್ರೀತಿಯ ಪವಿತ್ರ ಮೂಲೆಗಾಗಿ ಸೂಕ್ಷ್ಮ ಹಿತ್ತಾಳೆ ವಿಗ್ರಹ.",
       color: "ಆಂಟಿಕ್ ಹಿತ್ತಾಳೆ"
+    },
+    hi: {
+      name: "पीतल गणेश मूर्ति",
+      shortName: "पीतल गणेश",
+      type: "हस्तशिल्प",
+      description: "प्रिय पवित्र कोने के लिए बारीक पीतल की मूर्ति।",
+      color: "एंटीक पीतल"
+    },
+    pa: {
+      name: "ਪਿੱਤਲ ਗਣੇਸ਼ ਮੂਰਤੀ",
+      shortName: "ਪਿੱਤਲ ਗਣੇਸ਼",
+      type: "ਹੱਥ-ਕਲਾ",
+      description: "ਪਿਆਰੇ ਪਵਿੱਤਰ ਕੋਨੇ ਲਈ ਬਾਰੀਕ ਪਿੱਤਲ ਦੀ ਮੂਰਤੀ।",
+      color: "ਐਂਟੀਕ ਪਿੱਤਲ"
+    },
+    gu: {
+      name: "પિત્તળ ગણેશ મૂર્તિ",
+      shortName: "પિત્તળ ગણેશ",
+      type: "હસ્તકલા",
+      description: "પ્રિય પવિત્ર ખૂણા માટે સૂક્ષ્મ પિત્તળની મૂર્તિ.",
+      color: "એન્ટિક પિત્તળ"
     }
   }
 };
@@ -334,12 +589,19 @@ function pickLocalized<T extends string>(
   return map?.[locale] || map?.en || fallback;
 }
 
-export function localizeCategoryName(slugOrName: string, locale: Locale, fallback?: string) {
-  const bySlug = CATEGORY_I18N[slugOrName];
+export function localizeCategoryName(
+  slugOrName: string,
+  locale: Locale,
+  fallback?: string,
+  nameI18n?: CategoryNameI18n | null
+) {
+  const fromDb = nameI18n?.[locale]?.trim();
+  if (fromDb) return fromDb;
+  const bySlug = CATEGORY_I18N[slugOrName] || (fallback ? CATEGORY_I18N[fallback] : undefined);
   if (bySlug) return pickLocalized(bySlug, locale, (bySlug.en || fallback || slugOrName) as string);
-  const byType = TYPE_I18N[slugOrName];
+  const byType = TYPE_I18N[slugOrName] || (fallback ? TYPE_I18N[fallback] : undefined);
   if (byType) return pickLocalized(byType, locale, (byType.en || fallback || slugOrName) as string);
-  return fallback || slugOrName;
+  return nameI18n?.en?.trim() || fallback || slugOrName;
 }
 
 export function localizeColor(color: string | null | undefined, locale: Locale) {

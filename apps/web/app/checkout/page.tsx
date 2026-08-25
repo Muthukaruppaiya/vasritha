@@ -15,6 +15,7 @@ import { cartItemsToPendingLines, createPendingFromCheckout } from "../../lib/or
 import type { StoreProduct } from "../../lib/catalog";
 import { useLocale } from "../../lib/i18n/provider";
 import { localizeProductFields, localizeSize } from "../../lib/i18n/catalog-local";
+import { getAppliedCoupon, type AppliedCoupon } from "../../lib/applied-coupon";
 
 type CheckoutLine = {
   productId: string;
@@ -40,6 +41,7 @@ function CheckoutContent() {
   const size = searchParams.get("size") ?? "";
   const [ready, setReady] = useState(false);
   const [lineItems, setLineItems] = useState<CheckoutLine[]>([]);
+  const [appliedVoucher, setAppliedVoucher] = useState<AppliedCoupon | null>(null);
 
   const session = useMemo(() => (ready ? getCustomerSession() : null), [ready]);
   const nextCheckout = `/checkout?${searchParams.toString()}`;
@@ -54,6 +56,7 @@ function CheckoutContent() {
   const itemCount = lineItems.reduce((sum, item) => sum + item.quantity, 0);
 
   useEffect(() => {
+    setAppliedVoucher(getAppliedCoupon());
     if (!isLoggedIn()) {
       router.replace(`/login?next=${encodeURIComponent(nextCheckout)}`);
       return;
@@ -261,6 +264,11 @@ function CheckoutContent() {
           </ul>
 
           <div className="checkout-totals">
+            {appliedVoucher ? (
+              <p className="voucher-applied">
+                Gift voucher <strong>{appliedVoucher.code}</strong> will apply at payment.
+              </p>
+            ) : null}
             <div className="checkout-total-line">
               <span>Subtotal</span>
               <span>{formatPrice(orderTotal)}</span>

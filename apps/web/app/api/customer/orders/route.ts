@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { fail, ok, requirePermission } from "../../../../lib/auth/api";
-import { query, queryOne } from "../../../../lib/db/pool";
+import { computeCouponDiscount } from "../../../../lib/coupon-discount";
 
 type OrderRow = {
   id: string;
@@ -45,6 +45,7 @@ export async function POST(request: NextRequest) {
 
   const body = (await request.json().catch(() => null)) as {
     shippingAddressId?: string;
+    couponCode?: string;
     items?: Array<{ productId: string; variantId?: string; quantity: number }>;
   } | null;
 
@@ -127,15 +128,60 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  const couponCode = body.couponCode ? String(body.couponCode).trim().toUpperCase() : "";
+  let discountAmount = 0;
+  let couponId: string | null = null;
+
+  if (couponCode) {
+    const coupon = await queryOne<{
+      id: string;
+      discount_type: string;
+      discount_value: string;
+      min_order_amount: string;
+      max_discount_amount: string | null;
+      starts_at: string | null;
+      ends_at: string | null;
+    }>(
+      `select id, discount_type, discount_value, min_order_amount, max_discount_amount, starts_at, ends_at
+       from coupons
+       where code = $1 and status = 'active'`,
+      [couponCode]
+    );
+    if (!coupon) return fail("Invalid voucher code");
+    const now = Date.now();
+    if (coupon.starts_at && new Date(coupon.starts_at).getTime() > now) return fail("Voucher not started");
+    if (coupon.ends_at && new Date(coupon.ends_at).getTime() < now) return fail("Voucher expired");
+    const computed = computeCouponDiscount({
+      discountType: coupon.discount_type,
+      discountValue: Number(coupon.discount_value),
+      minOrderAmount: Number(coupon.min_order_amount),
+      maxDiscountAmount: coupon.max_discount_amount != null ? Number(coupon.max_discount_amount) : null,
+      subtotal
+    });
+    if (!computed.ok) return fail(computed.error);
+    discountAmount = computed.discount;
+    couponId = coupon.id;
+  }
+
+  const total = Math.max(0, subtotal - discountAmount);
+
   const orderNumber = `VAS-${Date.now().toString().slice(-8)}`;
   const order = await queryOne<{ id: string; order_number: string; created_at: string; total_amount: string }>(
-    `insert into orders (order_number, customer_id, shipping_address_id, status, payment_status, subtotal, tax_amount, shipping_amount, total_amount)
-     values ($1, $2, $3, 'pending', 'pending', $4, 0, 0, $4)
+    `insert into orders (order_number, customer_id, shipping_address_id, status, payment_status, subtotal, discount_amount, tax_amount, shipping_amount, total_amount)
+     values ($1, $2, $3, 'pending', 'pending', $4, $5, 0, 0, $6)
      returning id, order_number, created_at, total_amount`,
-    [orderNumber, ctx.userId, (address as { id: string }).id, subtotal]
+    [orderNumber, ctx.userId, (address as { id: string }).id, subtotal, discountAmount, total]
   );
 
   if (!order) return fail("Order create failed", 400);
+
+  if (couponId && discountAmount > 0) {
+    await query(
+      `insert into coupon_usage (coupon_id, customer_id, order_id, discount_amount)
+       values ($1, $2, $3, $4)`,
+      [couponId, ctx.userId, order.id, discountAmount]
+    );
+  }
 
   for (const item of orderItems) {
     await query(

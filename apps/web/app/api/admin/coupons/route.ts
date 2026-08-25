@@ -19,12 +19,18 @@ export async function POST(request: NextRequest) {
     return fail("code, discount_type and discount_value are required");
   }
 
+  const showOnOpen = Boolean(body.show_on_open);
+  if (showOnOpen) {
+    await query(`update coupons set show_on_open = false`);
+  }
+
   const data = await queryOne(
     `insert into coupons (
        code, description, discount_type, discount_value, min_order_amount,
-       max_discount_amount, usage_limit, usage_limit_per_customer, starts_at, ends_at, status
+       max_discount_amount, usage_limit, usage_limit_per_customer, starts_at, ends_at, status,
+       kind, show_on_open, headline
      )
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
      returning *`,
     [
       String(body.code).toUpperCase(),
@@ -37,7 +43,10 @@ export async function POST(request: NextRequest) {
       body.usage_limit_per_customer != null ? Number(body.usage_limit_per_customer) : null,
       body.starts_at ?? null,
       body.ends_at ?? null,
-      body.status ?? "active"
+      body.status ?? "active",
+      body.kind === "gift_voucher" ? "gift_voucher" : "coupon",
+      showOnOpen,
+      body.headline ? String(body.headline) : null
     ]
   );
 

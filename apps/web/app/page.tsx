@@ -40,7 +40,8 @@ export default async function Home() {
     slug: category.slug,
     name: category.name,
     description: category.description,
-    image: category.image
+    image: category.image,
+    nameI18n: category.nameI18n
   }));
 
   return (

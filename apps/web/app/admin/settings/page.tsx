@@ -108,9 +108,9 @@ export default function AdminSettingsPage() {
     setLogoMessage("");
     setLogoError("");
 
-    if (kind === "header" && file.type !== "image/png") {
+    if (kind === "header" && file.type !== "image/svg+xml") {
       setLogoBusy(null);
-      setLogoError("Header logo must be a PNG file.");
+      setLogoError("Header logo must be an SVG file.");
       return;
     }
 
@@ -304,7 +304,7 @@ export default function AdminSettingsPage() {
               <div className="admin-logo-grid">
                 <div className="admin-logo-card">
                   <h3>Website header logo</h3>
-                  <p className="muted">PNG only. Shown in the storefront header.</p>
+                  <p className="muted">SVG only, original brand colours. Shown in the storefront header.</p>
                   <div className="admin-logo-preview admin-logo-preview--header">
                     {data?.header_logo_path || data?.logo_path ? (
                       <img
@@ -316,10 +316,10 @@ export default function AdminSettingsPage() {
                     )}
                   </div>
                   <label className="admin-file-btn">
-                    <span>{logoBusy === "header" ? "Uploading…" : "Upload PNG"}</span>
+                    <span>{logoBusy === "header" ? "Uploading…" : "Upload SVG"}</span>
                     <input
                       type="file"
-                      accept="image/png,.png"
+                      accept="image/svg+xml,.svg"
                       disabled={logoBusy !== null}
                       onChange={(e) => {
                         void onUploadLogo("header", e.target.files);

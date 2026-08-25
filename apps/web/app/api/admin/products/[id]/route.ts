@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { fail, ok, requirePermission, writeAuditLog } from "../../../../../lib/auth/api";
 import { query, queryOne } from "../../../../../lib/db/pool";
-import { listProductItems, recordPriceHistory } from "../../../../../lib/product-units";
+import { emptyToNull, subcategoryBelongsToCategory } from "../../../../../lib/db/taxonomy";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -59,6 +59,26 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const normalized = { ...body };
   if ("fast_selling" in normalized && !("is_featured" in normalized)) {
     normalized.is_featured = Boolean(normalized.fast_selling);
+  }
+  if ("subcategory_id" in normalized) {
+    normalized.subcategory_id = emptyToNull(normalized.subcategory_id);
+  }
+
+  const nextCategoryId = String(
+    normalized.category_id ?? (before as { category_id: string }).category_id
+  );
+  if ("category_id" in normalized && !("subcategory_id" in normalized)) {
+    const currentSub = (before as { subcategory_id?: string | null }).subcategory_id ?? null;
+    if (!(await subcategoryBelongsToCategory(nextCategoryId, currentSub))) {
+      normalized.subcategory_id = null;
+    }
+  }
+  const nextSubcategoryId =
+    "subcategory_id" in normalized
+      ? (normalized.subcategory_id as string | null)
+      : ((before as { subcategory_id?: string | null }).subcategory_id ?? null);
+  if (!(await subcategoryBelongsToCategory(nextCategoryId, nextSubcategoryId))) {
+    return fail("Subcategory must belong to the selected category");
   }
   for (const key of ALLOWED_FIELDS) {
     if (key in normalized) {

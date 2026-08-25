@@ -22,7 +22,9 @@ export async function saveUploadedImage(input: {
     input.forceExt ||
     (input.file.type === "image/png"
       ? "png"
-      : input.file.type === "image/webp"
+      : input.file.type === "image/svg+xml"
+        ? "svg"
+        : input.file.type === "image/webp"
         ? "webp"
         : input.file.type === "image/gif"
           ? "gif"

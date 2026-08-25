@@ -1,10 +1,11 @@
 import { NextRequest } from "next/server";
 import { fail, ok, requirePermission, writeAuditLog } from "../../../../../lib/auth/api";
 import { queryOne } from "../../../../../lib/db/pool";
+import { mergeCategoryNameI18n } from "../../../../../lib/i18n/category-names";
 
 type Params = { params: Promise<{ id: string }> };
 
-const ALLOWED_FIELDS = ["name", "slug", "description", "image_path", "sort_order"] as const;
+const ALLOWED_FIELDS = ["name", "slug", "description", "image_path", "sort_order", "name_i18n"] as const;
 
 export async function PATCH(request: NextRequest, { params }: Params) {
   const { error, ctx } = await requirePermission(request, "categories:manage");
@@ -21,7 +22,18 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const values: unknown[] = [];
   for (const key of ALLOWED_FIELDS) {
     if (key in body) {
-      values.push(body[key]);
+      let value = body[key];
+      if (key === "name_i18n") {
+        const nameI18n = mergeCategoryNameI18n({
+          slug: typeof body.slug === "string" ? body.slug : (before as { slug?: string }).slug,
+          name: typeof body.name === "string" ? body.name : (before as { name?: string }).name,
+          nameI18n: value
+        });
+        updates.push(`${key} = $${values.length + 1}::jsonb`);
+        values.push(JSON.stringify(nameI18n));
+        continue;
+      }
+      values.push(value);
       updates.push(`${key} = $${values.length}`);
     }
   }

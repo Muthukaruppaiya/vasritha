@@ -30,6 +30,10 @@ type InventoryData = {
     product_id: string;
     product_name: string;
     product_status: string;
+    category_id: string | null;
+    subcategory_id: string | null;
+    category_name: string | null;
+    subcategory_name: string | null;
   }>;
 };
 
@@ -50,7 +54,15 @@ const blankInward = () => ({
 });
 
 export default function AdminInventoryPage() {
-  const { data, error, loading, reload } = useAdminQuery<InventoryData>("/api/admin/inventory");
+  const { data: categories } = useAdminQuery<
+    Array<{
+      id: string;
+      name: string;
+      subcategories?: Array<{ id: string; name: string }>;
+    }>
+  >("/api/admin/categories");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [subcategoryFilter, setSubcategoryFilter] = useState("");
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [inwardOpen, setInwardOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -58,7 +70,12 @@ export default function AdminInventoryPage() {
   const [adjust, setAdjust] = useState(blankAdjust);
   const [inward, setInward] = useState(blankInward);
 
-  const stockOptions = useMemo(() => data?.stock || [], [data?.stock]);
+  const stockOptions = useMemo(() => {
+    let list = data?.stock || [];
+    if (categoryFilter) list = list.filter((row) => row.category_id === categoryFilter);
+    if (subcategoryFilter) list = list.filter((row) => row.subcategory_id === subcategoryFilter);
+    return list;
+  }, [data?.stock, categoryFilter, subcategoryFilter]);
 
   const openAdjust = () => {
     setAdjust(blankAdjust());
@@ -151,6 +168,42 @@ export default function AdminInventoryPage() {
       <AdminPanel title="Current stock">
         {loading && <AdminLoading />}
         {error && <AdminAlert>{error}</AdminAlert>}
+        <div className="admin-filter-row" style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+          <label>
+            <span>Category</span>
+            <select
+              value={categoryFilter}
+              onChange={(e) => {
+                setCategoryFilter(e.target.value);
+                setSubcategoryFilter("");
+              }}
+            >
+              <option value="">All categories</option>
+              {(categories || []).map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Subcategory</span>
+            <select
+              value={subcategoryFilter}
+              onChange={(e) => setSubcategoryFilter(e.target.value)}
+              disabled={!categoryFilter}
+            >
+              <option value="">All subcategories</option>
+              {((categories || []).find((c) => c.id === categoryFilter)?.subcategories || []).map(
+                (item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                )
+              )}
+            </select>
+          </label>
+        </div>
         {!loading && !stockOptions.length && (
           <AdminEmpty
             title="No variants yet"
@@ -163,6 +216,8 @@ export default function AdminInventoryPage() {
               <thead>
                 <tr>
                   <th>Product</th>
+                  <th>Category</th>
+                  <th>Subcategory</th>
                   <th>SKU</th>
                   <th>Variant</th>
                   <th>Stock</th>
@@ -175,6 +230,8 @@ export default function AdminInventoryPage() {
                     <td>
                       <b>{row.product_name}</b>
                     </td>
+                    <td>{row.category_name || "—"}</td>
+                    <td>{row.subcategory_name || "—"}</td>
                     <td>{row.sku || "—"}</td>
                     <td>{row.variant_name || "Default"}</td>
                     <td>{row.stock_quantity}</td>
@@ -289,7 +346,9 @@ export default function AdminInventoryPage() {
                 <option value="">Select SKU / variant</option>
                 {stockOptions.map((row) => (
                   <option key={row.variant_id} value={row.variant_id}>
-                    {row.product_name} · {row.sku || "no-sku"} · on hand {row.stock_quantity}
+                    {row.product_name} · {row.category_name || "—"}
+                    {row.subcategory_name ? ` / ${row.subcategory_name}` : ""} · {row.sku || "no-sku"} · on hand{" "}
+                    {row.stock_quantity}
                   </option>
                 ))}
               </select>
@@ -347,7 +406,9 @@ export default function AdminInventoryPage() {
             <option value="">Select variant</option>
             {stockOptions.map((row) => (
               <option key={row.variant_id} value={row.variant_id}>
-                {row.product_name} · {row.sku || "no-sku"} · qty {row.stock_quantity}
+                {row.product_name} · {row.category_name || "—"}
+                {row.subcategory_name ? ` / ${row.subcategory_name}` : ""} · {row.sku || "no-sku"} · qty{" "}
+                {row.stock_quantity}
               </option>
             ))}
           </select>

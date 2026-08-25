@@ -3,7 +3,7 @@ import { fail, ok, requirePermission, writeAuditLog } from "../../../../../lib/a
 import { saveUploadedImage } from "../../../../../lib/admin-upload";
 import { queryOne } from "../../../../../lib/db/pool";
 
-const HEADER_PNG = new Set(["image/png"]);
+const HEADER_LOGO = new Set(["image/svg+xml"]);
 const GENERAL = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 export async function POST(request: NextRequest) {
@@ -26,12 +26,12 @@ export async function POST(request: NextRequest) {
   const saved = await saveUploadedImage({
     folder: kind === "header" ? "branding/header" : "branding/logo",
     file,
-    allowedTypes: kind === "header" ? HEADER_PNG : GENERAL,
-    forceExt: kind === "header" ? "png" : undefined
+    allowedTypes: kind === "header" ? HEADER_LOGO : GENERAL,
+    forceExt: kind === "header" ? "svg" : undefined
   });
   if ("error" in saved) {
     return fail(
-      kind === "header" ? "Header logo must be a PNG file" : saved.error,
+      kind === "header" ? "Header logo must be an SVG file" : saved.error,
       400
     );
   }

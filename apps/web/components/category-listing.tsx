@@ -12,15 +12,18 @@ type SortKey = "featured" | "price-asc" | "price-desc" | "name";
 
 export function CategoryListing({
   category,
-  products
+  products,
+  activeSubcategorySlug = null
 }: {
   category: StoreCategory;
   products: StoreProduct[];
+  activeSubcategorySlug?: string | null;
 }) {
   const t = useT();
   const { locale } = useLocale();
-  const categoryName = localizeCategoryName(category.slug, locale, category.name);
-  const [activeType, setActiveType] = useState<string>("all");
+  const categoryName = localizeCategoryName(category.slug, locale, category.name, category.nameI18n);
+  const activeChild = category.subcategories.find((item) => item.slug === activeSubcategorySlug);
+  const heading = activeChild?.name || categoryName;
   const [sort, setSort] = useState<SortKey>("featured");
   const [otherCategories, setOtherCategories] = useState<StoreCategory[]>([]);
 
@@ -40,6 +43,8 @@ export function CategoryListing({
           slug: string;
           description?: string;
           image_path?: string | null;
+          name_i18n?: Record<string, string>;
+          subcategories?: StoreCategory["subcategories"];
         }>;
         setOtherCategories(
           rows
@@ -51,8 +56,9 @@ export function CategoryListing({
               description: row.description || "",
               sort_order: 0,
               image: row.image_path || FALLBACK[row.slug] || "/hero-silk.png",
-              subcategories: [],
-              lines: [row.name]
+              subcategories: row.subcategories || [],
+              lines: [row.name],
+              nameI18n: row.name_i18n || {}
             }))
         );
       })
@@ -60,25 +66,14 @@ export function CategoryListing({
   }, [category.slug]);
 
   const shown = useMemo(() => {
-    const filtered =
-      activeType === "all"
-        ? products
-        : products.filter((product) => product.type === activeType);
-
-    const next = [...filtered];
+    const next = [...products];
     if (sort === "price-asc") next.sort((a, b) => a.priceValue - b.priceValue);
     if (sort === "price-desc") next.sort((a, b) => b.priceValue - a.priceValue);
     if (sort === "name") next.sort((a, b) => a.name.localeCompare(b.name));
     return next;
-  }, [activeType, products, sort]);
+  }, [products, sort]);
 
-  const chips = [
-    { id: "all", label: t("listing.all") },
-    ...category.subcategories.map((item) => ({
-      id: item,
-      label: item.replace(/ Sarees$/i, "").replace(/ Items$/i, "")
-    }))
-  ];
+  const hasChildren = category.subcategories.length > 0;
 
   return (
     <>
@@ -91,33 +86,52 @@ export function CategoryListing({
           <nav className="breadcrumbs" aria-label="Breadcrumb">
             <Link href="/">{t("common.home")}</Link>
             <span>/</span>
-            <span>{categoryName}</span>
+            {activeChild ? (
+              <>
+                <Link href={`/${category.slug}`}>{categoryName}</Link>
+                <span>/</span>
+                <span>{activeChild.name}</span>
+              </>
+            ) : (
+              <span>{categoryName}</span>
+            )}
           </nav>
           <div className="eyebrow">{t("listing.boutiqueEdit")}</div>
-          <h1>{categoryName}</h1>
+          <h1>{heading}</h1>
           <p>{category.description}</p>
         </div>
       </section>
 
       <section className="shell listing-page">
         <div className="listing-filters" data-reveal>
-          <div className="listing-chips" role="tablist" aria-label={`${categoryName} filters`}>
-            {chips.map((chip) => {
-              const isActive = activeType === chip.id;
-              return (
-                <button
-                  key={chip.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={isActive}
-                  className={`listing-chip${isActive ? " is-active" : ""}`}
-                  onClick={() => setActiveType(chip.id)}
-                >
-                  {chip.label}
-                </button>
-              );
-            })}
-          </div>
+          {hasChildren ? (
+            <div className="listing-chips" role="tablist" aria-label={`${categoryName} filters`}>
+              <Link
+                href={`/${category.slug}`}
+                role="tab"
+                aria-selected={!activeChild}
+                className={`listing-chip${!activeChild ? " is-active" : ""}`}
+              >
+                {t("listing.all")}
+              </Link>
+              {category.subcategories.map((item) => {
+                const isActive = activeSubcategorySlug === item.slug;
+                return (
+                  <Link
+                    key={item.slug}
+                    href={`/${category.slug}/${item.slug}`}
+                    role="tab"
+                    aria-selected={isActive}
+                    className={`listing-chip${isActive ? " is-active" : ""}`}
+                  >
+                    {item.name.replace(/ Sarees$/i, "").replace(/ Items$/i, "")}
+                  </Link>
+                );
+              })}
+            </div>
+          ) : (
+            <div />
+          )}
 
           <label className="listing-sort">
             <span className="listing-sort-label">{t("listing.sortBy")}</span>
@@ -160,7 +174,7 @@ export function CategoryListing({
                 data-reveal-delay={String(index + 1)}
               >
                 <Image src={item.image} alt="" fill sizes="(max-width:800px) 45vw, 20vw" />
-                <span>{localizeCategoryName(item.slug, locale, item.name)}</span>
+                <span>{localizeCategoryName(item.slug, locale, item.name, item.nameI18n)}</span>
               </Link>
             ))}
           </div>

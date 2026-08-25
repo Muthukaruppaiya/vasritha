@@ -27,9 +27,15 @@ export async function GET(request: NextRequest) {
          pv.stock_quantity,
          p.id as product_id,
          p.name as product_name,
-         p.status as product_status
+         p.status as product_status,
+         p.category_id,
+         p.subcategory_id,
+         c.name as category_name,
+         sc.name as subcategory_name
        from product_variants pv
        join products p on p.id = pv.product_id
+       left join categories c on c.id = p.category_id
+       left join subcategories sc on sc.id = p.subcategory_id
        where (
          $1::text = ''
          or p.name ilike '%' || $1 || '%'

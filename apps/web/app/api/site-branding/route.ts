@@ -1,6 +1,13 @@
 import { cachedOk } from "../../../lib/auth/api";
 import { queryOne } from "../../../lib/db/pool";
 
+const GOLD_LOGO = "/vasritha-logo.png";
+
+function customUpload(path: string | null | undefined) {
+  if (path && path.startsWith("/uploads/")) return path;
+  return null;
+}
+
 export async function GET() {
   const data = await queryOne<{
     site_name: string | null;
@@ -14,7 +21,7 @@ export async function GET() {
 
   return cachedOk({
     siteName: data?.site_name || "Vasritha",
-    logoPath: data?.logo_path || "/vasritha-logo.svg",
-    headerLogoPath: data?.header_logo_path || data?.logo_path || "/vasritha-logo-header.png"
+    logoPath: customUpload(data?.logo_path) || GOLD_LOGO,
+    headerLogoPath: customUpload(data?.header_logo_path) || GOLD_LOGO
   });
 }

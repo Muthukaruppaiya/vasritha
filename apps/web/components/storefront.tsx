@@ -10,7 +10,7 @@ import { localizeCategoryName, localizeProductFields } from "../lib/i18n/catalog
 
 export { Header } from "./site-header";
 
-type NavCategory = { name: string; slug: string };
+type NavCategory = { name: string; slug: string; nameI18n?: Record<string, string> };
 type NavCollection = { name: string; slug: string };
 
 export function Footer({
@@ -38,8 +38,15 @@ export function Footer({
     fetch("/api/categories")
       .then((res) => res.json())
       .then((payload) => {
-        const cats = (payload?.data || []) as NavCategory[];
-        setCategories(cats);
+        const cats = (payload?.data || []) as Array<
+          NavCategory & { name_i18n?: Record<string, string> }
+        >;
+        setCategories(
+          cats.map((category) => ({
+            ...category,
+            nameI18n: category.nameI18n || category.name_i18n
+          }))
+        );
       })
       .catch(() => setCategories([]));
   }, [initialCategories]);
@@ -71,7 +78,7 @@ export function Footer({
           <Link href="/collections">{t("common.allCollections")}</Link>
                   {categories.map((category) => (
                     <Link key={category.slug} href={`/${category.slug}`}>
-                      {localizeCategoryName(category.slug, locale, category.name)}
+                      {localizeCategoryName(category.slug, locale, category.name, category.nameI18n)}
                     </Link>
                   ))}
           <Link href="/checkout">{t("common.offers")}</Link>

@@ -7,7 +7,12 @@ import { AdminAlert, slugify } from "./admin-ui";
 import { adminFetch, getAdminToken } from "../../lib/admin-api";
 import { printProductStickers } from "../../lib/print-stickers";
 
-export type ProductFormCategory = { id: string; name: string; slug: string };
+export type ProductFormCategory = {
+  id: string;
+  name: string;
+  slug: string;
+  subcategories?: Array<{ id: string; name: string; slug: string }>;
+};
 
 export type ProductFormImage = {
   id?: string;
@@ -29,6 +34,7 @@ export type ProductFormValues = {
   label_size: "accessory" | "dress";
   image_upload_token?: string;
   category_id: string;
+  subcategory_id: string;
   price: string;
   compare_at_price: string;
   stock_quantity: string;
@@ -274,6 +280,7 @@ export function ProductFormModal({
       sku_prefix: (form.sku_prefix || "VAS").toUpperCase(),
       label_size: form.label_size,
       category_id: form.category_id,
+      subcategory_id: form.subcategory_id || null,
       price: Number(form.price),
       compare_at_price: form.compare_at_price ? Number(form.compare_at_price) : null,
       stock_quantity: Number(form.stock_quantity || 0),
@@ -489,7 +496,9 @@ export function ProductFormModal({
               <select
                 required
                 value={form.category_id}
-                onChange={(e) => setForm((f) => ({ ...f, category_id: e.target.value }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, category_id: e.target.value, subcategory_id: "" }))
+                }
               >
                 <option value="">Select category</option>
                 {categories.map((c) => (
@@ -498,6 +507,22 @@ export function ProductFormModal({
                   </option>
                 ))}
               </select>
+            </label>
+
+            <label>
+              <span>Subcategory</span>
+              <select
+                value={form.subcategory_id}
+                onChange={(e) => setForm((f) => ({ ...f, subcategory_id: e.target.value }))}
+              >
+                <option value="">None</option>
+                {(categories.find((c) => c.id === form.category_id)?.subcategories || []).map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                ))}
+              </select>
+              <small className="admin-field-hint">Child of the selected category. Used in inventory too.</small>
             </label>
 
             <label>
@@ -754,6 +779,7 @@ export function blankProductForm(categoryId = ""): ProductFormValues {
     sku_prefix: "VAS",
     label_size: "dress",
     category_id: categoryId,
+    subcategory_id: "",
     price: "",
     compare_at_price: "",
     stock_quantity: "0",

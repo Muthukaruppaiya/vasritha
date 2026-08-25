@@ -6,7 +6,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CreditCard, Landmark, Smartphone } from "lucide-react";
 import { Footer, Header } from "../../../components/storefront";
-import { getCustomerSession, isLoggedIn } from "../../../lib/customer-session";
+import { getAppliedCoupon, clearAppliedCoupon } from "../../../lib/applied-coupon";
 import {
   buildOrderLines,
   finalizeLocalOrder,
@@ -110,7 +110,8 @@ function PaymentContent() {
           productId: item.productId,
           variantId: item.variantId || undefined,
           quantity: item.quantity
-        }))
+        })),
+        couponCode: getAppliedCoupon()?.code
       }
     });
 
@@ -179,6 +180,7 @@ function PaymentContent() {
     };
 
     finalizeLocalOrder(placed, pendingOrder.fromCart);
+    clearAppliedCoupon();
     router.replace(`/checkout/confirmation?order=${encodeURIComponent(placed.orderNumber)}`);
   };
 

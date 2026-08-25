@@ -1,12 +1,30 @@
 import { NextRequest } from "next/server";
 import { fail, ok, requirePermission, writeAuditLog } from "../../../../lib/auth/api";
 import { query, queryOne } from "../../../../lib/db/pool";
+import { mergeCategoryNameI18n } from "../../../../lib/i18n/category-names";
 
 export async function GET() {
   const data = await query(
-    `select id, name, slug, description, image_path, sort_order, created_at
-     from categories
-     order by sort_order asc`
+    `select
+       c.id, c.name, c.slug, c.description, c.image_path, c.sort_order, c.name_i18n, c.created_at,
+       coalesce(
+         (
+           select json_agg(
+             json_build_object(
+               'id', s.id,
+               'name', s.name,
+               'slug', s.slug,
+               'sort_order', s.sort_order
+             )
+             order by s.sort_order asc, s.name asc
+           )
+           from subcategories s
+           where s.category_id = c.id
+         ),
+         '[]'::json
+       ) as subcategories
+     from categories c
+     order by c.sort_order asc`
   );
   return ok(data);
 }
@@ -21,15 +39,29 @@ export async function POST(request: NextRequest) {
     description?: string;
     sort_order?: number;
     image_path?: string | null;
+    name_i18n?: unknown;
   } | null;
 
   if (!body?.name || !body?.slug) return fail("name and slug are required");
 
+  const nameI18n = mergeCategoryNameI18n({
+    slug: body.slug,
+    name: body.name,
+    nameI18n: body.name_i18n
+  });
+
   const data = await queryOne(
-    `insert into categories (name, slug, description, image_path, sort_order)
-     values ($1, $2, $3, $4, $5)
+    `insert into categories (name, slug, description, image_path, sort_order, name_i18n)
+     values ($1, $2, $3, $4, $5, $6::jsonb)
      returning *`,
-    [body.name, body.slug, body.description ?? null, body.image_path ?? null, body.sort_order ?? 0]
+    [
+      body.name,
+      body.slug,
+      body.description ?? null,
+      body.image_path ?? null,
+      body.sort_order ?? 0,
+      JSON.stringify(nameI18n)
+    ]
   );
 
   await writeAuditLog({

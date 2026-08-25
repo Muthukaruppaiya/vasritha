@@ -4,8 +4,11 @@ import { en } from "./messages/en";
 import { ta } from "./messages/ta";
 import { ml } from "./messages/ml";
 import { kn } from "./messages/kn";
+import { hi } from "./messages/hi";
+import { pa } from "./messages/pa";
+import { gu } from "./messages/gu";
 
-const dictionaries: Record<Locale, Messages> = { en, ta, ml, kn };
+const dictionaries: Record<Locale, Messages> = { en, ta, ml, kn, hi, pa, gu };
 
 export type MessageKey = LeavePaths<Messages>;
 

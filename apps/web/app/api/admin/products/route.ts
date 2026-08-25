@@ -1,11 +1,7 @@
 import { NextRequest } from "next/server";
 import { fail, ok, requirePermission, writeAuditLog } from "../../../../lib/auth/api";
 import { query, queryOne } from "../../../../lib/db/pool";
-import {
-  createUnitsAndSync,
-  ensureProductUnitsSchema,
-  recordPriceHistory
-} from "../../../../lib/product-units";
+import { emptyToNull, subcategoryBelongsToCategory } from "../../../../lib/db/taxonomy";
 
 async function upsertDefaultVariant(input: {
   productId: string;
@@ -57,6 +53,7 @@ export async function GET(request: NextRequest) {
        p.price, p.compare_at_price, p.status, p.stock_quantity, p.is_featured,
        p.category_id, p.subcategory_id, p.created_at, p.updated_at,
        c.name as category_name,
+       sc.name as subcategory_name,
        img.storage_path as primary_image,
        (
          select count(*)::int from product_items pi_count
@@ -64,6 +61,7 @@ export async function GET(request: NextRequest) {
        ) as unit_count
      from products p
      left join categories c on c.id = p.category_id
+     left join subcategories sc on sc.id = p.subcategory_id
      left join lateral (
        select pi.storage_path
        from product_images pi
@@ -100,6 +98,10 @@ export async function POST(request: NextRequest) {
   const familyBarcode = sku.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 16);
   const tag = (body.tag ? String(body.tag).trim() : "") || sku;
   const labelSize = body.label_size === "accessory" ? "accessory" : "dress";
+  const subcategoryId = emptyToNull(body.subcategory_id);
+  if (!(await subcategoryBelongsToCategory(String(body.category_id), subcategoryId))) {
+    return fail("Subcategory must belong to the selected category");
+  }
   const stock = body.stock_quantity != null ? Math.max(0, Math.trunc(Number(body.stock_quantity))) : 0;
 
   const data = await queryOne<{
@@ -122,7 +124,7 @@ export async function POST(request: NextRequest) {
       skuPrefix,
       labelSize,
       String(body.category_id),
-      body.subcategory_id ? String(body.subcategory_id) : null,
+      subcategoryId,
       body.short_name ? String(body.short_name).trim() : "",
       body.short_description ? String(body.short_description) : "",
       body.color ? String(body.color).trim() : "",

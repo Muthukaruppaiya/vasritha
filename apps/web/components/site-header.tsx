@@ -6,7 +6,8 @@ import { useEffect, useState } from "react";
 import { CART_EVENT, getCartCount } from "../lib/cart";
 import { CUSTOMER_AUTH_EVENT } from "../lib/customer-auth-event";
 import { isLoggedIn } from "../lib/customer-session";
-import { useT } from "../lib/i18n/provider";
+import { useLocale, useT } from "../lib/i18n/provider";
+import { localizeOfferMessage } from "../lib/i18n/cms-local";
 import { CartBagIcon, LoginIcon } from "./icons";
 import { LanguageSwitcher } from "./language-switcher";
 import { NavigationBar } from "./navigation-bar";
@@ -14,13 +15,19 @@ import { NavigationBar } from "./navigation-bar";
 export function Header({
   categories
 }: {
-  categories?: Array<{ slug: string; name: string; description?: string }>;
+  categories?: Array<{
+    slug: string;
+    name: string;
+    description?: string;
+    nameI18n?: Record<string, string>;
+  }>;
 } = {}) {
   const t = useT();
+  const { locale } = useLocale();
   const [scrolled, setScrolled] = useState(false);
   const [bagCount, setBagCount] = useState(0);
   const [loggedIn, setLoggedIn] = useState(false);
-  const [headerLogo, setHeaderLogo] = useState("/vasritha-logo-header.png");
+  const [headerLogo, setHeaderLogo] = useState("/vasritha-logo.png");
   const [offerMessages, setOfferMessages] = useState<string[] | null>(null);
 
   useEffect(() => {
@@ -73,7 +80,9 @@ export function Header({
   }, []);
 
   const fallbackOffers = [t("offers.firstOrder"), t("offers.freeShipping"), t("offers.jewelryOffer")];
-  const offers = offerMessages?.length ? offerMessages : fallbackOffers;
+  const offers = (offerMessages?.length ? offerMessages : fallbackOffers).map((message) =>
+    localizeOfferMessage(locale, message)
+  );
 
   return (
     <div className={`site-header ${scrolled ? "is-scrolled" : ""}`}>

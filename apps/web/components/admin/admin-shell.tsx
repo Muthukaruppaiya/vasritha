@@ -101,7 +101,7 @@ const navModules: NavModule[] = [
       { label: "Online Orders", href: "/admin/orders", icon: ShoppingBag },
       { label: "Store POS", href: "/admin/billing", icon: Receipt },
       { label: "Returns", href: "/admin/returns", icon: RotateCcw },
-      { label: "Coupons", href: "/admin/coupons", icon: TicketPercent }
+      { label: "Gift vouchers", href: "/admin/coupons", icon: TicketPercent }
     ]
   },
   {

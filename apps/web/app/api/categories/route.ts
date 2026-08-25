@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
 
   if (slug) {
     const data = await queryOne(
-      `select id, name, slug, description, image_path, sort_order from categories where slug = $1`,
+      `select id, name, slug, description, image_path, sort_order, name_i18n from categories where slug = $1`,
       [slug]
     );
     if (!data) return fail("Category not found", 404);
@@ -18,10 +18,22 @@ export async function GET(request: NextRequest) {
 
   const filterSlug = category ?? null;
   const data = await query(
-    `select id, name, slug, description, image_path, sort_order
-     from categories
-     where ($1::text is null or slug = $1)
-     order by sort_order asc`,
+    `select
+       c.id, c.name, c.slug, c.description, c.image_path, c.sort_order, c.name_i18n,
+       coalesce(
+         (
+           select json_agg(
+             json_build_object('id', s.id, 'name', s.name, 'slug', s.slug, 'sort_order', s.sort_order)
+             order by s.sort_order asc, s.name asc
+           )
+           from subcategories s
+           where s.category_id = c.id
+         ),
+         '[]'::json
+       ) as subcategories
+     from categories c
+     where ($1::text is null or c.slug = $1)
+     order by c.sort_order asc`,
     [filterSlug]
   );
   return cachedOk(data);

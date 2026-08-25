@@ -5,7 +5,8 @@ import Link from "next/link";
 import { X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { useT } from "../lib/i18n/provider";
+import { useLocale, useT } from "../lib/i18n/provider";
+import { localizeStatusLabel } from "../lib/i18n/cms-local";
 import type { MessageKey } from "../lib/i18n/translate";
 
 const STORY_MS = 5200;
@@ -22,6 +23,7 @@ const STATUS_DEFS: Array<{ labelKey: MessageKey; image: string; href: string }> 
 
 export function ArrivalStatusBar() {
   const t = useT();
+  const { locale } = useLocale();
   const fallbackStatuses = useMemo(
     () =>
       STATUS_DEFS.map((item) => ({
@@ -49,7 +51,10 @@ export function ArrivalStatusBar() {
       .catch(() => undefined);
   }, []);
 
-  const statuses = configured?.length ? configured : fallbackStatuses;
+  const statuses = (configured?.length ? configured : fallbackStatuses).map((status) => ({
+    ...status,
+    label: localizeStatusLabel(locale, status.label)
+  }));
 
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [progress, setProgress] = useState(0);

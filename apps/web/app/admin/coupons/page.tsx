@@ -18,12 +18,15 @@ type Coupon = {
   id: string;
   code: string;
   description: string | null;
+  headline: string | null;
   discount_type: string;
   discount_value: string;
   min_order_amount: string;
   max_discount_amount: string | null;
   usage_limit: number | null;
   status: string;
+  kind: string;
+  show_on_open: boolean;
   starts_at: string | null;
   ends_at: string | null;
   created_at: string;
@@ -31,13 +34,16 @@ type Coupon = {
 
 const blankForm = () => ({
   code: "",
+  headline: "",
   description: "",
   discount_type: "percentage",
   discount_value: "",
   min_order_amount: "0",
   max_discount_amount: "",
   usage_limit: "",
-  status: "active"
+  status: "active",
+  kind: "gift_voucher",
+  show_on_open: true
 });
 
 export default function AdminCouponsPage() {
@@ -53,6 +59,14 @@ export default function AdminCouponsPage() {
     setModalOpen(true);
   };
 
+  const toggleOpening = async (coupon: Coupon) => {
+    await adminFetch(`/api/admin/coupons/${coupon.id}`, {
+      method: "PATCH",
+      json: { show_on_open: !coupon.show_on_open }
+    });
+    await reload();
+  };
+
   const onCreate = async (event: FormEvent) => {
     event.preventDefault();
     setSaving(true);
@@ -61,13 +75,16 @@ export default function AdminCouponsPage() {
       method: "POST",
       json: {
         code: form.code,
+        headline: form.headline || null,
         description: form.description || null,
         discount_type: form.discount_type,
         discount_value: Number(form.discount_value),
         min_order_amount: Number(form.min_order_amount || 0),
         max_discount_amount: form.max_discount_amount ? Number(form.max_discount_amount) : null,
         usage_limit: form.usage_limit ? Number(form.usage_limit) : null,
-        status: form.status
+        status: form.status,
+        kind: form.kind,
+        show_on_open: form.show_on_open
       }
     });
     setSaving(false);
@@ -84,15 +101,15 @@ export default function AdminCouponsPage() {
     <>
       <AdminPageHeader
         eyebrow=""
-        title="Coupons"
+        title="Coupons & gift vouchers"
         actions={
           <button type="button" className="btn" onClick={openCreate}>
-            + New coupon
+            + New gift voucher
           </button>
         }
       />
 
-      <AdminPanel title="Active promotions">
+      <AdminPanel title="Promotions">
         {loading && <AdminLoading />}
         {error && <AdminAlert>{error}</AdminAlert>}
         {!loading && !(data || []).length && <AdminEmpty title="No coupons yet" />}
@@ -102,11 +119,13 @@ export default function AdminCouponsPage() {
               <thead>
                 <tr>
                   <th>Code</th>
+                  <th>Type</th>
                   <th>Discount</th>
+                  <th>Opening notice</th>
                   <th>Min order</th>
-                  <th>Limit</th>
                   <th>Status</th>
                   <th>Created</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -114,19 +133,25 @@ export default function AdminCouponsPage() {
                   <tr key={coupon.id}>
                     <td>
                       <b>{coupon.code}</b>
-                      <div className="muted admin-sub">{coupon.description || "—"}</div>
+                      <div className="muted admin-sub">{coupon.headline || coupon.description || "—"}</div>
                     </td>
+                    <td>{coupon.kind === "gift_voucher" ? "Gift voucher" : "Coupon"}</td>
                     <td>
                       {coupon.discount_type === "percentage"
                         ? `${coupon.discount_value}%`
                         : formatMoney(coupon.discount_value)}
                     </td>
+                    <td>{coupon.show_on_open ? "Yes" : "No"}</td>
                     <td>{formatMoney(coupon.min_order_amount)}</td>
-                    <td>{coupon.usage_limit ?? "∞"}</td>
                     <td>
                       <AdminBadge tone={statusTone(coupon.status)}>{coupon.status}</AdminBadge>
                     </td>
                     <td>{formatDate(coupon.created_at)}</td>
+                    <td>
+                      <button type="button" className="btn ghost" onClick={() => toggleOpening(coupon)}>
+                        {coupon.show_on_open ? "Hide opening" : "Show on open"}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -137,9 +162,9 @@ export default function AdminCouponsPage() {
 
       <AdminFormModal
         open={modalOpen}
-        title="Add coupon"
+        title="Add gift voucher / coupon"
         eyebrow="Promotions"
-        submitLabel="Create coupon"
+        submitLabel="Create"
         savingLabel="Creating…"
         saving={saving}
         error={formError}
@@ -156,6 +181,40 @@ export default function AdminCouponsPage() {
         </label>
         <label>
           <span>Type</span>
+          <select
+            value={form.kind}
+            onChange={(e) =>
+              setForm((f) => ({
+                ...f,
+                kind: e.target.value,
+                show_on_open: e.target.value === "gift_voucher" ? true : f.show_on_open
+              }))
+            }
+          >
+            <option value="gift_voucher">Gift voucher (opening notice)</option>
+            <option value="coupon">Checkout coupon only</option>
+          </select>
+        </label>
+        <label>
+          <span>Show when website opens</span>
+          <select
+            value={form.show_on_open ? "yes" : "no"}
+            onChange={(e) => setForm((f) => ({ ...f, show_on_open: e.target.value === "yes" }))}
+          >
+            <option value="yes">Yes — popup on visit</option>
+            <option value="no">No</option>
+          </select>
+        </label>
+        <label className="admin-span-2">
+          <span>Headline</span>
+          <input
+            value={form.headline}
+            placeholder="Festive gift voucher"
+            onChange={(e) => setForm((f) => ({ ...f, headline: e.target.value }))}
+          />
+        </label>
+        <label>
+          <span>Discount type</span>
           <select
             value={form.discount_type}
             onChange={(e) => setForm((f) => ({ ...f, discount_type: e.target.value }))}

@@ -12,10 +12,17 @@ function isActivePath(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+type NavCategory = {
+  slug: string;
+  name: string;
+  description?: string;
+  nameI18n?: Record<string, string>;
+};
+
 export function NavigationBar({
   categories
 }: {
-  categories?: Array<{ slug: string; name: string; description?: string }>;
+  categories?: NavCategory[];
 } = {}) {
   const t = useT();
   const { locale } = useLocale();
@@ -24,13 +31,16 @@ export function NavigationBar({
   const titleId = useId();
   const [brandLogo, setBrandLogo] = useState("/vasritha-logo.png");
   const [whatsappHref, setWhatsappHref] = useState<string | null>(null);
-  const [shopLinks, setShopLinks] = useState<Array<{ href: string; label: string; hint: string; slug: string }>>(
+  const [shopLinks, setShopLinks] = useState<
+    Array<{ href: string; label: string; hint: string; slug: string; nameI18n?: Record<string, string> }>
+  >(
     () =>
       (categories || []).map((category) => ({
         href: `/${category.slug}`,
         slug: category.slug,
         label: category.name,
-        hint: category.description || ""
+        hint: category.description || "",
+        nameI18n: category.nameI18n
       }))
   );
 
@@ -59,7 +69,8 @@ export function NavigationBar({
           href: `/${category.slug}`,
           slug: category.slug,
           label: category.name,
-          hint: category.description || ""
+          hint: category.description || "",
+          nameI18n: category.nameI18n
         }))
       );
       return;
@@ -68,13 +79,19 @@ export function NavigationBar({
     fetch("/api/categories")
       .then((res) => res.json())
       .then((payload) => {
-        const rows = (payload?.data || []) as Array<{ slug: string; name: string; description?: string }>;
+        const rows = (payload?.data || []) as Array<{
+          slug: string;
+          name: string;
+          description?: string;
+          name_i18n?: Record<string, string>;
+        }>;
         setShopLinks(
           rows.map((category) => ({
             href: `/${category.slug}`,
             slug: category.slug,
             label: category.name,
-            hint: category.description || ""
+            hint: category.description || "",
+            nameI18n: category.name_i18n
           }))
         );
       })
@@ -114,7 +131,7 @@ export function NavigationBar({
     () =>
       shopLinks.map((link) => ({
         ...link,
-        label: localizeCategoryName(link.slug, locale, link.label)
+        label: localizeCategoryName(link.slug, locale, link.label, link.nameI18n)
       })),
     [shopLinks, locale]
   );

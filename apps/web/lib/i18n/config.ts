@@ -1,4 +1,4 @@
-export const LOCALES = ["en", "ta", "ml", "kn"] as const;
+export const LOCALES = ["en", "ta", "ml", "kn", "hi", "pa", "gu"] as const;
 
 export type Locale = (typeof LOCALES)[number];
 
@@ -13,7 +13,10 @@ export const LOCALE_META: Record<
   en: { label: "English", nativeLabel: "English", htmlLang: "en" },
   ta: { label: "Tamil", nativeLabel: "தமிழ்", htmlLang: "ta" },
   ml: { label: "Malayalam", nativeLabel: "മലയാളം", htmlLang: "ml" },
-  kn: { label: "Kannada", nativeLabel: "ಕನ್ನಡ", htmlLang: "kn" }
+  kn: { label: "Kannada", nativeLabel: "ಕನ್ನಡ", htmlLang: "kn" },
+  hi: { label: "Hindi", nativeLabel: "हिन्दी", htmlLang: "hi" },
+  pa: { label: "Punjabi", nativeLabel: "ਪੰਜਾਬੀ", htmlLang: "pa" },
+  gu: { label: "Gujarati", nativeLabel: "ગુજરાતી", htmlLang: "gu" }
 };
 
 export function isLocale(value: string | null | undefined): value is Locale {

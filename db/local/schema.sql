@@ -67,6 +67,7 @@ create table if not exists public.categories (
   description text,
   image_path text,
   sort_order integer not null default 0,
+  name_i18n jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
 
@@ -267,6 +268,9 @@ create table if not exists public.coupons (
   starts_at timestamptz,
   ends_at timestamptz,
   status text not null default 'active',
+  kind text not null default 'coupon',
+  show_on_open boolean not null default false,
+  headline text,
   created_at timestamptz not null default now()
 );
 

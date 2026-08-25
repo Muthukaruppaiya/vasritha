@@ -5,7 +5,7 @@ type BrandSplashProps = {
 };
 
 export function BrandSplash({
-  logoSrc = "/vasritha-logo-header.png",
+  logoSrc = "/vasritha-logo.png",
   label = "Loading",
   compact = false
 }: BrandSplashProps) {

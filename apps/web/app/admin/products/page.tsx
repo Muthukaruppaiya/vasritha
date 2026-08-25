@@ -38,7 +38,9 @@ type Product = {
   status: string;
   stock_quantity: number;
   category_id: string;
+  subcategory_id?: string | null;
   category_name?: string | null;
+  subcategory_name?: string | null;
   primary_image?: string | null;
   short_description?: string;
   short_name?: string;
@@ -49,7 +51,12 @@ type Product = {
   unit_count?: number;
 };
 
-type Category = { id: string; name: string; slug: string };
+type Category = {
+  id: string;
+  name: string;
+  slug: string;
+  subcategories?: Array<{ id: string; name: string; slug: string }>;
+};
 
 type SortKey = "newest" | "name" | "price-asc" | "price-desc" | "stock";
 
@@ -81,6 +88,7 @@ export default function AdminProductsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
+  const [subcategoryFilter, setSubcategoryFilter] = useState("");
   const [colorFilter, setColorFilter] = useState("");
   const [stockFilter, setStockFilter] = useState("");
   const [featuredFilter, setFeaturedFilter] = useState("");
@@ -137,6 +145,7 @@ export default function AdminProductsPage() {
 
     if (statusFilter) list = list.filter((p) => p.status === statusFilter);
     if (categoryFilter) list = list.filter((p) => p.category_id === categoryFilter);
+    if (subcategoryFilter) list = list.filter((p) => p.subcategory_id === subcategoryFilter);
     if (colorFilter) list = list.filter((p) => (p.color || "") === colorFilter);
     if (featuredFilter === "yes") list = list.filter((p) => p.is_featured);
     if (featuredFilter === "no") list = list.filter((p) => !p.is_featured);
@@ -164,6 +173,7 @@ export default function AdminProductsPage() {
     search,
     statusFilter,
     categoryFilter,
+    subcategoryFilter,
     colorFilter,
     stockFilter,
     featuredFilter,
@@ -176,6 +186,7 @@ export default function AdminProductsPage() {
     search ||
       statusFilter ||
       categoryFilter ||
+      subcategoryFilter ||
       colorFilter ||
       stockFilter ||
       featuredFilter ||
@@ -188,6 +199,7 @@ export default function AdminProductsPage() {
     setSearch("");
     setStatusFilter("");
     setCategoryFilter("");
+    setSubcategoryFilter("");
     setColorFilter("");
     setStockFilter("");
     setFeaturedFilter("");
@@ -259,6 +271,7 @@ export default function AdminProductsPage() {
       label_size: product.label_size === "accessory" ? "accessory" : "dress",
       image_upload_token: product.image_upload_token,
       category_id: product.category_id,
+      subcategory_id: product.subcategory_id || "",
       price: String(product.price ?? ""),
       compare_at_price: product.compare_at_price ? String(product.compare_at_price) : "",
       stock_quantity: String(product.stock_quantity ?? 0),
@@ -427,13 +440,37 @@ export default function AdminProductsPage() {
 
           <label>
             <span>Category</span>
-            <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+            <select
+              value={categoryFilter}
+              onChange={(e) => {
+                setCategoryFilter(e.target.value);
+                setSubcategoryFilter("");
+              }}
+            >
               <option value="">All categories</option>
               {(categories || []).map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.name}
                 </option>
               ))}
+            </select>
+          </label>
+
+          <label>
+            <span>Subcategory</span>
+            <select
+              value={subcategoryFilter}
+              onChange={(e) => setSubcategoryFilter(e.target.value)}
+              disabled={!categoryFilter}
+            >
+              <option value="">All subcategories</option>
+              {((categories || []).find((c) => c.id === categoryFilter)?.subcategories || []).map(
+                (item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                )
+              )}
             </select>
           </label>
 
@@ -567,6 +604,7 @@ export default function AdminProductsPage() {
                   <th>Code</th>
                   <th>Colour</th>
                   <th>Category</th>
+                  <th>Subcategory</th>
                   <th>Price</th>
                   <th>Stock</th>
                   <th>Status</th>
@@ -630,6 +668,7 @@ export default function AdminProductsPage() {
                       )}
                     </td>
                     <td>{product.category_name || "—"}</td>
+                    <td>{product.subcategory_name || "—"}</td>
                     <td>
                       {formatMoney(product.price)}
                       {product.compare_at_price ? (
