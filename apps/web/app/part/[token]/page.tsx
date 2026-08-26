@@ -7,6 +7,7 @@ type Payload = {
   name: string;
   sku: string | null;
   tag: string | null;
+  kind: "internal";
   remaining: number;
   images: Array<{ id: string; storage_path: string }>;
 };
@@ -53,7 +54,7 @@ export default function PartImageUploadPage() {
       setError(json.error || "Upload failed");
       return;
     }
-    setMessage("Photo added.");
+    setMessage("Internal reference photo added.");
     if (input) input.value = "";
     await load();
   };
@@ -61,8 +62,11 @@ export default function PartImageUploadPage() {
   return (
     <main className="part-upload">
       <div className="part-upload-card">
-        <p className="eyebrow">Vasritha</p>
-        <h1>Upload product photos</h1>
+        <p className="eyebrow">Vasritha · Staff</p>
+        <h1>Internal reference photos</h1>
+        <p className="muted">
+          These photos are for store staff only. They do not appear on the website.
+        </p>
         {data ? (
           <>
             <p>
@@ -70,7 +74,9 @@ export default function PartImageUploadPage() {
               {data.sku ? ` · ${data.sku}` : ""}
               {data.tag ? ` · Tag ${data.tag}` : ""}
             </p>
-            <p className="muted">{data.remaining} photo slot{data.remaining === 1 ? "" : "s"} left (max 5).</p>
+            <p className="muted">
+              {data.remaining} slot{data.remaining === 1 ? "" : "s"} left (max 5 internal).
+            </p>
             <div className="part-upload-thumbs">
               {data.images.map((image) => (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -79,13 +85,19 @@ export default function PartImageUploadPage() {
             </div>
             {data.remaining > 0 ? (
               <form onSubmit={onSubmit}>
-                <input type="file" name="file" accept="image/jpeg,image/png,image/webp,image/gif" capture="environment" required />
+                <input
+                  type="file"
+                  name="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  capture="environment"
+                  required
+                />
                 <button className="btn" type="submit" disabled={busy}>
-                  {busy ? "Uploading…" : "Upload photo"}
+                  {busy ? "Uploading…" : "Upload reference photo"}
                 </button>
               </form>
             ) : (
-              <p>All 5 photos are uploaded.</p>
+              <p>All 5 internal reference photos are uploaded.</p>
             )}
           </>
         ) : null}

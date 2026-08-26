@@ -53,12 +53,13 @@ export function SmoothScroll({ children }: { children: React.ReactNode }) {
       started = true;
 
       lenis = new Lenis({
-        duration: 1.25,
+        duration: 1.05,
         easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
         smoothWheel: true,
-        touchMultiplier: 1.15,
-        wheelMultiplier: 0.92,
-        lerp: 0.075
+        touchMultiplier: 1.1,
+        wheelMultiplier: 0.86,
+        lerp: 0.085,
+        syncTouch: false
       });
 
       win.__vasrithaLenis = lenis as unknown as LenisHandle;

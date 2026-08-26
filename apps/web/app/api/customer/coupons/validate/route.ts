@@ -9,6 +9,8 @@ type Coupon = {
   discount_value: string;
   min_order_amount: string;
   max_discount_amount: string | null;
+  usage_limit: number | null;
+  usage_limit_per_customer: number | null;
   starts_at: string | null;
   ends_at: string | null;
 };
@@ -36,6 +38,25 @@ export async function POST(request: NextRequest) {
   if (coupon.ends_at && new Date(coupon.ends_at).getTime() < now) return fail("Coupon expired");
   if (Number(body.subtotal) < Number(coupon.min_order_amount)) {
     return fail(`Minimum order amount is ${coupon.min_order_amount}`);
+  }
+
+  if (coupon.usage_limit != null) {
+    const total = await queryOne<{ count: string }>(
+      `select count(*)::text as count from coupon_usage where coupon_id = $1`,
+      [coupon.id]
+    );
+    if (Number(total?.count || 0) >= coupon.usage_limit) {
+      return fail("Voucher usage limit reached");
+    }
+  }
+  if (coupon.usage_limit_per_customer != null) {
+    const perCustomer = await queryOne<{ count: string }>(
+      `select count(*)::text as count from coupon_usage where coupon_id = $1 and customer_id = $2`,
+      [coupon.id, ctx.userId]
+    );
+    if (Number(perCustomer?.count || 0) >= coupon.usage_limit_per_customer) {
+      return fail("You have already used this voucher the maximum number of times");
+    }
   }
 
   let discount =

@@ -1,9 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { Search } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Search, TicketPercent } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { CART_EVENT, getCartCount } from "../lib/cart";
+import {
+  COUPON_EVENT,
+  applySavedVoucher,
+  getAppliedCoupon,
+  getSavedVouchers,
+  type SavedVoucher
+} from "../lib/applied-coupon";
 import { CUSTOMER_AUTH_EVENT } from "../lib/customer-auth-event";
 import { isLoggedIn } from "../lib/customer-session";
 import { useLocale, useT } from "../lib/i18n/provider";
@@ -24,11 +31,16 @@ export function Header({
 } = {}) {
   const t = useT();
   const { locale } = useLocale();
+  const menuRef = useRef<HTMLDivElement>(null);
   const [scrolled, setScrolled] = useState(false);
   const [bagCount, setBagCount] = useState(0);
   const [loggedIn, setLoggedIn] = useState(false);
   const [headerLogo, setHeaderLogo] = useState("/vasritha-logo.png");
   const [offerMessages, setOfferMessages] = useState<string[] | null>(null);
+  const [vouchers, setVouchers] = useState<SavedVoucher[]>([]);
+  const [appliedCode, setAppliedCode] = useState<string | null>(null);
+  const [voucherPulse, setVoucherPulse] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -67,6 +79,38 @@ export function Header({
   }, []);
 
   useEffect(() => {
+    const syncCoupon = () => {
+      const nextVouchers = getSavedVouchers();
+      const applied = getAppliedCoupon();
+      setVouchers(nextVouchers);
+      setAppliedCode((prev) => {
+        const next = applied?.code || null;
+        if (next && next !== prev) {
+          setVoucherPulse(true);
+          window.setTimeout(() => setVoucherPulse(false), 1200);
+        }
+        return next;
+      });
+    };
+    syncCoupon();
+    window.addEventListener(COUPON_EVENT, syncCoupon);
+    window.addEventListener("storage", syncCoupon);
+    return () => {
+      window.removeEventListener(COUPON_EVENT, syncCoupon);
+      window.removeEventListener("storage", syncCoupon);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDoc = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [menuOpen]);
+
+  useEffect(() => {
     const syncAuth = () => setLoggedIn(isLoggedIn());
     syncAuth();
     window.addEventListener(CUSTOMER_AUTH_EVENT, syncAuth);
@@ -83,6 +127,7 @@ export function Header({
   const offers = (offerMessages?.length ? offerMessages : fallbackOffers).map((message) =>
     localizeOfferMessage(locale, message)
   );
+  const availableCount = vouchers.filter((row) => row.status === "available").length;
 
   return (
     <div className={`site-header ${scrolled ? "is-scrolled" : ""}`}>
@@ -113,6 +158,68 @@ export function Header({
           <Link className="search-link search-link--desktop" href="/sarees" aria-label={t("common.search")}>
             <Search size={21} strokeWidth={1.7} />
           </Link>
+
+          <div className="voucher-menu" ref={menuRef}>
+            <button
+              id="header-voucher-dock"
+              type="button"
+              className={`icon-link voucher-dock${availableCount ? " has-voucher" : ""}${voucherPulse ? " is-pulse" : ""}`}
+              aria-label="Gift vouchers"
+              aria-expanded={menuOpen}
+              aria-haspopup="true"
+              onClick={() => setMenuOpen((open) => !open)}
+            >
+              <TicketPercent size={22} strokeWidth={1.7} />
+              {availableCount ? <span className="voucher-dock-dot" aria-hidden="true" /> : null}
+            </button>
+
+            {menuOpen ? (
+              <div className="voucher-menu-panel" role="menu">
+                <p className="voucher-menu-title">Your vouchers</p>
+                {!vouchers.length ? (
+                  <p className="voucher-menu-empty">No vouchers yet. Scratch a gift card when it appears.</p>
+                ) : (
+                  <ul className="voucher-menu-list">
+                    {vouchers.map((row) => (
+                      <li key={row.id}>
+                        <div className="voucher-menu-row">
+                          <div>
+                            <strong>{row.code}</strong>
+                            <span>
+                              {row.headline || "Gift voucher"}
+                              {row.status === "used" ? " · Used" : ""}
+                              {appliedCode === row.code && row.status === "available" ? " · Applied" : ""}
+                            </span>
+                          </div>
+                          {row.status === "available" ? (
+                            <button
+                              type="button"
+                              className="voucher-menu-apply"
+                              disabled={appliedCode === row.code}
+                              onClick={() => {
+                                applySavedVoucher(row.id);
+                                setMenuOpen(false);
+                              }}
+                            >
+                              {appliedCode === row.code ? "Applied" : "Apply"}
+                            </button>
+                          ) : (
+                            <em className="voucher-menu-used">Used</em>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {availableCount ? (
+                  <Link className="voucher-menu-cart" href="/cart" onClick={() => setMenuOpen(false)}>
+                    Go to bag
+                  </Link>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+
           <Link
             className="icon-link login-link"
             href={loggedIn ? "/account" : "/login"}

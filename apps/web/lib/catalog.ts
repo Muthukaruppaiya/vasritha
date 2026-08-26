@@ -191,6 +191,7 @@ async function loadVariantsAndImages(productIds: string[], mode: "card" | "detai
       `select distinct on (product_id) product_id, storage_path, sort_order
        from product_images
        where product_id = any($1::uuid[])
+         and coalesce(image_kind::text, 'website') = 'website'
        order by product_id, sort_order asc`,
       [productIds]
     );
@@ -235,6 +236,7 @@ async function loadVariantsAndImages(productIds: string[], mode: "card" | "detai
       `select product_id, storage_path, sort_order
        from product_images
        where product_id = any($1::uuid[])
+         and coalesce(image_kind::text, 'website') = 'website'
        order by sort_order asc`,
       [productIds]
     )

@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { Plus } from "lucide-react";
 import {
   AdminAlert,
   AdminBadge,
@@ -30,6 +31,8 @@ type Settings = {
   company_legal_name: string | null;
   company_address: string | null;
   company_gstin: string | null;
+  company_state: string | null;
+  company_state_code: string | null;
 };
 
 type RoleRow = {
@@ -63,7 +66,9 @@ export default function AdminSettingsPage() {
     seo_description: "",
     company_legal_name: "",
     company_address: "",
-    company_gstin: ""
+    company_gstin: "",
+    company_state: "",
+    company_state_code: ""
   });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -96,7 +101,9 @@ export default function AdminSettingsPage() {
       seo_description: data.seo_description || "",
       company_legal_name: data.company_legal_name || data.site_name || "",
       company_address: data.company_address || "",
-      company_gstin: data.company_gstin || ""
+      company_gstin: data.company_gstin || "",
+      company_state: data.company_state || "",
+      company_state_code: data.company_state_code || ""
     });
   }, [data]);
 
@@ -184,8 +191,9 @@ export default function AdminSettingsPage() {
   return (
     <>
       <AdminPageHeader
-        eyebrow=""
+        eyebrow="Store setup"
         title="Settings"
+        description="Site identity, company details, logos, and staff roles."
         actions={
           tab === "roles" ? (
             <button
@@ -202,7 +210,8 @@ export default function AdminSettingsPage() {
                 setRoleModalOpen(true);
               }}
             >
-              + New role
+              <Plus size={15} />
+              New role
             </button>
           ) : null
         }
@@ -394,10 +403,40 @@ export default function AdminSettingsPage() {
                   <span>GSTIN</span>
                   <input
                     value={form.company_gstin || ""}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, company_gstin: e.target.value.toUpperCase() }))
-                    }
+                    onChange={(e) => {
+                      const gstin = e.target.value.toUpperCase();
+                      setForm((f) => ({
+                        ...f,
+                        company_gstin: gstin,
+                        company_state_code:
+                          f.company_state_code ||
+                          (/^\d{2}/.test(gstin) ? gstin.slice(0, 2) : f.company_state_code)
+                      }));
+                    }}
                     placeholder="22AAAAA0000A1Z5"
+                  />
+                </label>
+                <label>
+                  <span>State</span>
+                  <input
+                    value={form.company_state || ""}
+                    onChange={(e) => setForm((f) => ({ ...f, company_state: e.target.value }))}
+                    placeholder="e.g. Tamil Nadu"
+                  />
+                </label>
+                <label>
+                  <span>GST state code</span>
+                  <input
+                    value={form.company_state_code || ""}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        company_state_code: e.target.value.replace(/\D/g, "").slice(0, 2)
+                      }))
+                    }
+                    placeholder="33"
+                    maxLength={2}
+                    inputMode="numeric"
                   />
                 </label>
                 <label>

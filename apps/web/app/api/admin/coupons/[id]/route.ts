@@ -1,11 +1,14 @@
 import { NextRequest } from "next/server";
-import { fail, ok, requirePermission, writeAuditLog } from "../../../../../lib/auth/api";
+import { fail, ok, requireAnyPermission, writeAuditLog } from "../../../../../lib/auth/api";
 import { query, queryOne } from "../../../../../lib/db/pool";
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: NextRequest, { params }: Params) {
-  const { error, ctx } = await requirePermission(request, "pricing:manage");
+  const { error, ctx } = await requireAnyPermission(request, [
+    "pricing:manage",
+    "coupons:manage"
+  ]);
   if (error || !ctx) return error;
   const { id } = await params;
 

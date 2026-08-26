@@ -348,7 +348,7 @@ export const ADMIN_NAV_PERMISSIONS: Record<string, Permission[]> = {
   "/admin/customers": ["customers:search", "customers:support", "customers:manage"],
   "/admin/users": ["users:manage"],
   "/admin/inventory": ["stock:operate", "stock:approve", "purchases:operate"],
-  "/admin/coupons": ["coupons:manage", "pricing:manage"],
+  "/admin/coupons": ["coupons:manage", "pricing:manage", "pricing:limited"],
   "/admin/returns": ["returns:handle", "returns:initiate"],
   "/admin/reviews": ["cms:manage"],
   "/admin/configuration": ["cms:manage"],

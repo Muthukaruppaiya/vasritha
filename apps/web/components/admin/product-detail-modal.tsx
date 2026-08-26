@@ -39,8 +39,18 @@ type ProductDetail = {
   stock_quantity: number;
   category_name?: string | null;
   created_at?: string;
-  product_images?: Array<{ id: string; storage_path: string }>;
+  product_images?: Array<{ id: string; storage_path: string; image_kind?: string }>;
+  internal_images?: Array<{ id: string; storage_path: string; image_kind?: string }>;
   product_items?: ProductItem[];
+  parent_product?: { id: string; name: string; sku: string | null } | null;
+  child_products?: Array<{
+    id: string;
+    name: string;
+    sku: string | null;
+    color: string | null;
+    stock_quantity: number;
+    status: string;
+  }>;
 };
 
 export function ProductDetailModal({
@@ -100,6 +110,8 @@ export function ProductDetailModal({
 
   const items = data?.product_items || [];
   const image = data?.product_images?.[0]?.storage_path;
+  const websiteGallery = data?.product_images || [];
+  const internalGallery = data?.internal_images || [];
 
   return (
     <div className="admin-modal-backdrop" role="presentation" onClick={onClose}>
@@ -129,6 +141,32 @@ export function ProductDetailModal({
                 {image ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={image} alt="" className="admin-detail-photo" />
+                ) : null}
+                {websiteGallery.length > 1 || internalGallery.length > 0 ? (
+                  <div className="admin-detail-galleries">
+                    {websiteGallery.length > 1 ? (
+                      <div>
+                        <h3>Website images</h3>
+                        <div className="admin-detail-thumbs">
+                          {websiteGallery.map((row) => (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img key={row.id} src={row.storage_path} alt="" />
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    {internalGallery.length ? (
+                      <div>
+                        <h3>Internal reference</h3>
+                        <div className="admin-detail-thumbs">
+                          {internalGallery.map((row) => (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img key={row.id} src={row.storage_path} alt="" />
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
                 ) : null}
                 <dl className="admin-detail-dl">
                   <div>
@@ -165,13 +203,84 @@ export function ProductDetailModal({
                     <dt>Created</dt>
                     <dd>{formatDate(data.created_at)}</dd>
                   </div>
+                  {data.parent_product ? (
+                    <div>
+                      <dt>Parent product</dt>
+                      <dd>
+                        {data.parent_product.name}
+                        {data.parent_product.sku ? ` · ${data.parent_product.sku}` : ""}
+                      </dd>
+                    </div>
+                  ) : null}
                 </dl>
+                {data.child_products && data.child_products.length > 0 ? (
+                  <div className="admin-detail-children">
+                    <h3>Design children ({data.child_products.length})</h3>
+                    <ul>
+                      {data.child_products.map((child) => (
+                        <li key={child.id}>
+                          {child.name}
+                          {child.sku ? ` · ${child.sku}` : ""}
+                          {child.color ? ` · ${child.color}` : ""}
+                          {" · "}
+                          {child.stock_quantity} pcs
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
                 {data.short_description ? <p>{data.short_description}</p> : null}
               </div>
 
               <div className="admin-detail-units">
-                <h3>Unique barcodes</h3>
-                <p className="muted">Each piece has its own number. Click one to see details.</p>
+                <div className="admin-detail-units-head">
+                  <div>
+                    <h3>Unique barcodes</h3>
+                    <p className="muted">Each piece has its own number. Click one to see details.</p>
+                  </div>
+                  {items.length ? (
+                    <div className="admin-row-actions">
+                      <button
+                        type="button"
+                        className="admin-action-btn admin-action-btn--primary"
+                        onClick={() => {
+                          const pending = items.filter(
+                            (item) =>
+                              (!item.status || item.status === "to_sell") && !item.label_printed
+                          );
+                          const list = pending.length
+                            ? pending
+                            : items.filter((item) => !item.status || item.status === "to_sell");
+                          if (!list.length || !data) return;
+                          printProductStickers({
+                            price: data.price,
+                            labelSize: data.label_size === "accessory" ? "accessory" : "dress",
+                            items: list
+                          });
+                          const ids = list.map((item) => item.id);
+                          void adminFetch(`/api/admin/products/${data.id}/items`, {
+                            method: "PATCH",
+                            json: { itemIds: ids, label_printed: true }
+                          }).then(() => {
+                            setData((current) =>
+                              current
+                                ? {
+                                    ...current,
+                                    product_items: (current.product_items || []).map((item) =>
+                                      ids.includes(item.id) ? { ...item, label_printed: true } : item
+                                    )
+                                  }
+                                : current
+                            );
+                          });
+                        }}
+                      >
+                        <Printer size={14} />
+                        <span>Print barcodes</span>
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
                 {items.length ? (
                   <div className="admin-unit-chips">
                     {items.map((item) => (

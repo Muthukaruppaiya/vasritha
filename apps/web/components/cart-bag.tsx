@@ -15,7 +15,7 @@ import {
 import { resolveCartCheckoutPath } from "../lib/customer-session";
 import { useLocale, useT } from "../lib/i18n/provider";
 import { localizeCategoryName, localizeProductFields, localizeSize } from "../lib/i18n/catalog-local";
-import { getAppliedCoupon, type AppliedCoupon } from "../lib/applied-coupon";
+import { getAppliedCoupon, COUPON_EVENT, type AppliedCoupon } from "../lib/applied-coupon";
 
 type SuggestProduct = {
   slug: string;
@@ -44,14 +44,18 @@ export function CartBag() {
   ];
 
   useEffect(() => {
-    const sync = () => setItems(getCartItems());
+    const sync = () => {
+      setItems(getCartItems());
+      setAppliedVoucher(getAppliedCoupon());
+    };
     sync();
-    setAppliedVoucher(getAppliedCoupon());
     setReady(true);
     window.addEventListener(CART_EVENT, sync);
+    window.addEventListener(COUPON_EVENT, sync);
     window.addEventListener("storage", sync);
     return () => {
       window.removeEventListener(CART_EVENT, sync);
+      window.removeEventListener(COUPON_EVENT, sync);
       window.removeEventListener("storage", sync);
     };
   }, []);

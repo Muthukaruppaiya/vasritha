@@ -15,11 +15,9 @@ import {
 import {
   AdminAlert,
   AdminBadge,
-  AdminEmpty,
-  AdminPageHeader,
-  AdminPanel
+  AdminEmpty
 } from "../../../components/admin/admin-ui";
-import { ThermalReceipt } from "../../../components/admin/thermal-receipt";
+import { InvoiceBill } from "../../../components/admin/invoice-bill";
 import { adminFetch, formatMoney } from "../../../lib/admin-api";
 import Link from "next/link";
 
@@ -48,6 +46,9 @@ type InvoiceOrder = {
   payment_status: string;
   status: string;
   channel: string;
+  customer_name?: string | null;
+  customer_phone?: string | null;
+  customer_email?: string | null;
   items: Array<{
     product_id: string;
     product_name: string;
@@ -117,9 +118,13 @@ export default function AdminBillingPage() {
   const [discountType, setDiscountType] = useState<"percentage" | "fixed">("percentage");
   const [discountValue, setDiscountValue] = useState("0");
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "razorpay">("cash");
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [lastInvoice, setLastInvoice] = useState<InvoiceOrder | null>(null);
+  const [flashKey, setFlashKey] = useState<string | null>(null);
 
   const itemCount = cart.reduce((sum, line) => sum + line.quantity, 0);
   const subtotal = cart.reduce((sum, line) => sum + line.price * line.quantity, 0);
@@ -162,8 +167,8 @@ export default function AdminBillingPage() {
   }, [query]);
 
   const addItem = (item: PosItem) => {
+    const key = lineKey(item);
     setCart((prev) => {
-      const key = lineKey(item);
       const existing = prev.find((line) => line.key === key);
       if (existing) {
         if (existing.quantity >= item.stock) return prev;
@@ -174,6 +179,10 @@ export default function AdminBillingPage() {
       if (item.stock <= 0) return prev;
       return [...prev, { ...item, quantity: 1, key }];
     });
+    setFlashKey(key);
+    window.setTimeout(() => {
+      setFlashKey((current) => (current === key ? null : current));
+    }, 520);
     setQuery("");
     setSuggestions([]);
     setLookupError("");
@@ -234,14 +243,50 @@ export default function AdminBillingPage() {
     setDiscountValue("0");
     setDiscountType("percentage");
     setPaymentMethod("cash");
+    setCustomerName("");
+    setCustomerPhone("");
+    setCustomerEmail("");
     setError("");
     setLastInvoice(null);
     scanRef.current?.focus();
   };
 
+  const resetAfterPaid = () => {
+    setCart([]);
+    setDiscountValue("0");
+    setDiscountType("percentage");
+    setPaymentMethod("cash");
+    setCustomerName("");
+    setCustomerPhone("");
+    setCustomerEmail("");
+  };
+
   const completeSale = async () => {
     if (!cart.length) {
       setError("Scan or search a product to start billing.");
+      return;
+    }
+
+    const name = customerName.trim();
+    const phoneDigits = customerPhone.replace(/\D/g, "");
+    const phone =
+      phoneDigits.length === 12 && phoneDigits.startsWith("91")
+        ? phoneDigits.slice(2)
+        : phoneDigits.length === 11 && phoneDigits.startsWith("0")
+          ? phoneDigits.slice(1)
+          : phoneDigits;
+    const email = customerEmail.trim();
+
+    if (!name) {
+      setError("Customer name is required.");
+      return;
+    }
+    if (phone.length !== 10) {
+      setError("Enter a valid 10-digit mobile number.");
+      return;
+    }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError("Enter a valid email address.");
       return;
     }
 
@@ -259,7 +304,10 @@ export default function AdminBillingPage() {
         })),
         discountType,
         discountValue: discountRaw,
-        paymentMethod
+        paymentMethod,
+        customerName: name,
+        customerPhone: phone,
+        customerEmail: email || null
       }
     });
 
@@ -271,10 +319,7 @@ export default function AdminBillingPage() {
 
     if (paymentMethod === "cash" || !checkout.data.razorpay) {
       setLastInvoice(checkout.data.order);
-      setCart([]);
-      setDiscountValue("0");
-      setDiscountType("percentage");
-      setPaymentMethod("cash");
+      resetAfterPaid();
       setBusy(false);
       scanRef.current?.focus();
       return;
@@ -298,10 +343,7 @@ export default function AdminBillingPage() {
         return;
       }
       setLastInvoice({ ...checkout.data.order, payment_status: "paid", status: "confirmed" });
-      setCart([]);
-      setDiscountValue("0");
-      setDiscountType("percentage");
-      setPaymentMethod("cash");
+      resetAfterPaid();
       scanRef.current?.focus();
       return;
     }
@@ -321,6 +363,11 @@ export default function AdminBillingPage() {
       name: "Vasritha Store POS",
       description: orderSnapshot.order_number,
       order_id: rzp.razorpayOrderId,
+      prefill: {
+        name,
+        contact: phone,
+        email: email || undefined
+      },
       handler: async (response: {
         razorpay_order_id: string;
         razorpay_payment_id: string;
@@ -342,10 +389,7 @@ export default function AdminBillingPage() {
           return;
         }
         setLastInvoice({ ...orderSnapshot, payment_status: "paid", status: "confirmed" });
-        setCart([]);
-        setDiscountValue("0");
-        setDiscountType("percentage");
-        setPaymentMethod("cash");
+        resetAfterPaid();
         scanRef.current?.focus();
       },
       modal: {
@@ -359,156 +403,228 @@ export default function AdminBillingPage() {
   };
 
   return (
-    <>
-      <AdminPageHeader
-        title="Store POS"
-        actions={
-          <button type="button" className="btn ghost" onClick={clearSale} disabled={busy}>
+    <div className="pos-screen">
+      <header className="pos-screen-head">
+        <div>
+          <p className="eyebrow">In-store</p>
+          <h1>Store POS</h1>
+        </div>
+        <div className="pos-screen-actions">
+          <Link href="/admin/invoices/store" className="pos-invoice-mini">
+            Past invoices
+          </Link>
+          <button type="button" className="btn admin-ghost-btn" onClick={clearSale} disabled={busy}>
+            <Plus size={15} />
             New sale
           </button>
-        }
-      />
+        </div>
+      </header>
 
       <div className="pos-layout">
         <section className="pos-counter">
-          <AdminPanel
-            title="Scan / search"
-            actions={
-              <span className="pos-hint muted">Barcode scanner ready · press Enter to add</span>
-            }
-          >
-            <form className="pos-scan" onSubmit={onScanSubmit}>
-              <label className="pos-scan-field">
-                <ScanBarcode size={18} />
-                <input
-                  ref={scanRef}
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Scan barcode or search name / SKU"
-                  autoComplete="off"
-                  disabled={busy}
-                />
-              </label>
-              <button className="btn" type="submit" disabled={busy || lookingUp}>
-                <Search size={14} />
-                {lookingUp ? "…" : "Add"}
-              </button>
-            </form>
-
-            {lookupError ? <AdminAlert>{lookupError}</AdminAlert> : null}
-
-            {suggestions.length > 1 && (
-              <div className="pos-suggest">
-                {suggestions.map((item) => (
-                  <button
-                    key={lineKey(item)}
-                    type="button"
-                    className="pos-suggest-row"
-                    onClick={() => addItem(item)}
-                  >
-                    <span>
-                      <strong>{item.name}</strong>
-                      <em>
-                        {item.sku || item.barcode || "—"}
-                        {item.variantName ? ` · ${item.variantName}` : ""}
-                      </em>
-                    </span>
-                    <span>
-                      {formatMoney(item.price)}
-                      <small>Stock {item.stock}</small>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </AdminPanel>
-
-          <AdminPanel
-            title="Cart"
-            actions={
-              cart.length ? (
-                <AdminBadge tone="info">
-                  {itemCount} item{itemCount === 1 ? "" : "s"}
-                </AdminBadge>
-              ) : null
-            }
-          >
-            {!cart.length ? (
-              <AdminEmpty
-                title="Cart is empty"
-                body="Scan a product barcode or search by name to add lines."
-              />
-            ) : (
-              <div className="pos-cart">
-                <div className="pos-cart-head">
-                  <span>Item</span>
-                  <span>Qty</span>
-                  <span>Total</span>
-                  <span />
-                </div>
-                {cart.map((line) => (
-                  <article key={line.key} className="pos-cart-line">
-                    <div>
-                      <strong>{line.name}</strong>
-                      <p className="muted">
-                        {line.sku || line.barcode || "—"}
-                        {line.variantName ? ` · ${line.variantName}` : ""}
-                      </p>
-                      <p className="pos-unit">{formatMoney(line.price)} each</p>
-                    </div>
-                    <div className="pos-qty">
-                      <button
-                        type="button"
-                        aria-label="Decrease quantity"
-                        onClick={() => setQty(line.key, line.quantity - 1)}
-                      >
-                        <Minus size={14} />
-                      </button>
-                      <input
-                        type="number"
-                        min={1}
-                        max={line.stock}
-                        value={line.quantity}
-                        onChange={(e) => setQty(line.key, Number(e.target.value))}
-                      />
-                      <button
-                        type="button"
-                        aria-label="Increase quantity"
-                        onClick={() => setQty(line.key, line.quantity + 1)}
-                        disabled={Boolean(line.itemId) || line.quantity >= line.stock}
-                        disabled={line.quantity >= line.stock}
-                      >
-                        <Plus size={14} />
-                      </button>
-                    </div>
-                    <strong className="pos-line-total">
-                      {formatMoney(line.price * line.quantity)}
-                    </strong>
+          <div className="pos-workspace admin-panel">
+            <div className="pos-workspace-scan">
+              <form className="pos-scan" onSubmit={onScanSubmit}>
+                <label className="pos-scan-field">
+                  <ScanBarcode size={18} />
+                  <input
+                    ref={scanRef}
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Scan barcode or search name / SKU"
+                    autoComplete="off"
+                    disabled={busy}
+                  />
+                </label>
+                <button className="btn" type="submit" disabled={busy || lookingUp}>
+                  <Search size={14} />
+                  {lookingUp ? "…" : "Add"}
+                </button>
+              </form>
+              {lookupError ? <AdminAlert>{lookupError}</AdminAlert> : null}
+              {suggestions.length > 1 && (
+                <div className="pos-suggest">
+                  {suggestions.map((item) => (
                     <button
+                      key={lineKey(item)}
                       type="button"
-                      className="pos-remove"
-                      aria-label="Remove line"
-                      onClick={() => setQty(line.key, 0)}
+                      className="pos-suggest-row"
+                      onClick={() => addItem(item)}
                     >
-                      <Trash2 size={14} />
+                      <span>
+                        <strong>{item.name}</strong>
+                        <em>
+                          {item.sku || item.barcode || "—"}
+                          {item.variantName ? ` · ${item.variantName}` : ""}
+                        </em>
+                      </span>
+                      <span>
+                        {formatMoney(item.price)}
+                        <small>Stock {item.stock}</small>
+                      </span>
                     </button>
-                  </article>
-                ))}
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="pos-workspace-cart">
+              <div className="pos-workspace-cart-head">
+                <strong>Cart</strong>
+                {cart.length ? (
+                  <AdminBadge tone="info">
+                    {itemCount} item{itemCount === 1 ? "" : "s"}
+                  </AdminBadge>
+                ) : null}
               </div>
-            )}
-          </AdminPanel>
+              {!cart.length ? (
+                <AdminEmpty
+                  title="Cart is empty"
+                  body="Scan a barcode or search to add items."
+                />
+              ) : (
+                <div className="pos-cart">
+                  <div className="pos-cart-head">
+                    <span>Item</span>
+                    <span>Qty</span>
+                    <span>Total</span>
+                    <span />
+                  </div>
+                  <div className="pos-cart-body">
+                    {cart.map((line) => (
+                      <article
+                        key={line.key}
+                        className={`pos-cart-line${flashKey === line.key ? " is-flash" : ""}`}
+                      >
+                        <div className="pos-cart-item">
+                          <div className="pos-cart-thumb" aria-hidden="true">
+                            {line.imageSrc ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={line.imageSrc} alt="" />
+                            ) : (
+                              <ScanBarcode size={16} />
+                            )}
+                          </div>
+                          <div>
+                            <strong>{line.name}</strong>
+                            <p className="muted">
+                              {line.sku || line.barcode || "—"}
+                              {line.variantName ? ` · ${line.variantName}` : ""}
+                            </p>
+                            <p className="pos-unit">{formatMoney(line.price)} each</p>
+                          </div>
+                        </div>
+                        <div className="pos-qty">
+                          <button
+                            type="button"
+                            aria-label="Decrease quantity"
+                            onClick={() => setQty(line.key, line.quantity - 1)}
+                          >
+                            <Minus size={14} />
+                          </button>
+                          <input
+                            type="number"
+                            min={1}
+                            max={line.stock}
+                            value={line.quantity}
+                            onChange={(e) => setQty(line.key, Number(e.target.value))}
+                          />
+                          <button
+                            type="button"
+                            aria-label="Increase quantity"
+                            onClick={() => setQty(line.key, line.quantity + 1)}
+                            disabled={Boolean(line.itemId) || line.quantity >= line.stock}
+                          >
+                            <Plus size={14} />
+                          </button>
+                        </div>
+                        <strong className="pos-line-total">
+                          {formatMoney(line.price * line.quantity)}
+                        </strong>
+                        <button
+                          type="button"
+                          className="pos-remove"
+                          aria-label="Remove line"
+                          onClick={() => setQty(line.key, 0)}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </section>
 
         <aside className="pos-summary-panel">
-          <AdminPanel title="Sale summary">
-            <div className="pos-summary">
+          <div className="pos-summary admin-panel">
+            <div className="admin-panel-head">
+              <h3>Sale summary</h3>
+            </div>
+
+            <section className="pos-customer" aria-label="Customer details">
+              <div className="pos-customer-head">
+                <p className="pos-customer-title">Customer</p>
+                <span className="pos-customer-req">Name &amp; mobile required</span>
+              </div>
+              <div className="pos-customer-fields">
+                <div className="pos-customer-row">
+                  <label className="pos-field">
+                    <span className="pos-field-label">
+                      Name <em aria-hidden="true">*</em>
+                    </span>
+                    <input
+                      type="text"
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                      placeholder="Full name"
+                      autoComplete="name"
+                      disabled={busy}
+                      required
+                    />
+                  </label>
+                  <label className="pos-field">
+                    <span className="pos-field-label">
+                      Mobile <em aria-hidden="true">*</em>
+                    </span>
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value.replace(/[^\d+\s-]/g, ""))}
+                      placeholder="10-digit mobile"
+                      autoComplete="tel"
+                      disabled={busy}
+                      required
+                    />
+                  </label>
+                </div>
+                <label className="pos-field">
+                  <span className="pos-field-label">
+                    Email <span className="pos-field-optional">optional</span>
+                  </span>
+                  <input
+                    type="email"
+                    value={customerEmail}
+                    onChange={(e) => setCustomerEmail(e.target.value)}
+                    placeholder="name@example.com"
+                    autoComplete="email"
+                    disabled={busy}
+                  />
+                </label>
+              </div>
+            </section>
+
+            <div className="pos-totals-block">
               <div className="pos-summary-row">
                 <span>Subtotal</span>
                 <strong>{formatMoney(subtotal)}</strong>
               </div>
 
               <div className="pos-discount">
-                <div className="pos-discount-tabs">
+                <div className="pos-discount-tabs" role="group" aria-label="Discount type">
                   <button
                     type="button"
                     className={discountType === "percentage" ? "is-active" : ""}
@@ -524,81 +640,75 @@ export default function AdminBillingPage() {
                     ₹ Off
                   </button>
                 </div>
-                <label>
-                  <span>Discount</span>
+                <label className="pos-field pos-field--compact">
+                  <span className="pos-field-label">Discount</span>
                   <input
                     type="number"
                     min={0}
                     step="0.01"
                     value={discountValue}
                     onChange={(e) => setDiscountValue(e.target.value)}
+                    disabled={busy}
                   />
                 </label>
               </div>
 
               <div className="pos-summary-row">
                 <span>Discount</span>
-                <strong>-{formatMoney(discountAmount)}</strong>
+                <strong className="pos-discount-value">-{formatMoney(discountAmount)}</strong>
               </div>
               <div className="pos-summary-row pos-summary-total">
                 <span>Payable</span>
                 <strong>{formatMoney(payable)}</strong>
               </div>
+            </div>
 
-              <div className="pos-pay-modes">
-                <button
-                  type="button"
-                  className={paymentMethod === "cash" ? "is-active" : ""}
-                  onClick={() => setPaymentMethod("cash")}
-                >
-                  <Banknote size={16} />
-                  Cash
-                </button>
-                <button
-                  type="button"
-                  className={paymentMethod === "razorpay" ? "is-active" : ""}
-                  onClick={() => setPaymentMethod("razorpay")}
-                >
-                  <CreditCard size={16} />
-                  Razorpay
-                </button>
-              </div>
-
-              {error ? <AdminAlert>{error}</AdminAlert> : null}
-
+            <div className="pos-pay-modes" role="group" aria-label="Payment method">
               <button
                 type="button"
-                className="btn pos-pay-btn"
-                disabled={busy || !cart.length}
-                onClick={() => void completeSale()}
+                className={paymentMethod === "cash" ? "is-active" : ""}
+                onClick={() => setPaymentMethod("cash")}
               >
-                {busy
-                  ? "Processing…"
-                  : paymentMethod === "cash"
-                    ? `Collect ${formatMoney(payable)}`
-                    : `Pay ${formatMoney(payable)} with Razorpay`}
+                <Banknote size={16} />
+                Cash
+              </button>
+              <button
+                type="button"
+                className={paymentMethod === "razorpay" ? "is-active" : ""}
+                onClick={() => setPaymentMethod("razorpay")}
+              >
+                <CreditCard size={16} />
+                Razorpay
               </button>
             </div>
-          </AdminPanel>
+
+            {error ? <AdminAlert>{error}</AdminAlert> : null}
+
+            <button
+              type="button"
+              className="btn pos-pay-btn"
+              disabled={busy || !cart.length}
+              onClick={() => void completeSale()}
+            >
+              {busy
+                ? "Processing…"
+                : paymentMethod === "cash"
+                  ? `Collect ${formatMoney(payable)}`
+                  : `Pay ${formatMoney(payable)} with Razorpay`}
+            </button>
+          </div>
         </aside>
       </div>
 
-      <p className="pos-invoice-link muted">
-        Need a past slip? Open{" "}
-        <Link href="/admin/invoices/store">Store Invoice</Link>.
-      </p>
-
       {lastInvoice && (
         <div className="pos-invoice-overlay" role="dialog" aria-modal="true">
-          <div className="pos-invoice-sheet pos-invoice-sheet--thermal">
-            <div className="tvs-receipt-preview-label">
-              Preview · TVS LP 46 (108 mm thermal)
-            </div>
-            <ThermalReceipt data={lastInvoice} id="pos-invoice-print" />
+          <div className="pos-invoice-sheet pos-invoice-sheet--a4">
+            <div className="tvs-receipt-preview-label">Shop bill · 5″ wide · height auto-cuts</div>
+            <InvoiceBill data={lastInvoice} id="pos-invoice-print" />
             <div className="pos-invoice-actions">
               <button type="button" className="btn" onClick={() => window.print()}>
                 <Printer size={14} />
-                Print on TVS LP 46
+                Print bill
               </button>
               <button type="button" className="btn ghost" onClick={() => setLastInvoice(null)}>
                 <X size={14} />
@@ -606,12 +716,12 @@ export default function AdminBillingPage() {
               </button>
             </div>
             <p className="tvs-print-hint muted">
-              In the print dialog, choose <b>TVS LP 46</b>, paper size ~108 mm / continuous, margins
-              none or minimum, scale 100%.
+              Paper width <b>5 inch</b> · height follows bill length (auto-cut). TVS LP 46 is only for
+              barcode stickers.
             </p>
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

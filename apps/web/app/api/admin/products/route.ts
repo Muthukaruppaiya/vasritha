@@ -2,6 +2,12 @@ import { NextRequest } from "next/server";
 import { fail, ok, requirePermission, writeAuditLog } from "../../../../lib/auth/api";
 import { query, queryOne } from "../../../../lib/db/pool";
 import { emptyToNull, subcategoryBelongsToCategory } from "../../../../lib/db/taxonomy";
+import {
+  createUnitsAndSync,
+  ensureProductUnitsSchema,
+  recordPriceHistory
+} from "../../../../lib/product-units";
+import { ensureGstSchema, normalizeGstRate, normalizeHsn } from "../../../../lib/gst";
 
 async function upsertDefaultVariant(input: {
   productId: string;
@@ -38,6 +44,7 @@ export async function GET(request: NextRequest) {
   if (error) return error;
 
   await ensureProductUnitsSchema();
+  await ensureGstSchema();
 
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status");
@@ -50,22 +57,30 @@ export async function GET(request: NextRequest) {
     `select
        p.id, p.name, p.slug, p.sku, p.barcode, p.tag, p.sku_prefix, p.label_size,
        p.short_name, p.short_description, p.color, p.description,
-       p.price, p.compare_at_price, p.status, p.stock_quantity, p.is_featured,
-       p.category_id, p.subcategory_id, p.created_at, p.updated_at,
+       p.price, p.compare_at_price, p.hsn_code, p.gst_rate, p.status, p.stock_quantity, p.is_featured,
+       p.category_id, p.subcategory_id, p.parent_product_id, p.created_at, p.updated_at,
        c.name as category_name,
        sc.name as subcategory_name,
+       parent.name as parent_name,
+       parent.sku as parent_sku,
        img.storage_path as primary_image,
        (
          select count(*)::int from product_items pi_count
          where pi_count.product_id = p.id
-       ) as unit_count
+       ) as unit_count,
+       (
+         select count(*)::int from products children
+         where children.parent_product_id = p.id
+       ) as child_count
      from products p
      left join categories c on c.id = p.category_id
      left join subcategories sc on sc.id = p.subcategory_id
+     left join products parent on parent.id = p.parent_product_id
      left join lateral (
        select pi.storage_path
        from product_images pi
        where pi.product_id = p.id
+         and coalesce(pi.image_kind::text, 'website') = 'website'
        order by pi.sort_order asc
        limit 1
      ) img on true
@@ -82,11 +97,18 @@ export async function POST(request: NextRequest) {
   if (error || !ctx) return error;
 
   await ensureProductUnitsSchema();
+  await ensureGstSchema();
 
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body?.name || !body?.slug || !body?.category_id || body.price == null) {
     return fail("name, slug, category_id and price are required");
   }
+
+  const hsnCode = normalizeHsn(body.hsn_code);
+  if (body.hsn_code != null && String(body.hsn_code).trim() && !hsnCode) {
+    return fail("HSN code must be 4 to 8 digits");
+  }
+  const gstRate = normalizeGstRate(body.gst_rate, 5);
 
   const skuPrefix = String(body.sku_prefix || "VAS")
     .replace(/[^A-Za-z0-9]/g, "")
@@ -104,6 +126,19 @@ export async function POST(request: NextRequest) {
   }
   const stock = body.stock_quantity != null ? Math.max(0, Math.trunc(Number(body.stock_quantity))) : 0;
 
+  // Optional parent for Case 2 (design children). Case 1 leaves this null.
+  let parentProductId: string | null = emptyToNull(body.parent_product_id);
+  if (parentProductId) {
+    const parent = await queryOne<{ id: string; parent_product_id: string | null }>(
+      `select id, parent_product_id from products where id = $1`,
+      [parentProductId]
+    );
+    if (!parent) return fail("Parent product not found", 404);
+    if (parent.parent_product_id) {
+      return fail("Choose a top-level product as parent (not another child design)");
+    }
+  }
+
   const data = await queryOne<{
     id: string;
     image_upload_token: string;
@@ -112,8 +147,8 @@ export async function POST(request: NextRequest) {
     `insert into products
        (name, slug, sku, barcode, tag, sku_prefix, label_size, category_id, subcategory_id,
         short_name, short_description, color, description,
-        price, compare_at_price, status, stock_quantity, is_featured)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        price, compare_at_price, hsn_code, gst_rate, status, stock_quantity, is_featured, parent_product_id)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
      returning *`,
     [
       String(body.name),
@@ -131,9 +166,12 @@ export async function POST(request: NextRequest) {
       body.description ? String(body.description) : "",
       Number(body.price),
       body.compare_at_price != null ? Number(body.compare_at_price) : null,
+      hsnCode,
+      gstRate,
       body.status ? String(body.status) : "draft",
       0,
-      Boolean(body.is_featured ?? body.fast_selling)
+      Boolean(body.is_featured ?? body.fast_selling),
+      parentProductId
     ]
   );
 

@@ -1,6 +1,13 @@
 import { NextRequest } from "next/server";
 import { fail, ok, requireAnyPermission } from "../../../../../lib/auth/api";
 import { query, queryOne } from "../../../../../lib/db/pool";
+import {
+  ensureGstSchema,
+  getSellerGstProfile,
+  normalizeGstRate,
+  stateCodeFromGstin,
+  summariseInclusiveLines
+} from "../../../../../lib/gst";
 
 export async function GET(
   request: NextRequest,
@@ -13,6 +20,8 @@ export async function GET(
     "invoices:print"
   ]);
   if (error) return error;
+
+  await ensureGstSchema();
 
   const { id } = await context.params;
   const order = await queryOne<{
@@ -38,7 +47,9 @@ export async function GET(
             coalesce(o.discount_amount, 0) as discount_amount,
             o.tax_amount, o.shipping_amount, o.total_amount,
             coalesce(o.channel, 'online') as channel, o.created_at,
-            c.full_name as customer_name, c.email as customer_email, c.phone as customer_phone
+            coalesce(nullif(o.pos_customer_name, ''), c.full_name) as customer_name,
+            coalesce(nullif(o.pos_customer_email, ''), c.email) as customer_email,
+            coalesce(nullif(o.pos_customer_phone, ''), c.phone) as customer_phone
      from orders o
      left join customers c on c.id = o.customer_id
      where o.id = $1`,
@@ -46,17 +57,20 @@ export async function GET(
   );
   if (!order) return fail("Order not found", 404);
 
-  const [items, shippingAddress, payment] = await Promise.all([
+  const [items, shippingAddress, payment, seller] = await Promise.all([
     query<{
       product_id: string;
       product_name: string;
       variant_name: string | null;
       sku: string | null;
+      hsn_code: string | null;
+      gst_rate: string | number | null;
       unit_price: string;
       quantity: number;
       line_total: string;
     }>(
-      `select product_id, product_name, variant_name, sku, unit_price, quantity, line_total
+      `select product_id, product_name, variant_name, sku, hsn_code, gst_rate,
+              unit_price, quantity, line_total
        from order_items where order_id = $1 order by product_name asc`,
       [id]
     ),
@@ -86,7 +100,8 @@ export async function GET(
       `select provider, provider_payment_id, amount, status
        from payments where order_id = $1 order by created_at desc limit 1`,
       [id]
-    )
+    ),
+    getSellerGstProfile()
   ]);
 
   // Fallback: default / latest customer address if order has none linked
@@ -102,14 +117,43 @@ export async function GET(
     );
   }
 
+  const mappedItems = items.map((item) => ({
+    ...item,
+    hsn_code: item.hsn_code || null,
+    gst_rate: normalizeGstRate(item.gst_rate, 5),
+    unit_price: Number(item.unit_price),
+    line_total: Number(item.line_total)
+  }));
+
+  const shipState = address?.state || null;
+  const sellerCode = seller.state_code || stateCodeFromGstin(seller.gstin);
+  // POS / missing ship state → treat as intra-state (CGST+SGST)
+  const interState = Boolean(
+    order.channel !== "pos" &&
+      shipState &&
+      seller.state &&
+      shipState.trim().toLowerCase() !== seller.state.trim().toLowerCase() &&
+      !(sellerCode && shipState.includes(sellerCode))
+  );
+
+  const gst = summariseInclusiveLines(
+    mappedItems.map((item) => ({ line_total: item.line_total, gst_rate: item.gst_rate })),
+    Number(order.discount_amount || 0),
+    interState
+  );
+
   return ok({
     ...order,
     payment,
     shipping_address: address,
-    items: items.map((item) => ({
-      ...item,
-      unit_price: Number(item.unit_price),
-      line_total: Number(item.line_total)
-    }))
+    seller,
+    gst: {
+      taxable: gst.taxable,
+      cgst: gst.cgst,
+      sgst: gst.sgst,
+      igst: gst.igst,
+      inclusive: seller.prices_inclusive_of_gst
+    },
+    items: mappedItems
   });
 }

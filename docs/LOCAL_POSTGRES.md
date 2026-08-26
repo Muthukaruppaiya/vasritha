@@ -26,11 +26,17 @@ From project root:
 npm run db:init
 npm run db:optimize
 npm run db:seed:catalog
+npm run db:patch:product-parent
+npm run db:patch:gst-hsn
 ```
 
-- Schema: `db/local/schema.sql`
+- Schema: `db/local/schema.sql` (includes `products.parent_product_id` for Case 2 design groups)
 - Integrity upgrade: `db/local/optimize_v1.sql`
+- Parent–child patch (existing DBs): `db/local/product_parent_v1.sql` via `npm run db:patch:product-parent`
+- GST / HSN (products + invoice snapshots): `db/local/gst_hsn_v1.sql` via `npm run db:patch:gst-hsn`
 - Relationship walkthrough for DBA review: [`docs/DATABASE.md`](./DATABASE.md)
+
+**Product models:** Case 1 (saree / dress qty) leaves parent empty and uses unique `product_items` barcodes. Case 2 links child designs via `parent_product_id`; each child still has its own stock and barcodes.
 
 Seeded super admin (created if missing):
 - Email: `admin@vasritha.local`

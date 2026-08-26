@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Printer, X } from "lucide-react";
+import { Eye, Printer, Search, X } from "lucide-react";
 import {
   AdminAlert,
   AdminBadge,
@@ -11,7 +11,7 @@ import {
   AdminPanel,
   statusTone
 } from "./admin-ui";
-import { ThermalReceipt, type ThermalReceiptData } from "./thermal-receipt";
+import { InvoiceBill, type InvoiceBillData } from "./invoice-bill";
 import { adminFetch, formatDate, formatMoney } from "../../lib/admin-api";
 import { useAdminQuery } from "../../hooks/use-admin-query";
 
@@ -38,7 +38,7 @@ export function InvoiceDirectory({
 }) {
   const [q, setQ] = useState("");
   const [submitted, setSubmitted] = useState("");
-  const [selected, setSelected] = useState<ThermalReceiptData | null>(null);
+  const [selected, setSelected] = useState<InvoiceBillData | null>(null);
   const [loadingInvoice, setLoadingInvoice] = useState(false);
   const [actionError, setActionError] = useState("");
 
@@ -74,7 +74,7 @@ export function InvoiceDirectory({
   const openInvoice = async (orderId: string) => {
     setLoadingInvoice(true);
     setActionError("");
-    const result = await adminFetch<ThermalReceiptData>(`/api/admin/orders/${orderId}`);
+    const result = await adminFetch<InvoiceBillData>(`/api/admin/orders/${orderId}`);
     setLoadingInvoice(false);
     if (result.error || !result.data) {
       setActionError(result.error || "Could not load invoice");
@@ -87,7 +87,15 @@ export function InvoiceDirectory({
 
   return (
     <>
-      <AdminPageHeader title={title} />
+      <AdminPageHeader
+        eyebrow="Billing"
+        title={title}
+        description={
+          isStore
+            ? "Look up paid in-store POS bills and reprint for a normal printer."
+            : "Look up online storefront bills and reprint for a normal printer."
+        }
+      />
 
       <form
         className="admin-toolbar"
@@ -105,6 +113,7 @@ export function InvoiceDirectory({
           />
         </label>
         <button className="btn" type="submit">
+          <Search size={15} />
           Search
         </button>
       </form>
@@ -134,11 +143,12 @@ export function InvoiceDirectory({
                   <th>Payment</th>
                   <th>Status</th>
                   <th>Total</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((order) => (
-                  <tr key={order.id} onClick={() => void openInvoice(order.id)}>
+                  <tr key={order.id}>
                     <td>
                       <b>INV-{order.order_number}</b>
                     </td>
@@ -158,6 +168,20 @@ export function InvoiceDirectory({
                       <AdminBadge tone={statusTone(order.status)}>{order.status}</AdminBadge>
                     </td>
                     <td>{formatMoney(order.total_amount)}</td>
+                    <td>
+                      <div className="admin-row-actions" role="group" aria-label="Invoice actions">
+                        <button
+                          type="button"
+                          className="admin-action-btn"
+                          onClick={() => void openInvoice(order.id)}
+                          title="View invoice"
+                          aria-label={`View invoice INV-${order.order_number}`}
+                        >
+                          <Eye size={14} strokeWidth={2} />
+                          <span>View</span>
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -168,24 +192,22 @@ export function InvoiceDirectory({
 
       {selected && (
         <div className="pos-invoice-overlay" role="dialog" aria-modal="true">
-          <div className="pos-invoice-sheet pos-invoice-sheet--thermal">
-            <div className="tvs-receipt-preview-label">
-              Preview · TVS LP 46 (108 mm thermal)
-            </div>
-            <ThermalReceipt data={selected} id={`${channel}-invoice-print`} />
+          <div className="pos-invoice-sheet pos-invoice-sheet--a4">
+            <div className="tvs-receipt-preview-label">Shop bill · 5″ wide · height auto-cuts</div>
+            <InvoiceBill data={selected} id={`${channel}-invoice-print`} />
             <div className="pos-invoice-actions">
               <button type="button" className="btn" onClick={() => window.print()}>
                 <Printer size={14} />
-                Print on TVS LP 46
+                Print bill
               </button>
-              <button type="button" className="btn ghost" onClick={() => setSelected(null)}>
+              <button type="button" className="admin-ghost-btn" onClick={() => setSelected(null)}>
                 <X size={14} />
                 Close
               </button>
             </div>
             <p className="tvs-print-hint muted">
-              In the print dialog, choose <b>TVS LP 46</b>, paper size ~108 mm / continuous, margins
-              none or minimum, scale 100%.
+              Paper width <b>5 inch</b> · height follows bill length (auto-cut). TVS LP 46 is only for
+              barcode stickers.
             </p>
           </div>
         </div>

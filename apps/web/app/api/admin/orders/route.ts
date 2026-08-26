@@ -23,7 +23,9 @@ export async function GET(request: NextRequest) {
             coalesce(o.discount_amount, 0) as discount_amount,
             o.tax_amount, o.shipping_amount, o.total_amount,
             coalesce(o.channel, 'online') as channel, o.created_at,
-            c.full_name as customer_name, c.email as customer_email, c.phone as customer_phone
+            coalesce(nullif(o.pos_customer_name, ''), c.full_name) as customer_name,
+            coalesce(nullif(o.pos_customer_email, ''), c.email) as customer_email,
+            coalesce(nullif(o.pos_customer_phone, ''), c.phone) as customer_phone
      from orders o
      left join customers c on c.id = o.customer_id
      where ($1::text is null or o.status::text = $1)

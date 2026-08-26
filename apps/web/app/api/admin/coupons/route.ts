@@ -1,9 +1,13 @@
 import { NextRequest } from "next/server";
-import { fail, ok, requireAnyPermission, requirePermission, writeAuditLog } from "../../../../lib/auth/api";
+import { fail, ok, requireAnyPermission, writeAuditLog } from "../../../../lib/auth/api";
 import { query, queryOne } from "../../../../lib/db/pool";
 
 export async function GET(request: NextRequest) {
-  const { error } = await requireAnyPermission(request, ["pricing:manage", "pricing:limited"]);
+  const { error } = await requireAnyPermission(request, [
+    "pricing:manage",
+    "pricing:limited",
+    "coupons:manage"
+  ]);
   if (error) return error;
 
   const data = await query(`select * from coupons order by created_at desc`);
@@ -11,7 +15,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const { error, ctx } = await requirePermission(request, "pricing:manage");
+  const { error, ctx } = await requireAnyPermission(request, [
+    "pricing:manage",
+    "coupons:manage"
+  ]);
   if (error || !ctx) return error;
 
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;

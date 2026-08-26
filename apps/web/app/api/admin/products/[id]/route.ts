@@ -1,7 +1,15 @@
 import { NextRequest } from "next/server";
-import { fail, ok, requirePermission, writeAuditLog } from "../../../../../lib/auth/api";
+import {
+  fail,
+  ok,
+  requireAnyPermission,
+  requirePermission,
+  writeAuditLog
+} from "../../../../../lib/auth/api";
 import { query, queryOne } from "../../../../../lib/db/pool";
 import { emptyToNull, subcategoryBelongsToCategory } from "../../../../../lib/db/taxonomy";
+import { listProductItems, ensureProductUnitsSchema, recordPriceHistory } from "../../../../../lib/product-units";
+import { ensureGstSchema, normalizeGstRate, normalizeHsn } from "../../../../../lib/gst";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -22,36 +30,102 @@ const ALLOWED_FIELDS = [
   "price",
   "compare_at_price",
   "status",
-  "is_featured"
+  "is_featured",
+  "parent_product_id",
+  "hsn_code",
+  "gst_rate"
 ] as const;
 
 export async function GET(request: NextRequest, { params }: Params) {
   const { error } = await requirePermission(request, "products:read");
   if (error) return error;
 
+  await ensureProductUnitsSchema();
+  await ensureGstSchema();
+
   const { id } = await params;
 
   const product = await queryOne(`select * from products where id = $1`, [id]);
   if (!product) return fail("Product not found", 404);
 
-  const [variants, images, items] = await Promise.all([
+  const [variants, images, items, children, parent] = await Promise.all([
     query(`select * from product_variants where product_id = $1`, [id]),
-    query(`select * from product_images where product_id = $1 order by sort_order asc`, [id]),
-    listProductItems(id).catch(() => [])
+    query(
+      `select *, image_kind::text as image_kind
+       from product_images where product_id = $1
+       order by image_kind asc, sort_order asc`,
+      [id]
+    ),
+    listProductItems(id).catch(() => []),
+    query(
+      `select id, name, sku, color, stock_quantity, status, price
+       from products where parent_product_id = $1
+       order by name asc`,
+      [id]
+    ),
+    (product as { parent_product_id?: string | null }).parent_product_id
+      ? queryOne<{ id: string; name: string; sku: string | null }>(
+          `select id, name, sku from products where id = $1`,
+          [(product as { parent_product_id: string }).parent_product_id]
+        )
+      : Promise.resolve(null)
   ]);
 
-  return ok({ ...product, product_variants: variants, product_images: images, product_items: items });
+  const websiteImages = images.filter(
+    (row) => (row as { image_kind?: string }).image_kind !== "internal"
+  );
+  const internalImages = images.filter(
+    (row) => (row as { image_kind?: string }).image_kind === "internal"
+  );
+
+  return ok({
+    ...product,
+    product_variants: variants,
+    product_images: websiteImages,
+    internal_images: internalImages,
+    product_items: items,
+    child_products: children,
+    parent_product: parent
+  });
 }
 
 export async function PATCH(request: NextRequest, { params }: Params) {
   const { error, ctx } = await requirePermission(request, "products:manage");
   if (error || !ctx) return error;
 
+  await ensureGstSchema();
+
   const { id } = await params;
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return fail("Invalid body");
 
-  const before = await queryOne<{ id: string; price: string }>(`select * from products where id = $1`, [id]);
+  if ("price" in body || "compare_at_price" in body) {
+    const pricingAuth = await requireAnyPermission(request, [
+      "pricing:manage",
+      "pricing:limited"
+    ]);
+    if (pricingAuth.error) return pricingAuth.error;
+  }
+
+  if ("hsn_code" in body) {
+    const hsn = body.hsn_code == null || String(body.hsn_code).trim() === ""
+      ? null
+      : normalizeHsn(body.hsn_code);
+    if (body.hsn_code != null && String(body.hsn_code).trim() && !hsn) {
+      return fail("HSN code must be 4 to 8 digits");
+    }
+    body.hsn_code = hsn;
+  }
+  if ("gst_rate" in body) {
+    body.gst_rate = normalizeGstRate(body.gst_rate, 5);
+  }
+
+  const before = await queryOne<{
+    id: string;
+    price: string;
+    category_id: string;
+    subcategory_id: string | null;
+  }>(`select * from products where id = $1`, [id]);
   if (!before) return fail("Product not found", 404);
 
   const updates: string[] = [];
@@ -64,11 +138,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     normalized.subcategory_id = emptyToNull(normalized.subcategory_id);
   }
 
-  const nextCategoryId = String(
-    normalized.category_id ?? (before as { category_id: string }).category_id
-  );
+  const nextCategoryId = String(normalized.category_id ?? before.category_id);
   if ("category_id" in normalized && !("subcategory_id" in normalized)) {
-    const currentSub = (before as { subcategory_id?: string | null }).subcategory_id ?? null;
+    const currentSub = before.subcategory_id ?? null;
     if (!(await subcategoryBelongsToCategory(nextCategoryId, currentSub))) {
       normalized.subcategory_id = null;
     }
@@ -76,10 +148,34 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const nextSubcategoryId =
     "subcategory_id" in normalized
       ? (normalized.subcategory_id as string | null)
-      : ((before as { subcategory_id?: string | null }).subcategory_id ?? null);
+      : (before.subcategory_id ?? null);
   if (!(await subcategoryBelongsToCategory(nextCategoryId, nextSubcategoryId))) {
     return fail("Subcategory must belong to the selected category");
   }
+
+  if ("parent_product_id" in normalized) {
+    normalized.parent_product_id = emptyToNull(normalized.parent_product_id);
+    const parentId = normalized.parent_product_id as string | null;
+    if (parentId) {
+      if (parentId === id) return fail("A product cannot be its own parent");
+      const parent = await queryOne<{ id: string; parent_product_id: string | null }>(
+        `select id, parent_product_id from products where id = $1`,
+        [parentId]
+      );
+      if (!parent) return fail("Parent product not found", 404);
+      if (parent.parent_product_id) {
+        return fail("Choose a top-level product as parent (not another child design)");
+      }
+      const hasChildren = await queryOne<{ c: number }>(
+        `select count(*)::int as c from products where parent_product_id = $1`,
+        [id]
+      );
+      if (Number(hasChildren?.c || 0) > 0) {
+        return fail("This product already has child designs; clear those first before nesting it");
+      }
+    }
+  }
+
   for (const key of ALLOWED_FIELDS) {
     if (key in normalized) {
       values.push(normalized[key]);

@@ -91,6 +91,16 @@ export async function POST(request: NextRequest) {
           [variant.id]
         );
 
+        await db.query(
+          `update products p
+           set stock_quantity = coalesce((
+             select sum(pv.stock_quantity)::int from product_variants pv where pv.product_id = p.id
+           ), 0),
+           updated_at = now()
+           where p.id = $1`,
+          [variant.product_id]
+        );
+
         const movement = await db.queryOne(
           `insert into inventory_movements
              (product_variant_id, type, quantity, reference_type, note, created_by)

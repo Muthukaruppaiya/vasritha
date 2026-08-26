@@ -5,6 +5,8 @@ export type StickerItem = {
   unit_code: string;
   barcode: string;
   tag?: string;
+  price?: number | string;
+  labelSize?: "accessory" | "dress";
 };
 
 function barcodePng(value: string, height: number) {
@@ -27,6 +29,10 @@ function escapeHtml(value: string) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function formatPrice(value: number | string) {
+  return `₹ ${Number(value || 0).toLocaleString("en-IN")}/-`;
 }
 
 function stickerHtml(input: {
@@ -108,13 +114,18 @@ export function printProductStickers(input: {
   }
 
   const brand = input.brand || "Vasritha Fashions";
-  const price = `₹ ${Number(input.price || 0).toLocaleString("en-IN")}/-`;
-  const sizeClass = input.labelSize === "accessory" ? "accessory" : "dress";
+  const defaultPrice = formatPrice(input.price);
+  const defaultSize = input.labelSize === "accessory" ? "accessory" : "dress";
 
   const cards = input.items
     .map((item) => {
       const value = String(item.barcode || item.unit_code || "").replace(/[^A-Za-z0-9]/g, "").toUpperCase();
       if (!value) return "";
+      const sizeClass =
+        item.labelSize === "accessory" || item.labelSize === "dress"
+          ? item.labelSize
+          : defaultSize;
+      const price = item.price != null ? formatPrice(item.price) : defaultPrice;
       return stickerHtml({
         brand,
         price,

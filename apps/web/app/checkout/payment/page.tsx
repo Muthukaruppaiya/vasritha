@@ -6,7 +6,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { CreditCard, Landmark, Smartphone } from "lucide-react";
 import { Footer, Header } from "../../../components/storefront";
-import { getAppliedCoupon, clearAppliedCoupon } from "../../../lib/applied-coupon";
+import { getAppliedCoupon, markVoucherUsed } from "../../../lib/applied-coupon";
 import {
   buildOrderLines,
   finalizeLocalOrder,
@@ -15,8 +15,31 @@ import {
   PlacedOrder
 } from "../../../lib/order";
 import { storeFetch } from "../../../lib/store-api";
+import { getCustomerSession, isLoggedIn } from "../../../lib/customer-session";
 import { useLocale } from "../../../lib/i18n/provider";
 import { localizeProductFields, localizeSize } from "../../../lib/i18n/catalog-local";
+
+type RazorpayCtor = new (options: Record<string, unknown>) => { open: () => void };
+
+declare global {
+  interface Window {
+    Razorpay?: RazorpayCtor;
+  }
+}
+
+function loadRazorpayScript() {
+  return new Promise<boolean>((resolve) => {
+    if (window.Razorpay) {
+      resolve(true);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
+  });
+}
 
 const methods = [
   {
@@ -87,6 +110,40 @@ function PaymentContent() {
     setReady(true);
   }, [router]);
 
+  const completePaidOrder = (
+    pendingOrder: NonNullable<ReturnType<typeof getPendingOrder>>,
+    session: NonNullable<ReturnType<typeof getCustomerSession>>,
+    createdOrder: { id: string; order_number?: string; created_at?: string }
+  ) => {
+    const placed: PlacedOrder = {
+      id: createdOrder.id,
+      orderNumber: createdOrder.order_number || createdOrder.id,
+      createdAt: createdOrder.created_at || new Date().toISOString(),
+      paymentMethod: method,
+      paymentStatus: "paid",
+      total,
+      savings: Math.max(
+        0,
+        pendingOrder.items.reduce(
+          (sum, item) => sum + ((item.compareAtPrice || item.price) - item.price) * item.quantity,
+          0
+        )
+      ),
+      customer: {
+        name: session.name,
+        email: session.email,
+        phone: session.phone
+      },
+      address: { ...session.address },
+      items: lines
+    };
+
+    finalizeLocalOrder(placed, pendingOrder.fromCart);
+    const used = getAppliedCoupon();
+    if (used) markVoucherUsed(used.id);
+    router.replace(`/checkout/confirmation?order=${encodeURIComponent(placed.orderNumber)}`);
+  };
+
   const onPay = async () => {
     setError("");
     setProcessing(true);
@@ -126,6 +183,9 @@ function PaymentContent() {
       paymentId: string;
       razorpayOrderId?: string;
       orderId: string;
+      keyId?: string | null;
+      amount?: string;
+      currency?: string;
     }>("/api/payments/create", {
       method: "POST",
       json: {
@@ -140,48 +200,71 @@ function PaymentContent() {
       return;
     }
 
-    const verified = await storeFetch("/api/payments/verify", {
-      method: "POST",
-      json: {
-        orderId: created.data.order.id,
-        paymentId: payment.data.paymentId,
+    const finishVerify = async (payload: Record<string, unknown>) => {
+      const verified = await storeFetch("/api/payments/verify", {
+        method: "POST",
+        json: {
+          orderId: created.data!.order.id,
+          paymentId: payment.data!.paymentId,
+          ...payload
+        }
+      });
+      if (verified.error) {
+        setProcessing(false);
+        setError(verified.error);
+        return;
+      }
+      completePaidOrder(pendingOrder, session, created.data!.order);
+    };
+
+    // Demo path when Razorpay keys are not configured
+    if (payment.data.mode === "test" || !payment.data.keyId) {
+      await finishVerify({
         razorpayOrderId: payment.data.razorpayOrderId,
         testSuccess: true
-      }
-    });
-
-    if (verified.error) {
-      setProcessing(false);
-      setError(verified.error);
+      });
       return;
     }
 
-    const placed: PlacedOrder = {
-      id: created.data.order.id,
-      orderNumber: created.data.order.order_number || created.data.order.id,
-      createdAt: created.data.order.created_at || new Date().toISOString(),
-      paymentMethod: method,
-      paymentStatus: "paid",
-      total,
-      savings: Math.max(
-        0,
-        pendingOrder.items.reduce(
-          (sum, item) => sum + ((item.compareAtPrice || item.price) - item.price) * item.quantity,
-          0
-        )
-      ),
-      customer: {
+    const readyRzp = await loadRazorpayScript();
+    if (!readyRzp || !window.Razorpay) {
+      setProcessing(false);
+      setError("Could not load Razorpay Checkout");
+      return;
+    }
+
+    const amount = Number(payment.data.amount ?? created.data.order.total_amount ?? total);
+    const razorpay = new window.Razorpay({
+      key: payment.data.keyId,
+      amount: Math.round(amount * 100),
+      currency: payment.data.currency || "INR",
+      name: "Vasritha",
+      description: created.data.order.order_number || "Order payment",
+      order_id: payment.data.razorpayOrderId,
+      prefill: {
         name: session.name,
         email: session.email,
-        phone: session.phone
+        contact: session.phone
       },
-      address: { ...session.address },
-      items: lines
-    };
-
-    finalizeLocalOrder(placed, pendingOrder.fromCart);
-    clearAppliedCoupon();
-    router.replace(`/checkout/confirmation?order=${encodeURIComponent(placed.orderNumber)}`);
+      handler: async (response: {
+        razorpay_order_id: string;
+        razorpay_payment_id: string;
+        razorpay_signature: string;
+      }) => {
+        await finishVerify({
+          razorpayOrderId: response.razorpay_order_id,
+          razorpayPaymentId: response.razorpay_payment_id,
+          razorpaySignature: response.razorpay_signature
+        });
+      },
+      modal: {
+        ondismiss: () => {
+          setProcessing(false);
+          setError("Payment cancelled. Your order is pending — try again to complete payment.");
+        }
+      }
+    });
+    razorpay.open();
   };
 
   if (!ready || !pending) {
@@ -204,9 +287,9 @@ function PaymentContent() {
         </nav>
 
         <header className="pay-hero">
-          <p className="eyebrow">Razorpay · Secure test</p>
+          <p className="eyebrow">Razorpay · Secure checkout</p>
           <h1>Complete payment</h1>
-          <p className="muted pay-lead">Choose a method to finish. Demo only — no real charge.</p>
+          <p className="muted pay-lead">Choose a method, then confirm. Live keys open Razorpay Checkout.</p>
         </header>
 
         <div className="pay-amount" aria-live="polite">
@@ -265,11 +348,6 @@ function PaymentContent() {
                   </button>
                 );
               })}
-            </div>
-
-            <div className="pay-test-note">
-              <span className="pay-test-pill">Test mode</span>
-              <p>No real charge will be made. Success is simulated for Vasritha checkout.</p>
             </div>
 
             {error && <p className="pay-error">{error}</p>}

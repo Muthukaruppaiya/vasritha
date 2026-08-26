@@ -20,6 +20,7 @@ export type ProductFormImage = {
   preview?: string;
   file?: File;
   isNew?: boolean;
+  kind?: "website" | "internal";
 };
 
 export type ProductFormValues = {
@@ -35,8 +36,11 @@ export type ProductFormValues = {
   image_upload_token?: string;
   category_id: string;
   subcategory_id: string;
+  parent_product_id: string;
   price: string;
   compare_at_price: string;
+  hsn_code: string;
+  gst_rate: string;
   stock_quantity: string;
   status: string;
   short_description: string;
@@ -45,17 +49,27 @@ export type ProductFormValues = {
   is_featured: boolean;
 };
 
+export type ProductParentOption = {
+  id: string;
+  name: string;
+  sku?: string | null;
+  color?: string | null;
+};
+
 type Props = {
   open: boolean;
   mode: "create" | "edit";
   categories: ProductFormCategory[];
+  parentOptions?: ProductParentOption[];
   initial: ProductFormValues;
   initialImages?: ProductFormImage[];
+  initialInternalImages?: ProductFormImage[];
   onClose: () => void;
   onSaved: () => void;
 };
 
 const emptyImages: ProductFormImage[] = [];
+const MAX_KIND_IMAGES = 5;
 
 function generateSku() {
   return `VAS-${Date.now().toString().slice(-8)}`;
@@ -69,13 +83,16 @@ export function ProductFormModal({
   open,
   mode,
   categories,
+  parentOptions = [],
   initial,
   initialImages = emptyImages,
+  initialInternalImages = emptyImages,
   onClose,
   onSaved
 }: Props) {
   const [form, setForm] = useState(initial);
-  const [images, setImages] = useState<ProductFormImage[]>(initialImages);
+  const [websiteImages, setWebsiteImages] = useState<ProductFormImage[]>(initialImages);
+  const [internalImages, setInternalImages] = useState<ProductFormImage[]>(initialInternalImages);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [units, setUnits] = useState<
@@ -83,15 +100,17 @@ export function ProductFormModal({
   >([]);
   const [printBusy, setPrintBusy] = useState(false);
   const barcodeRef = useRef<SVGSVGElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const websiteFileRef = useRef<HTMLInputElement | null>(null);
+  const internalFileRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setForm(initial);
-    setImages(initialImages);
+    setWebsiteImages(initialImages);
+    setInternalImages(initialInternalImages);
     setError("");
     setUnits([]);
-  }, [open, initial, initialImages]);
+  }, [open, initial, initialImages, initialInternalImages]);
 
   useEffect(() => {
     if (!open || !form.id) return;
@@ -139,11 +158,16 @@ export function ProductFormModal({
     }));
   };
 
-  const onPickFiles = async (fileList: FileList | null) => {
+  const onPickFiles = async (
+    fileList: FileList | null,
+    kind: "website" | "internal"
+  ) => {
     if (!fileList?.length) return;
-    const remaining = 5 - images.length;
+    const current = kind === "website" ? websiteImages : internalImages;
+    const setList = kind === "website" ? setWebsiteImages : setInternalImages;
+    const remaining = MAX_KIND_IMAGES - current.length;
     if (remaining <= 0) {
-      setError("Maximum 5 images allowed");
+      setError(`Maximum ${MAX_KIND_IMAGES} ${kind} images allowed`);
       return;
     }
 
@@ -160,20 +184,22 @@ export function ProductFormModal({
         continue;
       }
       const preview = await readAsDataUrl(file);
-      next.push({ storage_path: "", preview, file, isNew: true });
+      next.push({ storage_path: "", preview, file, isNew: true, kind });
     }
 
-    setImages((current) => [...current, ...next].slice(0, 5));
+    setList((prev) => [...prev, ...next].slice(0, MAX_KIND_IMAGES));
   };
 
-  const removeImage = async (index: number) => {
-    const target = images[index];
+  const removeImage = async (index: number, kind: "website" | "internal") => {
+    const list = kind === "website" ? websiteImages : internalImages;
+    const setList = kind === "website" ? setWebsiteImages : setInternalImages;
+    const target = list[index];
     if (target?.id && form.id) {
       await adminFetch(`/api/admin/products/${form.id}/images?imageId=${target.id}`, {
         method: "DELETE"
       });
     }
-    setImages((current) => current.filter((_, i) => i !== index));
+    setList((current) => current.filter((_, i) => i !== index));
   };
 
   const reloadUnits = async (productId: string) => {
@@ -243,10 +269,15 @@ export function ProductFormModal({
 
   const uploadPendingImages = async (productId: string) => {
     const token = getAdminToken();
-    for (const image of images) {
+    const pending = [
+      ...websiteImages.map((image) => ({ image, kind: "website" as const })),
+      ...internalImages.map((image) => ({ image, kind: "internal" as const }))
+    ];
+    for (const { image, kind } of pending) {
       if (!image.isNew || !image.file) continue;
       const body = new FormData();
       body.append("file", image.file);
+      body.append("kind", kind);
       const res = await fetch(`/api/admin/products/${productId}/images`, {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
@@ -281,8 +312,11 @@ export function ProductFormModal({
       label_size: form.label_size,
       category_id: form.category_id,
       subcategory_id: form.subcategory_id || null,
+      parent_product_id: form.parent_product_id || null,
       price: Number(form.price),
       compare_at_price: form.compare_at_price ? Number(form.compare_at_price) : null,
+      hsn_code: form.hsn_code.trim() || null,
+      gst_rate: Number(form.gst_rate || 5),
       stock_quantity: Number(form.stock_quantity || 0),
       status: form.status,
       color: form.color.trim(),
@@ -436,6 +470,37 @@ export function ProductFormModal({
             </label>
 
             <label>
+              <span>HSN code</span>
+              <input
+                value={form.hsn_code}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, hsn_code: e.target.value.replace(/\D/g, "").slice(0, 8) }))
+                }
+                placeholder="e.g. 5407"
+                inputMode="numeric"
+                maxLength={8}
+              />
+              <small className="admin-field-hint">
+                GST HSN (4–8 digits). Common textile: 5007 silk, 5208 cotton, 5407 synthetic, 6214 scarf.
+              </small>
+            </label>
+
+            <label>
+              <span>GST rate %</span>
+              <select
+                value={form.gst_rate}
+                onChange={(e) => setForm((f) => ({ ...f, gst_rate: e.target.value }))}
+              >
+                <option value="0">0%</option>
+                <option value="5">5%</option>
+                <option value="12">12%</option>
+                <option value="18">18%</option>
+                <option value="28">28%</option>
+              </select>
+              <small className="admin-field-hint">Retail price is treated as GST-inclusive.</small>
+            </label>
+
+            <label>
               <span>Product code (SKU)</span>
               <div className="admin-input-with-action">
                 <input
@@ -525,6 +590,29 @@ export function ProductFormModal({
               <small className="admin-field-hint">Child of the selected category. Used in inventory too.</small>
             </label>
 
+            <label className="admin-span-2">
+              <span>Parent product (optional · Case 2 designs)</span>
+              <select
+                value={form.parent_product_id}
+                onChange={(e) => setForm((f) => ({ ...f, parent_product_id: e.target.value }))}
+              >
+                <option value="">None — standalone product (Case 1 saree / normal)</option>
+                {parentOptions
+                  .filter((row) => row.id !== form.id)
+                  .map((row) => (
+                    <option key={row.id} value={row.id}>
+                      {row.name}
+                      {row.sku ? ` · ${row.sku}` : ""}
+                      {row.color ? ` · ${row.color}` : ""}
+                    </option>
+                  ))}
+              </select>
+              <small className="admin-field-hint">
+                Case 1: leave empty, set opening stock for unique barcodes. Case 2: pick a parent group
+                (e.g. Gold Chain) and create each small design as a child with its own images + barcodes.
+              </small>
+            </label>
+
             <label>
               <span>Status</span>
               <select value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>
@@ -569,8 +657,8 @@ export function ProductFormModal({
               />
               <small className="admin-field-hint">
                 {form.id
-                  ? "Add more unique barcodes from Inventory → Inward."
-                  : "10 stock = 10 unique barcode stickers."}
+                  ? "Do not edit qty here — open Inventory → Receive stock (GRN) to add pieces."
+                  : "Optional first inward. Later stock always goes through Inventory → Receive (GRN)."}
               </small>
             </label>
 
@@ -687,40 +775,49 @@ export function ProductFormModal({
 
           {form.image_upload_token ? (
             <div className="admin-qr-box">
-              <strong>Scan to upload photos</strong>
+              <strong>QR · internal reference photos</strong>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                alt="Upload QR"
+                alt="Upload QR for internal photos"
                 src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
                   `${typeof window !== "undefined" ? window.location.origin : ""}/part/${form.image_upload_token || ""}`
                 )}`}
               />
               <small className="admin-field-hint">
-                Phone camera opens image upload for this product.
+                Scan with phone to add internal reference photos only (not shown on the website).
               </small>
             </div>
           ) : null}
 
           <div className="admin-image-uploader">
             <div className="admin-barcode-preview-head">
-              <strong>Images (optional now — QR or upload, max 5)</strong>
-              <span className="muted">{images.length}/5</span>
+              <strong>Website images (storefront)</strong>
+              <span className="muted">
+                {websiteImages.length}/{MAX_KIND_IMAGES}
+              </span>
             </div>
+            <p className="muted admin-field-hint" style={{ marginTop: 0 }}>
+              Upload only — these photos appear on the customer website.
+            </p>
             <div className="admin-image-grid">
-              {images.map((image, index) => (
-                <div key={`${image.id || image.preview}-${index}`} className="admin-image-thumb">
+              {websiteImages.map((image, index) => (
+                <div key={`${image.id || image.preview}-web-${index}`} className="admin-image-thumb">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={image.preview || image.storage_path} alt="" />
-                  <button type="button" aria-label="Remove image" onClick={() => void removeImage(index)}>
+                  <button
+                    type="button"
+                    aria-label="Remove website image"
+                    onClick={() => void removeImage(index, "website")}
+                  >
                     <Trash2 size={14} />
                   </button>
                 </div>
               ))}
-              {images.length < 5 && (
+              {websiteImages.length < MAX_KIND_IMAGES && (
                 <button
                   type="button"
                   className="admin-image-add"
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={() => websiteFileRef.current?.click()}
                 >
                   <Upload size={18} />
                   Upload
@@ -728,13 +825,61 @@ export function ProductFormModal({
               )}
             </div>
             <input
-              ref={fileInputRef}
+              ref={websiteFileRef}
               type="file"
               accept="image/png,image/jpeg,image/webp,image/gif"
               multiple
               hidden
               onChange={(e) => {
-                void onPickFiles(e.target.files);
+                void onPickFiles(e.target.files, "website");
+                e.target.value = "";
+              }}
+            />
+          </div>
+
+          <div className="admin-image-uploader">
+            <div className="admin-barcode-preview-head">
+              <strong>Internal reference images</strong>
+              <span className="muted">
+                {internalImages.length}/{MAX_KIND_IMAGES}
+              </span>
+            </div>
+            <p className="muted admin-field-hint" style={{ marginTop: 0 }}>
+              Staff-only. Prefer phone QR above; you can also upload here.
+            </p>
+            <div className="admin-image-grid">
+              {internalImages.map((image, index) => (
+                <div key={`${image.id || image.preview}-int-${index}`} className="admin-image-thumb">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={image.preview || image.storage_path} alt="" />
+                  <button
+                    type="button"
+                    aria-label="Remove internal image"
+                    onClick={() => void removeImage(index, "internal")}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+              {internalImages.length < MAX_KIND_IMAGES && (
+                <button
+                  type="button"
+                  className="admin-image-add"
+                  onClick={() => internalFileRef.current?.click()}
+                >
+                  <Upload size={18} />
+                  Upload
+                </button>
+              )}
+            </div>
+            <input
+              ref={internalFileRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              multiple
+              hidden
+              onChange={(e) => {
+                void onPickFiles(e.target.files, "internal");
                 e.target.value = "";
               }}
             />
@@ -780,8 +925,11 @@ export function blankProductForm(categoryId = ""): ProductFormValues {
     label_size: "dress",
     category_id: categoryId,
     subcategory_id: "",
+    parent_product_id: "",
     price: "",
     compare_at_price: "",
+    hsn_code: "5407",
+    gst_rate: "5",
     stock_quantity: "0",
     status: "draft",
     short_description: "",

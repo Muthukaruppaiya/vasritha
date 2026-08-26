@@ -133,6 +133,7 @@ export default function AdminIntegrationsPage() {
   return (
     <div className="admin-stack">
       <AdminPageHeader
+        eyebrow="Channels"
         title="Integrations"
         description="Enable WhatsApp, SMS, or Email when you are ready. All channels start disabled."
       />

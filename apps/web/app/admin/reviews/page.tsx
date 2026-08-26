@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Check, EyeOff, Star } from "lucide-react";
 import {
   AdminAlert,
   AdminBadge,
@@ -55,7 +56,9 @@ export default function AdminReviewsPage() {
   return (
     <>
       <AdminPageHeader
+        eyebrow="Catalogue"
         title="Reviews"
+        description="Approve, hide, and feature customer product reviews before they appear on the storefront."
       />
 
       <div className="admin-tabs">
@@ -133,32 +136,48 @@ export default function AdminReviewsPage() {
                     </td>
                     <td>{formatDate(row.created_at)}</td>
                     <td>
-                      <div className="admin-row-actions">
+                      <div className="admin-row-actions" role="group" aria-label="Review actions">
                         {!row.is_approved ? (
                           <button
                             type="button"
+                            className="admin-action-btn admin-action-btn--primary"
                             disabled={busyId === row.id}
                             onClick={() => void moderate(row.id, { is_approved: true })}
+                            title="Approve and show on site"
+                            aria-label={`Approve review by ${row.customer_name}`}
                           >
-                            Approve / show
+                            <Check size={14} strokeWidth={2} />
+                            <span>Approve / show</span>
                           </button>
                         ) : (
                           <button
                             type="button"
+                            className="admin-action-btn"
                             disabled={busyId === row.id}
                             onClick={() => void moderate(row.id, { is_approved: false })}
+                            title="Hide from site"
+                            aria-label={`Hide review by ${row.customer_name}`}
                           >
-                            Hide from site
+                            <EyeOff size={14} strokeWidth={2} />
+                            <span>Hide from site</span>
                           </button>
                         )}
                         <button
                           type="button"
+                          className="admin-action-btn"
                           disabled={busyId === row.id}
                           onClick={() =>
                             void moderate(row.id, { is_featured: !row.is_featured })
                           }
+                          title={row.is_featured ? "Remove featured" : "Feature review"}
+                          aria-label={
+                            row.is_featured
+                              ? `Unfeature review by ${row.customer_name}`
+                              : `Feature review by ${row.customer_name}`
+                          }
                         >
-                          {row.is_featured ? "Unfeature" : "Feature"}
+                          <Star size={14} strokeWidth={2} />
+                          <span>{row.is_featured ? "Unfeature" : "Feature"}</span>
                         </button>
                       </div>
                     </td>

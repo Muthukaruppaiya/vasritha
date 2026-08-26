@@ -48,11 +48,47 @@ export async function ensureProductUnitsSchema() {
       add column if not exists tag text,
       add column if not exists sku_prefix text not null default 'VAS',
       add column if not exists label_size public.product_label_size not null default 'dress',
-      add column if not exists image_upload_token uuid not null default gen_random_uuid()
+      add column if not exists image_upload_token uuid not null default gen_random_uuid(),
+      add column if not exists parent_product_id uuid
+  `);
+  await query(`
+    do $$ begin
+      alter table public.products
+        add constraint products_parent_product_id_fkey
+        foreign key (parent_product_id) references public.products(id) on delete set null;
+    exception when duplicate_object then null;
+    end $$;
+  `);
+  await query(`
+    do $$ begin
+      alter table public.products
+        add constraint products_parent_not_self
+        check (parent_product_id is null or parent_product_id <> id);
+    exception when duplicate_object then null;
+    end $$;
+  `);
+  await query(`
+    create index if not exists products_parent_product_id_idx
+      on public.products (parent_product_id)
+      where parent_product_id is not null
   `);
   await query(`
     create unique index if not exists products_image_upload_token_idx
       on public.products (image_upload_token)
+  `);
+  await query(`
+    do $$ begin
+      create type public.product_image_kind as enum ('website', 'internal');
+    exception when duplicate_object then null;
+    end $$;
+  `);
+  await query(`
+    alter table public.product_images
+      add column if not exists image_kind public.product_image_kind not null default 'website'
+  `);
+  await query(`
+    create index if not exists product_images_product_kind_idx
+      on public.product_images (product_id, image_kind, sort_order)
   `);
   await query(`
     create table if not exists public.product_items (
@@ -148,8 +184,19 @@ export async function listProductItems(productId: string) {
   );
 }
 
-export async function markItemsSold(db: Db, itemIds: string[], orderId: string) {
+export async function markItemsSold(db: Db, itemIds: string[], orderId: string, variantId?: string) {
   if (!itemIds.length) return;
+  if (variantId) {
+    await db.query(
+      `update product_items
+       set status = 'sold', date_sold = now(), bill_id = $2
+       where id = any($1::uuid[])
+         and variant_id = $3
+         and status = 'to_sell'`,
+      [itemIds, orderId, variantId]
+    );
+    return;
+  }
   await db.query(
     `update product_items
      set status = 'sold', date_sold = now(), bill_id = $2
@@ -199,6 +246,7 @@ export async function lookupUnitByCode(code: string) {
        (
          select pi.storage_path from product_images pi
          where pi.product_id = p.id
+           and coalesce(pi.image_kind::text, 'website') = 'website'
          order by pi.sort_order asc
          limit 1
        ) as image_path

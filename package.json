@@ -21,8 +21,12 @@
     "db:seed:homepage-config": "node --env-file=apps/web/.env.local scripts/seed-homepage-config.mjs",
     "db:patch:integrations": "node --env-file=apps/web/.env.local scripts/patch-integrations.mjs",
     "db:patch:product-units": "node --env-file=apps/web/.env.local scripts/patch-product-units.mjs",
+    "db:patch:product-parent": "node --env-file=apps/web/.env.local scripts/patch-product-parent.mjs",
+    "db:patch:product-image-kinds": "node --env-file=apps/web/.env.local scripts/patch-product-image-kinds.mjs",
     "db:patch:category-i18n": "node --env-file=apps/web/.env.local scripts/patch-category-i18n.mjs",
     "db:patch:gift-vouchers": "node --env-file=apps/web/.env.local scripts/patch-gift-vouchers.mjs",
+    "db:patch:gst-hsn": "node --env-file=apps/web/.env.local scripts/patch-gst-hsn.mjs",
+    "db:seed:opening-voucher": "node --env-file=apps/web/.env.local scripts/seed-opening-voucher.mjs",
     "db:reset": "docker compose down -v && docker compose up -d postgres && node scripts/init-local-db.mjs"
   }
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { Plus } from "lucide-react";
 import {
   AdminAlert,
   AdminBadge,
@@ -161,7 +162,8 @@ export default function AdminCmsPage() {
           setBannerModalOpen(true);
         }}
       >
-        + New banner
+        <Plus size={15} />
+        New banner
       </button>
     ) : tab === "pages" ? (
       <button
@@ -173,7 +175,8 @@ export default function AdminCmsPage() {
           setPageModalOpen(true);
         }}
       >
-        + New page
+        <Plus size={15} />
+        New page
       </button>
     ) : tab === "sections" ? (
       <button
@@ -185,13 +188,19 @@ export default function AdminCmsPage() {
           setSectionModalOpen(true);
         }}
       >
-        + New section
+        <Plus size={15} />
+        New section
       </button>
     ) : null;
 
   return (
     <>
-      <AdminPageHeader eyebrow="" title="CMS" actions={headerAction} />
+      <AdminPageHeader
+        eyebrow="Storefront content"
+        title="CMS"
+        description="Manage banners, pages, menus, and homepage sections."
+        actions={headerAction}
+      />
 
       <div className="admin-tabs">
         {(["banners", "pages", "menus", "sections"] as const).map((key) => (

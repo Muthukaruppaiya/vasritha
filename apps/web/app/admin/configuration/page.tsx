@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import {
   AdminAlert,
   AdminBadge,
@@ -331,10 +332,13 @@ export default function AdminConfigurationPage() {
   return (
     <>
       <AdminPageHeader
+        eyebrow="Homepage"
         title="Configuration"
+        description="Offer bar, hero slides, status stories, and showcase media."
         actions={
           <button type="button" className="btn" onClick={openCreate}>
-            + Add
+            <Plus size={15} />
+            Add
           </button>
         }
       />
@@ -378,11 +382,25 @@ export default function AdminConfigurationPage() {
                     {row.is_active ? "Active" : "Hidden"}
                   </AdminBadge>
                   <div className="admin-row-actions">
-                    <button type="button" onClick={() => openEdit(row)}>
-                      Edit
+                    <button
+                      type="button"
+                      className="admin-action-btn"
+                      onClick={() => openEdit(row)}
+                      title="Edit"
+                      aria-label="Edit"
+                    >
+                      <Pencil size={14} strokeWidth={2} />
+                      <span>Edit</span>
                     </button>
-                    <button type="button" className="admin-danger-btn" onClick={() => void onDelete(row.id)}>
-                      Delete
+                    <button
+                      type="button"
+                      className="admin-action-btn admin-action-btn--danger"
+                      onClick={() => void onDelete(row.id)}
+                      title="Delete"
+                      aria-label="Delete"
+                    >
+                      <Trash2 size={14} strokeWidth={2} />
+                      <span>Delete</span>
                     </button>
                   </div>
                 </article>
@@ -412,11 +430,25 @@ export default function AdminConfigurationPage() {
                     {row.is_active ? "Active" : "Hidden"}
                   </AdminBadge>
                   <div className="admin-row-actions">
-                    <button type="button" onClick={() => openEdit(row)}>
-                      Edit
+                    <button
+                      type="button"
+                      className="admin-action-btn"
+                      onClick={() => openEdit(row)}
+                      title="Edit"
+                      aria-label="Edit"
+                    >
+                      <Pencil size={14} strokeWidth={2} />
+                      <span>Edit</span>
                     </button>
-                    <button type="button" className="admin-danger-btn" onClick={() => void onDelete(row.id)}>
-                      Delete
+                    <button
+                      type="button"
+                      className="admin-action-btn admin-action-btn--danger"
+                      onClick={() => void onDelete(row.id)}
+                      title="Delete"
+                      aria-label="Delete"
+                    >
+                      <Trash2 size={14} strokeWidth={2} />
+                      <span>Delete</span>
                     </button>
                   </div>
                 </article>
@@ -450,11 +482,25 @@ export default function AdminConfigurationPage() {
                     {row.is_active ? "Active" : "Hidden"}
                   </AdminBadge>
                   <div className="admin-row-actions">
-                    <button type="button" onClick={() => openEdit(row)}>
-                      Edit
+                    <button
+                      type="button"
+                      className="admin-action-btn"
+                      onClick={() => openEdit(row)}
+                      title="Edit"
+                      aria-label="Edit"
+                    >
+                      <Pencil size={14} strokeWidth={2} />
+                      <span>Edit</span>
                     </button>
-                    <button type="button" className="admin-danger-btn" onClick={() => void onDelete(row.id)}>
-                      Delete
+                    <button
+                      type="button"
+                      className="admin-action-btn admin-action-btn--danger"
+                      onClick={() => void onDelete(row.id)}
+                      title="Delete"
+                      aria-label="Delete"
+                    >
+                      <Trash2 size={14} strokeWidth={2} />
+                      <span>Delete</span>
                     </button>
                   </div>
                 </article>
@@ -491,11 +537,25 @@ export default function AdminConfigurationPage() {
                     {row.is_active ? "Active" : "Hidden"}
                   </AdminBadge>
                   <div className="admin-row-actions">
-                    <button type="button" onClick={() => openEdit(row)}>
-                      Edit
+                    <button
+                      type="button"
+                      className="admin-action-btn"
+                      onClick={() => openEdit(row)}
+                      title="Edit"
+                      aria-label="Edit"
+                    >
+                      <Pencil size={14} strokeWidth={2} />
+                      <span>Edit</span>
                     </button>
-                    <button type="button" className="admin-danger-btn" onClick={() => void onDelete(row.id)}>
-                      Delete
+                    <button
+                      type="button"
+                      className="admin-action-btn admin-action-btn--danger"
+                      onClick={() => void onDelete(row.id)}
+                      title="Delete"
+                      aria-label="Delete"
+                    >
+                      <Trash2 size={14} strokeWidth={2} />
+                      <span>Delete</span>
                     </button>
                   </div>
                 </article>

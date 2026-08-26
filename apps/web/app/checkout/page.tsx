@@ -15,7 +15,7 @@ import { cartItemsToPendingLines, createPendingFromCheckout } from "../../lib/or
 import type { StoreProduct } from "../../lib/catalog";
 import { useLocale } from "../../lib/i18n/provider";
 import { localizeProductFields, localizeSize } from "../../lib/i18n/catalog-local";
-import { getAppliedCoupon, type AppliedCoupon } from "../../lib/applied-coupon";
+import { getAppliedCoupon, COUPON_EVENT, type AppliedCoupon } from "../../lib/applied-coupon";
 
 type CheckoutLine = {
   productId: string;
@@ -56,7 +56,17 @@ function CheckoutContent() {
   const itemCount = lineItems.reduce((sum, item) => sum + item.quantity, 0);
 
   useEffect(() => {
-    setAppliedVoucher(getAppliedCoupon());
+    const syncCoupon = () => setAppliedVoucher(getAppliedCoupon());
+    syncCoupon();
+    window.addEventListener(COUPON_EVENT, syncCoupon);
+    window.addEventListener("storage", syncCoupon);
+    return () => {
+      window.removeEventListener(COUPON_EVENT, syncCoupon);
+      window.removeEventListener("storage", syncCoupon);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!isLoggedIn()) {
       router.replace(`/login?next=${encodeURIComponent(nextCheckout)}`);
       return;

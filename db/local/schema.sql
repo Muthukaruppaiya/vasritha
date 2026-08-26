@@ -101,10 +101,13 @@ create table if not exists public.products (
   description text not null default '',
   price numeric(12,2) not null check (price >= 0),
   compare_at_price numeric(12,2),
+  hsn_code text,
+  gst_rate numeric(5,2) not null default 5,
   status public.product_status not null default 'draft',
   stock_quantity integer not null default 0 check (stock_quantity >= 0),
   is_featured boolean not null default false,
   featured_order integer not null default 0,
+  parent_product_id uuid references public.products(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -120,7 +123,8 @@ create table if not exists public.product_images (
   product_id uuid not null references public.products(id) on delete cascade,
   storage_path text not null,
   alt_text text,
-  sort_order integer not null default 0
+  sort_order integer not null default 0,
+  image_kind text not null default 'website' check (image_kind in ('website', 'internal'))
 );
 
 create table if not exists public.product_variants (
@@ -201,6 +205,9 @@ create table if not exists public.orders (
   shipping_amount numeric(12,2) not null default 0,
   total_amount numeric(12,2) not null check (total_amount >= 0),
   channel text not null default 'online' check (channel in ('online', 'pos')),
+  pos_customer_name text,
+  pos_customer_phone text,
+  pos_customer_email text,
   created_at timestamptz not null default now()
 );
 
@@ -212,6 +219,8 @@ create table if not exists public.order_items (
   product_name text not null,
   variant_name text,
   sku text,
+  hsn_code text,
+  gst_rate numeric(5,2),
   unit_price numeric(12,2) not null,
   quantity integer not null check (quantity > 0),
   line_total numeric(12,2) not null
@@ -332,6 +341,9 @@ create table if not exists public.site_settings (
   company_legal_name text,
   company_address text,
   company_gstin text,
+  company_state text,
+  company_state_code text,
+  prices_inclusive_of_gst boolean not null default true,
   updated_at timestamptz not null default now()
 );
 

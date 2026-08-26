@@ -37,6 +37,18 @@ async function main() {
         end if;
       end $$;
     `);
+    await client.query(`
+      alter table public.orders
+        add column if not exists pos_customer_name text
+    `);
+    await client.query(`
+      alter table public.orders
+        add column if not exists pos_customer_phone text
+    `);
+    await client.query(`
+      alter table public.orders
+        add column if not exists pos_customer_email text
+    `);
 
     const existing = await client.query(`select id from users where email = $1`, [WALK_IN_EMAIL]);
     if (!existing.rows.length) {

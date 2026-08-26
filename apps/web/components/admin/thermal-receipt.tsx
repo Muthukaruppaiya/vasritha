@@ -7,6 +7,8 @@ export type ThermalReceiptItem = {
   product_name: string;
   variant_name: string | null;
   sku: string | null;
+  hsn_code?: string | null;
+  gst_rate?: number | string | null;
   unit_price: number;
   quantity: number;
   line_total: number;
@@ -35,6 +37,23 @@ export type ThermalReceiptData = {
     state: string;
     postal_code: string;
     country: string;
+  } | null;
+  seller?: {
+    legal_name?: string | null;
+    address?: string | null;
+    gstin?: string | null;
+    state?: string | null;
+    state_code?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    prices_inclusive_of_gst?: boolean;
+  } | null;
+  gst?: {
+    taxable: number;
+    cgst: number;
+    sgst: number;
+    igst: number;
+    inclusive?: boolean;
   } | null;
   items: ThermalReceiptItem[];
 };
@@ -116,10 +135,24 @@ export function ThermalReceipt({ data, id = "tvs-l46-receipt" }: Props) {
           </div>
         ) : null}
         {isPos ? (
-          <div>
-            <span>Customer</span>
-            <b>Walk-in</b>
-          </div>
+          <>
+            <div>
+              <span>Customer</span>
+              <b>{data.customer_name || "Walk-in"}</b>
+            </div>
+            {data.customer_phone ? (
+              <div>
+                <span>Mobile</span>
+                <b>{data.customer_phone}</b>
+              </div>
+            ) : null}
+            {data.customer_email ? (
+              <div>
+                <span>Email</span>
+                <b>{data.customer_email}</b>
+              </div>
+            ) : null}
+          </>
         ) : null}
       </div>
 
@@ -221,7 +254,6 @@ export function ThermalReceipt({ data, id = "tvs-l46-receipt" }: Props) {
         <p>Thank you for shopping at Vasritha</p>
         <p>Please retain this bill for exchange</p>
         <p className="tvs-receipt-code">{data.order_number}</p>
-        <p className="tvs-receipt-printer">TVS LP 46 · 108mm</p>
       </footer>
     </article>
   );

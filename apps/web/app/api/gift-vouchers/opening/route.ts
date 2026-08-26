@@ -1,5 +1,8 @@
-import { cachedOk } from "../../../../lib/auth/api";
+import { NextResponse } from "next/server";
+import { ok } from "../../../../lib/auth/api";
 import { queryOne } from "../../../../lib/db/pool";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   const row = await queryOne<{
@@ -24,22 +27,36 @@ export async function GET() {
      limit 1`
   );
 
-  if (!row) return cachedOk({ voucher: null }, 15);
+  if (!row) {
+    return NextResponse.json(
+      { data: { voucher: null } },
+      {
+        status: 200,
+        headers: { "Cache-Control": "no-store" }
+      }
+    );
+  }
 
-  return cachedOk(
+  return NextResponse.json(
     {
-      voucher: {
-        id: row.id,
-        code: row.code,
-        headline: row.headline || "Gift voucher",
-        description: row.description || "",
-        discountType: row.discount_type,
-        discountValue: Number(row.discount_value),
-        minOrderAmount: Number(row.min_order_amount),
-        maxDiscountAmount: row.max_discount_amount != null ? Number(row.max_discount_amount) : null,
-        endsAt: row.ends_at
+      data: {
+        voucher: {
+          id: row.id,
+          code: row.code,
+          headline: row.headline || "Gift voucher",
+          description: row.description || "",
+          discountType: row.discount_type,
+          discountValue: Number(row.discount_value),
+          minOrderAmount: Number(row.min_order_amount),
+          maxDiscountAmount:
+            row.max_discount_amount != null ? Number(row.max_discount_amount) : null,
+          endsAt: row.ends_at
+        }
       }
     },
-    15
+    {
+      status: 200,
+      headers: { "Cache-Control": "private, max-age=30" }
+    }
   );
 }

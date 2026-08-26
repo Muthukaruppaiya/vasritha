@@ -1,13 +1,24 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, useEffect, Suspense } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
+  Archive,
+  CheckCircle2,
   ExternalLink,
+  Eye,
+  EyeOff,
   FileSpreadsheet,
+  GitBranchPlus,
   PackageSearch,
+  Pencil,
+  Plus,
+  Printer,
   RotateCcw,
   Search,
-  Upload
+  Upload,
+  Warehouse
 } from "lucide-react";
 import {
   AdminAlert,
@@ -21,11 +32,13 @@ import {
   blankProductForm,
   ProductFormImage,
   ProductFormModal,
-  ProductFormValues
+  ProductFormValues,
+  ProductParentOption
 } from "../../../components/admin/product-form-modal";
 import { ProductDetailModal } from "../../../components/admin/product-detail-modal";
 import { adminFetch, formatDate, formatMoney, getAdminToken } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
+import { printProductStickers } from "../../../lib/print-stickers";
 
 type Product = {
   id: string;
@@ -35,6 +48,8 @@ type Product = {
   barcode?: string | null;
   price: string;
   compare_at_price: string | null;
+  hsn_code?: string | null;
+  gst_rate?: string | number | null;
   status: string;
   stock_quantity: number;
   category_id: string;
@@ -49,6 +64,12 @@ type Product = {
   is_featured?: boolean;
   created_at: string;
   unit_count?: number;
+  label_size?: "accessory" | "dress";
+  tag?: string | null;
+  parent_product_id?: string | null;
+  parent_name?: string | null;
+  parent_sku?: string | null;
+  child_count?: number;
 };
 
 type Category = {
@@ -85,6 +106,16 @@ function colorSwatchStyle(color?: string | null) {
 }
 
 export default function AdminProductsPage() {
+  return (
+    <Suspense fallback={<AdminLoading />}>
+      <AdminProductsPageInner />
+    </Suspense>
+  );
+}
+
+function AdminProductsPageInner() {
+  const searchParams = useSearchParams();
+  const focusId = searchParams.get("focus") || "";
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -98,6 +129,9 @@ export default function AdminProductsPage() {
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [printBusyId, setPrintBusyId] = useState<string | null>(null);
+  const [printMessage, setPrintMessage] = useState("");
+  const [printError, setPrintError] = useState("");
   const [importBusy, setImportBusy] = useState(false);
   const [importMessage, setImportMessage] = useState("");
   const [importError, setImportError] = useState("");
@@ -107,8 +141,10 @@ export default function AdminProductsPage() {
   const [modalMode, setModalMode] = useState<"create" | "edit">("create");
   const [formValues, setFormValues] = useState<ProductFormValues>(blankProductForm());
   const [formImages, setFormImages] = useState<ProductFormImage[]>([]);
+  const [formInternalImages, setFormInternalImages] = useState<ProductFormImage[]>([]);
   const [loadingEdit, setLoadingEdit] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const focusOpened = useRef(false);
 
   const { data: products, error, loading, reload } = useAdminQuery<Product[]>("/api/admin/products");
   const { data: categories } = useAdminQuery<Category[]>("/api/admin/categories");
@@ -121,6 +157,35 @@ export default function AdminProductsPage() {
     }
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [products]);
+
+  const parentOptions = useMemo<ProductParentOption[]>(() => {
+    return (products || [])
+      .filter((row) => !row.parent_product_id)
+      .map((row) => ({
+        id: row.id,
+        name: row.name,
+        sku: row.sku,
+        color: row.color
+      }));
+  }, [products]);
+
+  const openCreateChild = (parent: Product) => {
+    setModalMode("create");
+    setFormValues({
+      ...blankProductForm(parent.category_id || categories?.[0]?.id || ""),
+      category_id: parent.category_id,
+      subcategory_id: parent.subcategory_id || "",
+      parent_product_id: parent.id,
+      color: parent.color || "",
+      label_size: parent.label_size === "accessory" ? "accessory" : "dress",
+      sku_prefix: "VAS",
+      name: `${parent.name} · design`,
+      short_name: parent.short_name || ""
+    });
+    setFormImages([]);
+    setFormInternalImages([]);
+    setModalOpen(true);
+  };
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -238,6 +303,7 @@ export default function AdminProductsPage() {
     setModalMode("create");
     setFormValues(blankProductForm(categories?.[0]?.id || ""));
     setFormImages([]);
+    setFormInternalImages([]);
     setModalOpen(true);
   };
 
@@ -245,7 +311,8 @@ export default function AdminProductsPage() {
     setLoadingEdit(true);
     const result = await adminFetch<
       Product & {
-        product_images?: Array<{ id: string; storage_path: string }>;
+        product_images?: Array<{ id: string; storage_path: string; image_kind?: string }>;
+        internal_images?: Array<{ id: string; storage_path: string; image_kind?: string }>;
         tag?: string | null;
         sku_prefix?: string | null;
         label_size?: "accessory" | "dress";
@@ -272,8 +339,11 @@ export default function AdminProductsPage() {
       image_upload_token: product.image_upload_token,
       category_id: product.category_id,
       subcategory_id: product.subcategory_id || "",
+      parent_product_id: product.parent_product_id || "",
       price: String(product.price ?? ""),
       compare_at_price: product.compare_at_price ? String(product.compare_at_price) : "",
+      hsn_code: product.hsn_code || "",
+      gst_rate: String(product.gst_rate ?? 5),
       stock_quantity: String(product.stock_quantity ?? 0),
       status: product.status,
       short_name: product.short_name || "",
@@ -285,11 +355,26 @@ export default function AdminProductsPage() {
     setFormImages(
       (product.product_images || []).map((image) => ({
         id: image.id,
-        storage_path: image.storage_path
+        storage_path: image.storage_path,
+        kind: "website" as const
+      }))
+    );
+    setFormInternalImages(
+      (product.internal_images || []).map((image) => ({
+        id: image.id,
+        storage_path: image.storage_path,
+        kind: "internal" as const
       }))
     );
     setModalOpen(true);
   };
+
+  useEffect(() => {
+    if (!focusId || loading || focusOpened.current) return;
+    if (!(products || []).some((row) => row.id === focusId)) return;
+    focusOpened.current = true;
+    void openEdit(focusId);
+  }, [focusId, loading, products]);
 
   const updateStatus = async (id: string, nextStatus: string) => {
     const result = await adminFetch(`/api/admin/products/${id}`, {
@@ -310,6 +395,172 @@ export default function AdminProductsPage() {
     setBulkBusy(false);
     clearSelection();
     await reload();
+  };
+
+  const printBarcodesForProduct = async (
+    product: Product,
+    mode: "pending" | "all" = "pending"
+  ) => {
+    setPrintBusyId(product.id);
+    setPrintError("");
+    setPrintMessage("");
+    try {
+      const result = await adminFetch<{
+        items: Array<{
+          id: string;
+          unit_code: string;
+          barcode: string;
+          status?: string;
+          label_printed?: boolean;
+        }>;
+      }>(`/api/admin/products/${product.id}/items`);
+
+      if (result.error) throw new Error(result.error);
+
+      const items = result.data?.items || [];
+      const sellable = items.filter((item) => !item.status || item.status === "to_sell");
+      let stickers = mode === "all" ? sellable : sellable.filter((item) => !item.label_printed);
+
+      if (!stickers.length && product.barcode) {
+        stickers = [
+          {
+            id: "",
+            unit_code: product.sku || product.barcode,
+            barcode: product.barcode.replace(/[^A-Za-z0-9]/g, "").toUpperCase()
+          }
+        ];
+      }
+
+      if (!stickers.length) {
+        throw new Error(
+          mode === "pending"
+            ? "No unprinted barcodes. Open the product and use Print all, or receive stock first."
+            : "No barcodes to print. Receive stock (GRN) or set opening stock first."
+        );
+      }
+
+      printProductStickers({
+        price: product.price,
+        labelSize: product.label_size === "accessory" ? "accessory" : "dress",
+        items: stickers.map((item) => ({
+          id: item.id,
+          unit_code: item.unit_code,
+          barcode: item.barcode,
+          price: product.price,
+          labelSize: product.label_size === "accessory" ? "accessory" : "dress"
+        }))
+      });
+
+      const markIds = stickers.map((item) => item.id).filter(Boolean);
+      if (markIds.length) {
+        await adminFetch(`/api/admin/products/${product.id}/items`, {
+          method: "PATCH",
+          json: { itemIds: markIds, label_printed: true }
+        });
+      }
+
+      setPrintMessage(
+        `Printed ${stickers.length} barcode sticker${stickers.length === 1 ? "" : "s"} for ${product.name}.`
+      );
+      await reload();
+    } catch (err) {
+      setPrintError(err instanceof Error ? err.message : "Could not print barcodes");
+    } finally {
+      setPrintBusyId(null);
+    }
+  };
+
+  const bulkPrintBarcodes = async () => {
+    if (!selected.size) return;
+    setBulkBusy(true);
+    setPrintError("");
+    setPrintMessage("");
+    try {
+      const allStickers: Array<{
+        id: string;
+        unit_code: string;
+        barcode: string;
+        price: string;
+        labelSize: "accessory" | "dress";
+        productId: string;
+      }> = [];
+      const markByProduct = new Map<string, string[]>();
+
+      for (const id of Array.from(selected)) {
+        const product = (products || []).find((row) => row.id === id);
+        if (!product) continue;
+        const result = await adminFetch<{
+          items: Array<{
+            id: string;
+            unit_code: string;
+            barcode: string;
+            status?: string;
+            label_printed?: boolean;
+          }>;
+        }>(`/api/admin/products/${id}/items`);
+        if (result.error) continue;
+
+        const sellable = (result.data?.items || []).filter(
+          (item) => !item.status || item.status === "to_sell"
+        );
+        let stickers = sellable.filter((item) => !item.label_printed);
+        if (!stickers.length && product.barcode) {
+          stickers = [
+            {
+              id: "",
+              unit_code: product.sku || product.barcode,
+              barcode: product.barcode.replace(/[^A-Za-z0-9]/g, "").toUpperCase()
+            }
+          ];
+        }
+
+        const labelSize = product.label_size === "accessory" ? "accessory" : "dress";
+        for (const item of stickers) {
+          allStickers.push({
+            id: item.id,
+            unit_code: item.unit_code,
+            barcode: item.barcode,
+            price: product.price,
+            labelSize,
+            productId: id
+          });
+          if (item.id) {
+            const list = markByProduct.get(id) || [];
+            list.push(item.id);
+            markByProduct.set(id, list);
+          }
+        }
+      }
+
+      if (!allStickers.length) {
+        throw new Error("No unprinted barcodes on selected products. Receive stock first.");
+      }
+
+      printProductStickers({
+        price: allStickers[0].price,
+        labelSize: allStickers[0].labelSize,
+        items: allStickers
+      });
+
+      await Promise.all(
+        Array.from(markByProduct.entries()).map(([productId, itemIds]) =>
+          adminFetch(`/api/admin/products/${productId}/items`, {
+            method: "PATCH",
+            json: { itemIds, label_printed: true }
+          })
+        )
+      );
+
+      setPrintMessage(
+        `Printed ${allStickers.length} barcode sticker${allStickers.length === 1 ? "" : "s"} for ${selected.size} product${selected.size === 1 ? "" : "s"}.`
+      );
+      clearSelection();
+      await reload();
+    } catch (err) {
+      setPrintError(err instanceof Error ? err.message : "Could not print barcodes");
+    } finally {
+      setBulkBusy(false);
+    }
   };
 
   const onImportFile = async (fileList: FileList | null) => {
@@ -359,29 +610,50 @@ export default function AdminProductsPage() {
   return (
     <>
       <AdminPageHeader
-        eyebrow=""
+        eyebrow="Catalogue"
         title="Product Master"
+        description="Define what you sell (name, SKU, price, images). Receive and adjust quantities in Inventory."
         actions={
           <>
+            <Link
+              className="admin-icon-tip"
+              href="/admin/inventory"
+              data-tooltip="Inventory"
+              aria-label="Inventory"
+            >
+              <Warehouse size={16} strokeWidth={2} />
+              <span>Inventory</span>
+            </Link>
             <a
-              className="admin-ghost-btn"
+              className="admin-icon-tip"
               href="/samples/product-import-sample.xls"
               download="vasritha-product-import-sample.xls"
+              data-tooltip="Sample Excel"
+              aria-label="Download sample Excel"
             >
-              <FileSpreadsheet size={14} />
-              Sample Excel
+              <FileSpreadsheet size={16} strokeWidth={2} />
+              <span>Sample Excel</span>
             </a>
             <button
               type="button"
-              className="admin-ghost-btn"
+              className="admin-icon-tip"
               disabled={importBusy}
               onClick={() => importInputRef.current?.click()}
+              data-tooltip={importBusy ? "Importing…" : "Import bulk data"}
+              aria-label="Import bulk data"
             >
-              <Upload size={14} />
-              {importBusy ? "Importing…" : "Import bulk data"}
+              <Upload size={16} strokeWidth={2} />
+              <span>{importBusy ? "Importing…" : "Import bulk data"}</span>
             </button>
-            <button type="button" className="btn" onClick={openCreate}>
-              + New product
+            <button
+              type="button"
+              className="admin-icon-tip admin-action-btn--primary"
+              onClick={openCreate}
+              data-tooltip="New product"
+              aria-label="New product"
+            >
+              <Plus size={17} strokeWidth={2.2} />
+              <span>New product</span>
             </button>
             <input
               ref={importInputRef}
@@ -394,10 +666,42 @@ export default function AdminProductsPage() {
         }
       />
 
-      {(importMessage || importError) && (
+      <section className="inv-flow" aria-label="Product master workflow">
+        <div className="inv-flow-step is-current">
+          <span className="inv-flow-num">1</span>
+          <div>
+            <strong>Product Master</strong>
+            <p>Create / edit catalogue items here.</p>
+          </div>
+        </div>
+        <div className="inv-flow-arrow" aria-hidden>
+          →
+        </div>
+        <div className="inv-flow-step">
+          <span className="inv-flow-num">2</span>
+          <div>
+            <strong>Inventory</strong>
+            <p>Receive GRN / adjust on-hand stock.</p>
+          </div>
+        </div>
+        <div className="inv-flow-arrow" aria-hidden>
+          →
+        </div>
+        <div className="inv-flow-step">
+          <span className="inv-flow-num">3</span>
+          <div>
+            <strong>Sell</strong>
+            <p>POS &amp; website sell from available stock.</p>
+          </div>
+        </div>
+      </section>
+
+      {(importMessage || importError || printMessage || printError) && (
         <div className="admin-import-feedback">
           {importMessage ? <AdminAlert tone="ok">{importMessage}</AdminAlert> : null}
           {importError ? <AdminAlert>{importError}</AdminAlert> : null}
+          {printMessage ? <AdminAlert tone="ok">{printMessage}</AdminAlert> : null}
+          {printError ? <AdminAlert>{printError}</AdminAlert> : null}
         </div>
       )}
 
@@ -547,6 +851,10 @@ export default function AdminProductsPage() {
             <b>{selected.size}</b> selected
           </span>
           <div className="admin-bulk-actions">
+            <button type="button" disabled={bulkBusy} onClick={() => void bulkPrintBarcodes()}>
+              <Printer size={14} />
+              Print barcodes
+            </button>
             <button type="button" disabled={bulkBusy} onClick={() => void bulkUpdateStatus("active")}>
               Publish
             </button>
@@ -639,6 +947,17 @@ export default function AdminProductsPage() {
                           <div>
                             <b>{product.name}</b>
                             <div className="muted admin-sub">{product.slug}</div>
+                            {product.parent_name ? (
+                              <div className="admin-sub admin-product-relation">
+                                Child of {product.parent_name}
+                                {product.parent_sku ? ` · ${product.parent_sku}` : ""}
+                              </div>
+                            ) : Number(product.child_count || 0) > 0 ? (
+                              <div className="admin-sub admin-product-relation admin-product-relation--parent">
+                                Parent · {product.child_count} design
+                                {Number(product.child_count) === 1 ? "" : "s"}
+                              </div>
+                            ) : null}
                             {product.is_featured ? (
                               <div className="admin-sub admin-fast-tag">Fast selling</div>
                             ) : null}
@@ -676,54 +995,134 @@ export default function AdminProductsPage() {
                       ) : null}
                     </td>
                     <td>
-                      <span
-                        className={
-                          product.stock_quantity <= 0
-                            ? "admin-stock admin-stock--out"
-                            : product.stock_quantity <= LOW_STOCK_THRESHOLD
-                              ? "admin-stock admin-stock--low"
-                              : "admin-stock"
-                        }
-                      >
-                        {product.stock_quantity}
-                      </span>
+                      <div className="inv-stock-cell">
+                        <span
+                          className={
+                            product.stock_quantity <= 0
+                              ? "admin-stock admin-stock--out"
+                              : product.stock_quantity <= LOW_STOCK_THRESHOLD
+                                ? "admin-stock admin-stock--low"
+                                : "admin-stock"
+                          }
+                        >
+                          {product.stock_quantity}
+                        </span>
+                        <Link
+                          className="admin-action-btn admin-action-btn--compact"
+                          href={`/admin/inventory?product=${product.id}`}
+                          data-tooltip="Manage stock"
+                          aria-label={`Manage stock for ${product.name}`}
+                        >
+                          <Warehouse size={13} strokeWidth={2} />
+                          <span>Stock</span>
+                        </Link>
+                      </div>
                     </td>
                     <td>
                       <AdminBadge tone={statusTone(product.status)}>{product.status}</AdminBadge>
                     </td>
                     <td>{formatDate(product.created_at)}</td>
                     <td>
-                      <div className="admin-row-actions">
-                        <button type="button" onClick={() => setDetailId(product.id)}>
-                          Details
+                      <div className="admin-row-actions" role="group" aria-label="Product actions">
+                        <button
+                          type="button"
+                          className="admin-action-btn"
+                          onClick={() => setDetailId(product.id)}
+                          data-tooltip="Details"
+                          aria-label={`Details for ${product.name}`}
+                        >
+                          <Eye size={15} strokeWidth={2} />
+                          <span>Details</span>
                         </button>
-                        <button type="button" onClick={() => void openEdit(product.id)}>
-                          Edit
+                        <button
+                          type="button"
+                          className="admin-action-btn"
+                          onClick={() => void openEdit(product.id)}
+                          data-tooltip="Edit"
+                          aria-label={`Edit ${product.name}`}
+                        >
+                          <Pencil size={15} strokeWidth={2} />
+                          <span>Edit</span>
+                        </button>
+                        {!product.parent_product_id ? (
+                          <button
+                            type="button"
+                            className="admin-action-btn"
+                            onClick={() => openCreateChild(product)}
+                            data-tooltip="Add design (child)"
+                            aria-label={`Add design under ${product.name}`}
+                          >
+                            <GitBranchPlus size={15} strokeWidth={2} />
+                            <span>Add design</span>
+                          </button>
+                        ) : null}
+                        <Link
+                          className="admin-action-btn"
+                          href={`/admin/inventory?product=${product.id}`}
+                          data-tooltip="Stock"
+                          aria-label={`Stock for ${product.name}`}
+                        >
+                          <Warehouse size={15} strokeWidth={2} />
+                          <span>Stock</span>
+                        </Link>
+                        <button
+                          type="button"
+                          className="admin-action-btn admin-action-btn--primary"
+                          disabled={printBusyId === product.id || bulkBusy}
+                          onClick={() => void printBarcodesForProduct(product, "pending")}
+                          data-tooltip={printBusyId === product.id ? "Printing…" : "Print barcode"}
+                          aria-label={`Print barcodes for ${product.name}`}
+                        >
+                          <Printer size={15} strokeWidth={2} />
+                          <span>{printBusyId === product.id ? "Printing…" : "Barcode"}</span>
                         </button>
                         {product.status === "active" && (
                           <a
+                            className="admin-action-btn"
                             href={`/products/${product.slug}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            title="View on storefront"
+                            data-tooltip="View on storefront"
+                            aria-label={`View ${product.name} on storefront`}
                           >
-                            <ExternalLink size={12} />
-                            View
+                            <ExternalLink size={15} strokeWidth={2} />
+                            <span>View</span>
                           </a>
                         )}
                         {product.status !== "active" && (
-                          <button type="button" onClick={() => void updateStatus(product.id, "active")}>
-                            Publish
+                          <button
+                            type="button"
+                            className="admin-action-btn admin-action-btn--primary"
+                            onClick={() => void updateStatus(product.id, "active")}
+                            data-tooltip="Publish"
+                            aria-label={`Publish ${product.name}`}
+                          >
+                            <CheckCircle2 size={15} strokeWidth={2} />
+                            <span>Publish</span>
                           </button>
                         )}
                         {product.status === "active" && (
-                          <button type="button" onClick={() => void updateStatus(product.id, "draft")}>
-                            Unpublish
+                          <button
+                            type="button"
+                            className="admin-action-btn"
+                            onClick={() => void updateStatus(product.id, "draft")}
+                            data-tooltip="Unpublish"
+                            aria-label={`Unpublish ${product.name}`}
+                          >
+                            <EyeOff size={15} strokeWidth={2} />
+                            <span>Unpublish</span>
                           </button>
                         )}
                         {product.status !== "archived" && (
-                          <button type="button" onClick={() => void updateStatus(product.id, "archived")}>
-                            Archive
+                          <button
+                            type="button"
+                            className="admin-action-btn admin-action-btn--danger"
+                            onClick={() => void updateStatus(product.id, "archived")}
+                            data-tooltip="Archive"
+                            aria-label={`Archive ${product.name}`}
+                          >
+                            <Archive size={15} strokeWidth={2} />
+                            <span>Archive</span>
                           </button>
                         )}
                       </div>
@@ -749,8 +1148,10 @@ export default function AdminProductsPage() {
         open={modalOpen}
         mode={modalMode}
         categories={categories || []}
+        parentOptions={parentOptions}
         initial={formValues}
         initialImages={formImages}
+        initialInternalImages={formInternalImages}
         onClose={() => setModalOpen(false)}
         onSaved={() => void reload()}
       />

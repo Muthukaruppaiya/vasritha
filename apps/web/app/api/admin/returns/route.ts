@@ -1,5 +1,11 @@
 import { NextRequest } from "next/server";
-import { fail, ok, requireAnyPermission, requirePermission, writeAuditLog } from "../../../../lib/auth/api";
+import {
+  fail,
+  ok,
+  requireAnyPermission,
+  requirePermission,
+  writeAuditLog
+} from "../../../../lib/auth/api";
 import { query, queryOne } from "../../../../lib/db/pool";
 
 export async function GET(request: NextRequest) {
@@ -57,14 +63,42 @@ export async function POST(request: NextRequest) {
 
   if (!body?.orderId || !body.items?.length) return fail("orderId and items are required");
 
-  const order = await queryOne<{ id: string; customer_id: string }>(
-    `select * from orders where id = $1`,
+  const order = await queryOne<{ id: string; customer_id: string; total_amount: string }>(
+    `select id, customer_id, total_amount from orders where id = $1`,
     [body.orderId]
   );
   if (!order) return fail("Order not found", 404);
 
   const isStaff = ctx.roles.some((r) => r !== "customer");
   if (!isStaff && order.customer_id !== ctx.userId) return fail("Forbidden", 403);
+
+  const orderItems = await query<{ id: string; quantity: number }>(
+    `select id, quantity from order_items where order_id = $1`,
+    [order.id]
+  );
+  const byId = new Map(orderItems.map((row) => [row.id, row]));
+
+  for (const item of body.items) {
+    const line = byId.get(item.orderItemId);
+    if (!line) return fail(`Order item not found on this order: ${item.orderItemId}`, 400);
+    const qty = Math.max(1, Number(item.quantity) || 0);
+    if (qty > Number(line.quantity)) {
+      return fail(`Return quantity exceeds sold quantity for item ${item.orderItemId}`, 400);
+    }
+
+    const already = await queryOne<{ returned: string }>(
+      `select coalesce(sum(ri.quantity), 0)::text as returned
+       from return_items ri
+       join order_returns r on r.id = ri.return_id
+       where ri.order_item_id = $1
+         and r.status <> 'rejected'`,
+      [item.orderItemId]
+    );
+    const returnedSoFar = Number(already?.returned || 0);
+    if (returnedSoFar + qty > Number(line.quantity)) {
+      return fail(`Return quantity exceeds remaining returnable qty for item ${item.orderItemId}`, 400);
+    }
+  }
 
   const returnNumber = `RET-${Date.now().toString().slice(-8)}`;
   const ret = await queryOne<{ id: string }>(
@@ -79,7 +113,7 @@ export async function POST(request: NextRequest) {
     await query(
       `insert into return_items (return_id, order_item_id, quantity, reason)
        values ($1, $2, $3, $4)`,
-      [ret.id, item.orderItemId, item.quantity, item.reason ?? null]
+      [ret.id, item.orderItemId, Math.max(1, Number(item.quantity) || 1), item.reason ?? null]
     );
   }
 
@@ -106,23 +140,46 @@ export async function PATCH(request: NextRequest) {
 
   if (!body?.returnId || !body?.status) return fail("returnId and status are required");
 
-  if (body.status === "refunded") {
+  const before = await queryOne<{
+    id: string;
+    order_id: string;
+    refund_amount: string;
+    status: string;
+  }>(`select * from order_returns where id = $1`, [body.returnId]);
+  if (!before) return fail("Return not found", 404);
+
+  const order = await queryOne<{ total_amount: string }>(
+    `select total_amount from orders where id = $1`,
+    [before.order_id]
+  );
+  if (!order) return fail("Order not found", 404);
+
+  const wantsRefundAmount =
+    body.refundAmount != null && Number(body.refundAmount) !== Number(before.refund_amount || 0);
+  const needsRefundApprove = body.status === "refunded" || wantsRefundAmount;
+
+  if (needsRefundApprove) {
     const refundAuth = await requirePermission(request, "refunds:approve");
     if (refundAuth.error) return refundAuth.error;
   }
 
-  const before = await queryOne<{ refund_amount: string }>(
-    `select * from order_returns where id = $1`,
-    [body.returnId]
-  );
-  if (!before) return fail("Return not found", 404);
+  let nextRefund = Number(before.refund_amount || 0);
+  if (body.refundAmount != null) {
+    nextRefund = Number(body.refundAmount);
+    if (!Number.isFinite(nextRefund) || nextRefund < 0) {
+      return fail("refundAmount must be a non-negative number");
+    }
+    if (nextRefund > Number(order.total_amount)) {
+      return fail("refundAmount cannot exceed order total");
+    }
+  }
 
   const data = await queryOne(
     `update order_returns
      set status = $2, refund_amount = $3, updated_at = now()
      where id = $1
      returning *`,
-    [body.returnId, body.status, body.refundAmount ?? before.refund_amount ?? 0]
+    [body.returnId, body.status, nextRefund]
   );
 
   await writeAuditLog({

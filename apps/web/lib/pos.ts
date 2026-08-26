@@ -13,6 +13,48 @@ export async function ensurePosSchema() {
     alter table public.orders
       add column if not exists channel text not null default 'online'
   `);
+  await query(`
+    alter table public.orders
+      add column if not exists pos_customer_name text
+  `);
+  await query(`
+    alter table public.orders
+      add column if not exists pos_customer_phone text
+  `);
+  await query(`
+    alter table public.orders
+      add column if not exists pos_customer_email text
+  `);
+}
+
+/** Normalize Indian mobile: digits only, strip leading 91 if 12 digits. */
+export function normalizePosPhone(raw: string) {
+  const digits = String(raw || "").replace(/\D/g, "");
+  if (digits.length === 12 && digits.startsWith("91")) return digits.slice(2);
+  if (digits.length === 11 && digits.startsWith("0")) return digits.slice(1);
+  return digits;
+}
+
+export function validatePosCustomer(input: {
+  name?: string | null;
+  phone?: string | null;
+  email?: string | null;
+}) {
+  const name = String(input.name || "").trim();
+  const phone = normalizePosPhone(String(input.phone || ""));
+  const emailRaw = String(input.email || "").trim();
+  const email = emailRaw || null;
+
+  if (!name) return { error: "Customer name is required" as const };
+  if (name.length < 2) return { error: "Enter a valid customer name" as const };
+  if (!phone || phone.length !== 10) {
+    return { error: "Enter a valid 10-digit mobile number" as const };
+  }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { error: "Enter a valid email address" as const };
+  }
+
+  return { name, phone, email };
 }
 
 export async function getWalkInCustomerId() {
@@ -111,6 +153,7 @@ export async function lookupSellable(q: string): Promise<PosSellable[]> {
        (
          select pi.storage_path from product_images pi
          where pi.product_id = p.id
+           and coalesce(pi.image_kind::text, 'website') = 'website'
          order by pi.sort_order asc
          limit 1
        ) as image_path
@@ -163,6 +206,7 @@ export async function lookupSellable(q: string): Promise<PosSellable[]> {
        (
          select pi.storage_path from product_images pi
          where pi.product_id = p.id
+           and coalesce(pi.image_kind::text, 'website') = 'website'
          order by pi.sort_order asc
          limit 1
        ) as image_path

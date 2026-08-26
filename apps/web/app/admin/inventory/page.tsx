@@ -1,8 +1,19 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
+import {
+  ArrowDownToLine,
+  PackagePlus,
+  Pencil,
+  Search,
+  SlidersHorizontal,
+  Warehouse
+} from "lucide-react";
 import {
   AdminAlert,
+  AdminBadge,
   AdminEmpty,
   AdminLoading,
   AdminPageHeader,
@@ -12,6 +23,23 @@ import { AdminFormModal } from "../../../components/admin/admin-form-modal";
 import { adminFetch, formatDate } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
 
+type StockRow = {
+  variant_id: string;
+  sku: string | null;
+  variant_name: string | null;
+  attributes: Record<string, unknown> | null;
+  stock_quantity: number;
+  product_id: string;
+  product_name: string;
+  product_status: string;
+  hsn_code?: string | null;
+  gst_rate?: string | number | null;
+  category_id: string | null;
+  subcategory_id: string | null;
+  category_name: string | null;
+  subcategory_name: string | null;
+};
+
 type InventoryData = {
   movements: Array<{
     id: string;
@@ -20,40 +48,71 @@ type InventoryData = {
     quantity: number;
     note: string | null;
     created_at: string;
+    sku?: string | null;
+    variant_name?: string | null;
+    product_id?: string;
+    product_name?: string | null;
   }>;
-  stock: Array<{
-    variant_id: string;
-    sku: string | null;
-    variant_name: string | null;
-    attributes: Record<string, unknown> | null;
-    stock_quantity: number;
-    product_id: string;
-    product_name: string;
-    product_status: string;
-    category_id: string | null;
-    subcategory_id: string | null;
-    category_name: string | null;
-    subcategory_name: string | null;
-  }>;
+  stock: StockRow[];
+  summary?: {
+    skuCount: number;
+    onHand: number;
+    inStock: number;
+    lowStock: number;
+    outOfStock: number;
+  };
+  lowStockThreshold?: number;
 };
 
 type InwardLine = { productVariantId: string; quantity: string };
 
-const blankAdjust = () => ({
-  productVariantId: "",
+const blankAdjust = (variantId = "") => ({
+  productVariantId: variantId,
   type: "manual_adjustment",
   quantity: "1",
   note: ""
 });
 
-const blankInward = () => ({
+const blankInward = (variantId = "") => ({
   supplier: "",
   billNo: "",
   note: "",
-  lines: [{ productVariantId: "", quantity: "1" }] as InwardLine[]
+  lines: [{ productVariantId: variantId, quantity: "1" }] as InwardLine[]
 });
 
-export default function AdminInventoryPage() {
+function stockTone(qty: number, low: number): "success" | "warn" | "danger" {
+  if (qty <= 0) return "danger";
+  if (qty <= low) return "warn";
+  return "success";
+}
+
+function stockLabel(qty: number, low: number) {
+  if (qty <= 0) return "Out of stock";
+  if (qty <= low) return "Low stock";
+  return "In stock";
+}
+
+function movementLabel(type: string) {
+  const map: Record<string, string> = {
+    purchase: "Inward / purchase",
+    opening_stock: "Opening stock",
+    manual_adjustment: "Adjustment",
+    return: "Return in",
+    sale: "Sale out"
+  };
+  return map[type] || type;
+}
+
+function AdminInventoryPageInner() {
+  const searchParams = useSearchParams();
+  const focusProduct = searchParams.get("product") || "";
+  const focusVariant = searchParams.get("variant") || "";
+
+  const queryPath = focusProduct
+    ? `/api/admin/inventory?product=${encodeURIComponent(focusProduct)}`
+    : "/api/admin/inventory";
+
+  const { data, loading, error, reload } = useAdminQuery<InventoryData>(queryPath);
   const { data: categories } = useAdminQuery<
     Array<{
       id: string;
@@ -61,6 +120,9 @@ export default function AdminInventoryPage() {
       subcategories?: Array<{ id: string; name: string }>;
     }>
   >("/api/admin/categories");
+
+  const [search, setSearch] = useState("");
+  const [stockFilter, setStockFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [subcategoryFilter, setSubcategoryFilter] = useState("");
   const [adjustOpen, setAdjustOpen] = useState(false);
@@ -70,21 +132,46 @@ export default function AdminInventoryPage() {
   const [adjust, setAdjust] = useState(blankAdjust);
   const [inward, setInward] = useState(blankInward);
 
+  const low = data?.lowStockThreshold ?? 10;
+
   const stockOptions = useMemo(() => {
     let list = data?.stock || [];
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter((row) => {
+        const hay = [row.product_name, row.sku, row.variant_name, row.category_name, row.subcategory_name, row.hsn_code]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return hay.includes(q);
+      });
+    }
     if (categoryFilter) list = list.filter((row) => row.category_id === categoryFilter);
     if (subcategoryFilter) list = list.filter((row) => row.subcategory_id === subcategoryFilter);
+    if (stockFilter === "in") list = list.filter((row) => row.stock_quantity > low);
+    if (stockFilter === "low") {
+      list = list.filter((row) => row.stock_quantity > 0 && row.stock_quantity <= low);
+    }
+    if (stockFilter === "out") list = list.filter((row) => row.stock_quantity <= 0);
     return list;
-  }, [data?.stock, categoryFilter, subcategoryFilter]);
+  }, [data?.stock, search, categoryFilter, subcategoryFilter, stockFilter, low]);
 
-  const openAdjust = () => {
-    setAdjust(blankAdjust());
+  useEffect(() => {
+    if (!focusVariant || !data?.stock?.length) return;
+    const hit = data.stock.find((row) => row.variant_id === focusVariant);
+    if (!hit) return;
+    setInward(blankInward(focusVariant));
+    setInwardOpen(true);
+  }, [focusVariant, data?.stock]);
+
+  const openAdjust = (variantId = "") => {
+    setAdjust(blankAdjust(variantId));
     setFormError("");
     setAdjustOpen(true);
   };
 
-  const openInward = () => {
-    setInward(blankInward());
+  const openInward = (variantId = "") => {
+    setInward(blankInward(variantId));
     setFormError("");
     setInwardOpen(true);
   };
@@ -138,37 +225,147 @@ export default function AdminInventoryPage() {
     await reload();
   };
 
+  const summary = data?.summary;
+
   return (
     <>
       <AdminPageHeader
-        eyebrow=""
+        eyebrow="Stock operations"
         title="Inventory"
+        description="Receive and adjust stock here. Create and edit product details in Product Master."
         actions={
           <>
+            <Link
+              className="admin-icon-tip"
+              href="/admin/products"
+              data-tooltip="Product Master"
+              aria-label="Product Master"
+            >
+              <PackagePlus size={16} strokeWidth={2} />
+              <span>Product Master</span>
+            </Link>
             <button
               type="button"
-              className="btn"
-              onClick={openInward}
-              disabled={!stockOptions.length}
+              className="admin-icon-tip admin-action-btn--primary"
+              onClick={() => openInward()}
+              disabled={!data?.stock?.length}
+              data-tooltip="Receive stock (GRN)"
+              aria-label="Receive stock"
             >
-              + Inward stock (GRN)
+              <ArrowDownToLine size={16} strokeWidth={2} />
+              <span>Receive stock</span>
             </button>
             <button
               type="button"
-              className="btn admin-ghost-btn"
-              onClick={openAdjust}
-              disabled={!stockOptions.length}
+              className="admin-icon-tip"
+              onClick={() => openAdjust()}
+              disabled={!data?.stock?.length}
+              data-tooltip="Adjust stock"
+              aria-label="Adjust stock"
             >
-              Stock adjustment
+              <SlidersHorizontal size={16} strokeWidth={2} />
+              <span>Adjust stock</span>
             </button>
           </>
         }
       />
 
+      <section className="inv-flow" aria-label="Inventory workflow">
+        <div className="inv-flow-step">
+          <span className="inv-flow-num">1</span>
+          <div>
+            <strong>Product Master</strong>
+            <p>Create the product (name, SKU, price, images).</p>
+          </div>
+        </div>
+        <div className="inv-flow-arrow" aria-hidden>
+          →
+        </div>
+        <div className="inv-flow-step is-current">
+          <span className="inv-flow-num">2</span>
+          <div>
+            <strong>Inventory</strong>
+            <p>Receive inward stock (GRN) to increase on-hand qty.</p>
+          </div>
+        </div>
+        <div className="inv-flow-arrow" aria-hidden>
+          →
+        </div>
+        <div className="inv-flow-step">
+          <span className="inv-flow-num">3</span>
+          <div>
+            <strong>Sell / adjust</strong>
+            <p>POS &amp; online reduce stock; use Adjust for corrections.</p>
+          </div>
+        </div>
+      </section>
+
+      {focusProduct ? (
+        <AdminAlert tone="ok">
+          Showing stock for one product from Product Master.{" "}
+          <Link href="/admin/inventory">Clear filter</Link>
+        </AdminAlert>
+      ) : null}
+
+      <div className="inv-summary">
+        <article className="inv-summary-card">
+          <Warehouse size={16} />
+          <div>
+            <span>SKUs</span>
+            <strong>{summary?.skuCount ?? "—"}</strong>
+          </div>
+        </article>
+        <article className="inv-summary-card">
+          <div>
+            <span>Total on hand</span>
+            <strong>{summary?.onHand ?? "—"}</strong>
+          </div>
+        </article>
+        <article className="inv-summary-card inv-summary-card--ok">
+          <div>
+            <span>In stock</span>
+            <strong>{summary?.inStock ?? "—"}</strong>
+          </div>
+        </article>
+        <article className="inv-summary-card inv-summary-card--warn">
+          <div>
+            <span>Low (≤ {low})</span>
+            <strong>{summary?.lowStock ?? "—"}</strong>
+          </div>
+        </article>
+        <article className="inv-summary-card inv-summary-card--danger">
+          <div>
+            <span>Out of stock</span>
+            <strong>{summary?.outOfStock ?? "—"}</strong>
+          </div>
+        </article>
+      </div>
+
       <AdminPanel title="Current stock">
         {loading && <AdminLoading />}
         {error && <AdminAlert>{error}</AdminAlert>}
-        <div className="admin-filter-row" style={{ display: "flex", gap: 12, marginBottom: 16, flexWrap: "wrap" }}>
+
+        <div className="inv-filters">
+          <label className="inv-search">
+            <span>Search</span>
+            <div className="admin-search-field">
+              <Search size={15} aria-hidden />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Product, SKU, HSN, category…"
+              />
+            </div>
+          </label>
+          <label>
+            <span>Stock level</span>
+            <select value={stockFilter} onChange={(e) => setStockFilter(e.target.value)}>
+              <option value="">All levels</option>
+              <option value="in">In stock</option>
+              <option value="low">Low stock</option>
+              <option value="out">Out of stock</option>
+            </select>
+          </label>
           <label>
             <span>Category</span>
             <select
@@ -204,24 +401,38 @@ export default function AdminInventoryPage() {
             </select>
           </label>
         </div>
+
         {!loading && !stockOptions.length && (
           <AdminEmpty
-            title="No variants yet"
-            body="Add product variants before tracking inventory movements."
+            title={data?.stock?.length ? "No matching stock rows" : "No products to track yet"}
+            body={
+              data?.stock?.length
+                ? "Try clearing filters."
+                : "Create a product in Product Master first, then return here to receive stock."
+            }
           />
         )}
+        {!loading && !data?.stock?.length ? (
+          <div className="inv-empty-actions">
+            <Link className="btn" href="/admin/products">
+              Go to Product Master
+            </Link>
+          </div>
+        ) : null}
+
         {stockOptions.length > 0 && (
           <div className="admin-table-wrap">
-            <table className="admin-table">
+            <table className="admin-table admin-table--zebra">
               <thead>
                 <tr>
                   <th>Product</th>
                   <th>Category</th>
-                  <th>Subcategory</th>
-                  <th>SKU</th>
-                  <th>Variant</th>
-                  <th>Stock</th>
-                  <th>Status</th>
+                  <th>SKU / variant</th>
+                  <th>HSN / GST</th>
+                  <th>On hand</th>
+                  <th>Level</th>
+                  <th>Catalogue</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -230,12 +441,68 @@ export default function AdminInventoryPage() {
                     <td>
                       <b>{row.product_name}</b>
                     </td>
-                    <td>{row.category_name || "—"}</td>
-                    <td>{row.subcategory_name || "—"}</td>
-                    <td>{row.sku || "—"}</td>
-                    <td>{row.variant_name || "Default"}</td>
-                    <td>{row.stock_quantity}</td>
-                    <td>{row.product_status}</td>
+                    <td>
+                      {row.category_name || "—"}
+                      {row.subcategory_name ? (
+                        <div className="muted admin-sub">{row.subcategory_name}</div>
+                      ) : null}
+                    </td>
+                    <td>
+                      <div>{row.sku || "—"}</div>
+                      <div className="muted admin-sub">{row.variant_name || "Default"}</div>
+                    </td>
+                    <td>
+                      <div>{row.hsn_code || "—"}</div>
+                      <div className="muted admin-sub">
+                        {row.gst_rate != null && row.gst_rate !== "" ? `${Number(row.gst_rate)}%` : "—"}
+                      </div>
+                    </td>
+                    <td>
+                      <strong>{row.stock_quantity}</strong>
+                    </td>
+                    <td>
+                      <AdminBadge tone={stockTone(row.stock_quantity, low)}>
+                        {stockLabel(row.stock_quantity, low)}
+                      </AdminBadge>
+                    </td>
+                    <td>
+                      <AdminBadge tone={row.product_status === "active" ? "success" : "warn"}>
+                        {row.product_status}
+                      </AdminBadge>
+                    </td>
+                    <td>
+                      <div className="inv-row-actions" role="group" aria-label="Stock actions">
+                        <button
+                          type="button"
+                          className="admin-action-btn admin-action-btn--primary"
+                          onClick={() => openInward(row.variant_id)}
+                          data-tooltip="Receive stock"
+                          aria-label={`Receive stock for ${row.product_name}`}
+                        >
+                          <ArrowDownToLine size={15} strokeWidth={2} />
+                          <span>Receive</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="admin-action-btn"
+                          onClick={() => openAdjust(row.variant_id)}
+                          data-tooltip="Adjust stock"
+                          aria-label={`Adjust stock for ${row.product_name}`}
+                        >
+                          <SlidersHorizontal size={15} strokeWidth={2} />
+                          <span>Adjust</span>
+                        </button>
+                        <Link
+                          className="admin-action-btn"
+                          href={`/admin/products?focus=${row.product_id}`}
+                          data-tooltip="Edit product"
+                          aria-label={`Edit product ${row.product_name}`}
+                        >
+                          <Pencil size={15} strokeWidth={2} />
+                          <span>Edit</span>
+                        </Link>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -244,29 +511,43 @@ export default function AdminInventoryPage() {
         )}
       </AdminPanel>
 
-      <AdminPanel title="Recent movements">
+      <AdminPanel title="Stock ledger (recent movements)">
         {loading && <AdminLoading />}
         {!loading && !(data?.movements || []).length && (
-          <AdminEmpty title="No movements yet" body="Post inward stock or an adjustment to begin the ledger." />
+          <AdminEmpty
+            title="No movements yet"
+            body="Receive inward stock or post an adjustment to start the ledger."
+          />
         )}
         {(data?.movements || []).length > 0 && (
           <div className="admin-table-wrap">
             <table className="admin-table">
               <thead>
                 <tr>
+                  <th>When</th>
+                  <th>Product</th>
                   <th>Type</th>
                   <th>Qty</th>
                   <th>Note</th>
-                  <th>When</th>
                 </tr>
               </thead>
               <tbody>
                 {(data?.movements || []).map((movement) => (
                   <tr key={movement.id}>
-                    <td>{movement.type}</td>
-                    <td>{movement.quantity}</td>
-                    <td>{movement.note || "—"}</td>
                     <td>{formatDate(movement.created_at)}</td>
+                    <td>
+                      <b>{movement.product_name || "—"}</b>
+                      <div className="muted admin-sub">
+                        {movement.sku || "—"}
+                        {movement.variant_name ? ` · ${movement.variant_name}` : ""}
+                      </div>
+                    </td>
+                    <td>{movementLabel(movement.type)}</td>
+                    <td className={Number(movement.quantity) < 0 ? "inv-qty-out" : "inv-qty-in"}>
+                      {Number(movement.quantity) > 0 ? "+" : ""}
+                      {movement.quantity}
+                    </td>
+                    <td>{movement.note || "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -277,8 +558,8 @@ export default function AdminInventoryPage() {
 
       <AdminFormModal
         open={inwardOpen}
-        title="Inward stock (GRN)"
-        eyebrow="Goods received"
+        title="Receive stock (GRN)"
+        eyebrow="Step 2 · Inventory"
         submitLabel="Post inward"
         savingLabel="Posting…"
         saving={saving}
@@ -286,6 +567,9 @@ export default function AdminInventoryPage() {
         onClose={() => setInwardOpen(false)}
         onSubmit={onInwardSubmit}
       >
+        <p className="admin-span-2 muted inv-modal-hint">
+          Use this when goods arrive from a supplier. Product must already exist in Product Master.
+        </p>
         <label>
           <span>Supplier</span>
           <input
@@ -344,11 +628,9 @@ export default function AdminInventoryPage() {
                 }
               >
                 <option value="">Select SKU / variant</option>
-                {stockOptions.map((row) => (
+                {(data?.stock || []).map((row) => (
                   <option key={row.variant_id} value={row.variant_id}>
-                    {row.product_name} · {row.category_name || "—"}
-                    {row.subcategory_name ? ` / ${row.subcategory_name}` : ""} · {row.sku || "no-sku"} · on hand{" "}
-                    {row.stock_quantity}
+                    {row.product_name} · {row.sku || "no-sku"} · on hand {row.stock_quantity}
                   </option>
                 ))}
               </select>
@@ -387,15 +669,19 @@ export default function AdminInventoryPage() {
 
       <AdminFormModal
         open={adjustOpen}
-        title="Stock adjustment"
-        eyebrow="Inventory"
-        submitLabel="Post movement"
+        title="Adjust stock"
+        eyebrow="Corrections only"
+        submitLabel="Post adjustment"
         savingLabel="Posting…"
         saving={saving}
         error={formError}
         onClose={() => setAdjustOpen(false)}
         onSubmit={onAdjustSubmit}
       >
+        <p className="admin-span-2 muted inv-modal-hint">
+          Prefer Receive (GRN) for new stock. Use Adjust for opening balance, damage, or count corrections.
+          Sales are deducted automatically from POS / online orders.
+        </p>
         <label className="admin-span-2">
           <span>Variant</span>
           <select
@@ -404,11 +690,9 @@ export default function AdminInventoryPage() {
             onChange={(e) => setAdjust((f) => ({ ...f, productVariantId: e.target.value }))}
           >
             <option value="">Select variant</option>
-            {stockOptions.map((row) => (
+            {(data?.stock || []).map((row) => (
               <option key={row.variant_id} value={row.variant_id}>
-                {row.product_name} · {row.category_name || "—"}
-                {row.subcategory_name ? ` / ${row.subcategory_name}` : ""} · {row.sku || "no-sku"} · qty{" "}
-                {row.stock_quantity}
+                {row.product_name} · {row.sku || "no-sku"} · qty {row.stock_quantity}
               </option>
             ))}
           </select>
@@ -416,11 +700,9 @@ export default function AdminInventoryPage() {
         <label>
           <span>Type</span>
           <select value={adjust.type} onChange={(e) => setAdjust((f) => ({ ...f, type: e.target.value }))}>
-            <option value="opening_stock">Opening stock</option>
-            <option value="manual_adjustment">Manual adjustment</option>
-            <option value="purchase">Purchase (single)</option>
-            <option value="return">Return</option>
-            <option value="sale">Sale</option>
+            <option value="opening_stock">Opening stock (+)</option>
+            <option value="return">Customer / supplier return (+)</option>
+            <option value="manual_adjustment">Manual correction (+/−)</option>
           </select>
         </label>
         <label>
@@ -430,17 +712,26 @@ export default function AdminInventoryPage() {
             type="number"
             value={adjust.quantity}
             onChange={(e) => setAdjust((f) => ({ ...f, quantity: e.target.value }))}
+            placeholder={adjust.type === "manual_adjustment" ? "e.g. -2 or 3" : "e.g. 5"}
           />
         </label>
         <label className="admin-span-2">
-          <span>Note</span>
+          <span>Note / reason</span>
           <input
             value={adjust.note}
             onChange={(e) => setAdjust((f) => ({ ...f, note: e.target.value }))}
-            placeholder="Optional reason"
+            placeholder="Required for audits — e.g. stock count, damaged"
           />
         </label>
       </AdminFormModal>
     </>
+  );
+}
+
+export default function AdminInventoryPage() {
+  return (
+    <Suspense fallback={<AdminLoading />}>
+      <AdminInventoryPageInner />
+    </Suspense>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { ImagePlus, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   AdminAlert,
   AdminEmpty,
@@ -354,11 +355,13 @@ export default function AdminCategoriesPage() {
   return (
     <>
       <AdminPageHeader
-        eyebrow=""
+        eyebrow="Catalogue"
         title="Categories"
+        description="Organize the storefront into departments and subcategories with banner images."
         actions={
           <button type="button" className="btn" onClick={openCreate}>
-            + New category
+            <Plus size={15} />
+            New category
           </button>
         }
       />
@@ -388,8 +391,15 @@ export default function AdminCategoriesPage() {
                 <div className="admin-child-list">
                   <div className="admin-child-list-head">
                     <strong>Subcategories</strong>
-                    <button type="button" onClick={() => openAddSub(category)}>
-                      + Add
+                    <button
+                      type="button"
+                      className="admin-action-btn admin-action-btn--compact"
+                      onClick={() => openAddSub(category)}
+                      title="Add subcategory"
+                      aria-label={`Add subcategory under ${category.name}`}
+                    >
+                      <Plus size={13} strokeWidth={2} />
+                      <span>Add</span>
                     </button>
                   </div>
                   {(category.subcategories || []).length === 0 ? (
@@ -399,17 +409,27 @@ export default function AdminCategoriesPage() {
                       {(category.subcategories || []).map((child) => (
                         <li key={child.id}>
                           <span>{child.name}</span>
-                          <span>
-                            <button type="button" onClick={() => openEditSub(category, child)}>
-                              Edit
+                          <span className="admin-row-actions">
+                            <button
+                              type="button"
+                              className="admin-action-btn admin-action-btn--compact"
+                              onClick={() => openEditSub(category, child)}
+                              title="Edit subcategory"
+                              aria-label={`Edit subcategory ${child.name}`}
+                            >
+                              <Pencil size={13} strokeWidth={2} />
+                              <span>Edit</span>
                             </button>
                             <button
                               type="button"
-                              className="admin-danger-btn"
+                              className="admin-action-btn admin-action-btn--danger admin-action-btn--compact"
                               disabled={deletingSubId === child.id}
                               onClick={() => void onDeleteSub(child)}
+                              title="Delete subcategory"
+                              aria-label={`Delete subcategory ${child.name}`}
                             >
-                              {deletingSubId === child.id ? "…" : "Delete"}
+                              <Trash2 size={13} strokeWidth={2} />
+                              <span>{deletingSubId === child.id ? "…" : "Delete"}</span>
                             </button>
                           </span>
                         </li>
@@ -418,16 +438,29 @@ export default function AdminCategoriesPage() {
                   )}
                 </div>
                 <p className="muted admin-sub">Added {formatDate(category.created_at)}</p>
-                <div className="admin-row-actions">
-                  <button type="button" onClick={() => openEdit(category)}>
-                    Edit
+                <div className="admin-row-actions" role="group" aria-label="Category actions">
+                  <button
+                    type="button"
+                    className="admin-action-btn"
+                    onClick={() => openEdit(category)}
+                    title="Edit category"
+                    aria-label={`Edit ${category.name}`}
+                  >
+                    <Pencil size={14} strokeWidth={2} />
+                    <span>Edit</span>
                   </button>
-                  <label className="admin-file-btn admin-file-btn--inline">
+                  <label
+                    className="admin-action-btn"
+                    title="Change background image"
+                    aria-label={`Change background for ${category.name}`}
+                  >
+                    <ImagePlus size={14} strokeWidth={2} />
                     <span>{uploadingId === category.id ? "Uploading…" : "Change background"}</span>
                     <input
                       type="file"
                       accept="image/jpeg,image/png,image/webp,image/gif"
                       disabled={uploadingId === category.id}
+                      hidden
                       onChange={(e) => {
                         void onReplaceImage(category.id, e.target.files);
                         e.target.value = "";
@@ -436,11 +469,14 @@ export default function AdminCategoriesPage() {
                   </label>
                   <button
                     type="button"
-                    className="admin-danger-btn"
+                    className="admin-action-btn admin-action-btn--danger"
                     disabled={deletingId === category.id}
                     onClick={() => void onDelete(category)}
+                    title="Delete category"
+                    aria-label={`Delete ${category.name}`}
                   >
-                    {deletingId === category.id ? "Deleting…" : "Delete"}
+                    <Trash2 size={14} strokeWidth={2} />
+                    <span>{deletingId === category.id ? "Deleting…" : "Delete"}</span>
                   </button>
                 </div>
               </article>

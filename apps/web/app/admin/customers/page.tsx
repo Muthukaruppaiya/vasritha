@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Search } from "lucide-react";
 import {
   AdminAlert,
   AdminBadge,
@@ -43,7 +44,11 @@ export default function AdminCustomersPage() {
 
   return (
     <>
-      <AdminPageHeader eyebrow="" title="Customers" />
+      <AdminPageHeader
+        eyebrow="CRM"
+        title="Customers"
+        description="Browse online shoppers and walk-in store customers, with order history and spend."
+      />
 
       <form
         className="admin-toolbar"
@@ -61,6 +66,7 @@ export default function AdminCustomersPage() {
           />
         </label>
         <button className="btn" type="submit">
+          <Search size={15} />
           Search
         </button>
       </form>

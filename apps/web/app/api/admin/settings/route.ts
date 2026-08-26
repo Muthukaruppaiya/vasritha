@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { fail, ok, requirePermission, writeAuditLog } from "../../../../lib/auth/api";
 import { queryOne } from "../../../../lib/db/pool";
+import { ensureGstSchema } from "../../../../lib/gst";
 
 const ALLOWED_FIELDS = [
   "site_name",
@@ -18,10 +19,14 @@ const ALLOWED_FIELDS = [
   "seo_description",
   "company_legal_name",
   "company_address",
-  "company_gstin"
+  "company_gstin",
+  "company_state",
+  "company_state_code",
+  "prices_inclusive_of_gst"
 ] as const;
 
 export async function GET() {
+  await ensureGstSchema();
   const data = await queryOne(`select * from site_settings limit 1`);
   return ok(data);
 }
@@ -29,6 +34,8 @@ export async function GET() {
 export async function PATCH(request: NextRequest) {
   const { error, ctx } = await requirePermission(request, "settings:business");
   if (error || !ctx) return error;
+
+  await ensureGstSchema();
 
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return fail("Invalid body");

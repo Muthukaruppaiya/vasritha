@@ -24,7 +24,7 @@ import {
   statusTone
 } from "../../../components/admin/admin-ui";
 import { CourierLabel } from "../../../components/admin/courier-label";
-import { ThermalReceipt } from "../../../components/admin/thermal-receipt";
+import { InvoiceBill } from "../../../components/admin/invoice-bill";
 import { adminFetch, formatDate, formatMoney } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
 
@@ -313,7 +313,11 @@ export default function AdminOrdersPage() {
     setPrintMode(mode);
     if (mode === "invoice") setDeskTab("invoice");
     if (mode === "courier") setDeskTab("courier");
-    window.setTimeout(() => window.print(), 80);
+    document.body.classList.toggle("print-thermal", mode === "courier");
+    window.setTimeout(() => {
+      window.print();
+      window.setTimeout(() => document.body.classList.remove("print-thermal"), 500);
+    }, 80);
   };
 
   const itemCount = selected
@@ -324,7 +328,11 @@ export default function AdminOrdersPage() {
 
   return (
     <>
-      <AdminPageHeader title="Online Orders" />
+      <AdminPageHeader
+        eyebrow="Fulfillment"
+        title="Online Orders"
+        description="Pack, ship, and track customer orders from the storefront."
+      />
 
       <div className="orders-stats">
         <article>
@@ -740,8 +748,8 @@ export default function AdminOrdersPage() {
 
               {deskTab === "invoice" && (
                 <div className="orders-invoice-wrap">
-                  <div className="tvs-receipt-preview-label">Tax invoice · TVS LP 46</div>
-                  <ThermalReceipt data={selected} id="online-invoice-print" />
+                  <div className="tvs-receipt-preview-label">Shop bill · 5″ wide · height auto-cuts</div>
+                  <InvoiceBill data={selected} id="online-invoice-print" />
                 </div>
               )}
 
@@ -771,7 +779,7 @@ export default function AdminOrdersPage() {
               <div className="orders-print-bar orders-print-bar--row">
                 <button type="button" className="btn" onClick={() => printSlips("invoice")}>
                   <Printer size={14} />
-                  Print invoice
+                  Print bill
                 </button>
                 <button
                   type="button"
@@ -787,12 +795,12 @@ export default function AdminOrdersPage() {
                 </button>
               </div>
               <p className="tvs-print-hint muted">
-                Printer: <b>TVS LP 46</b> · ~108 mm continuous · margins none · scale 100%.
+                Bill: 5″ wide, height auto-cuts with content. Courier / barcodes use TVS LP 46.
               </p>
             </footer>
 
             <div className={`orders-print-stack is-mode-${printMode}`} aria-hidden="true">
-              <ThermalReceipt data={selected} id="online-invoice-print-stack" />
+              <InvoiceBill data={selected} id="online-invoice-print-stack" />
               <div className="tvs-print-break" />
               <CourierLabel
                 data={{

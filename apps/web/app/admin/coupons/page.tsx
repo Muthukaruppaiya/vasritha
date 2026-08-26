@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { Eye, EyeOff, Plus } from "lucide-react";
 import {
   AdminAlert,
   AdminBadge,
@@ -100,11 +101,13 @@ export default function AdminCouponsPage() {
   return (
     <>
       <AdminPageHeader
-        eyebrow=""
+        eyebrow="Promotions"
         title="Coupons & gift vouchers"
+        description="Create discount codes and gift vouchers, including opening-notice popups."
         actions={
           <button type="button" className="btn" onClick={openCreate}>
-            + New gift voucher
+            <Plus size={15} />
+            New gift voucher
           </button>
         }
       />
@@ -148,9 +151,26 @@ export default function AdminCouponsPage() {
                     </td>
                     <td>{formatDate(coupon.created_at)}</td>
                     <td>
-                      <button type="button" className="btn ghost" onClick={() => toggleOpening(coupon)}>
-                        {coupon.show_on_open ? "Hide opening" : "Show on open"}
-                      </button>
+                      <div className="admin-row-actions" role="group" aria-label="Coupon actions">
+                        <button
+                          type="button"
+                          className="admin-action-btn"
+                          onClick={() => void toggleOpening(coupon)}
+                          title={coupon.show_on_open ? "Hide opening notice" : "Show on open"}
+                          aria-label={
+                            coupon.show_on_open
+                              ? `Hide opening notice for ${coupon.code}`
+                              : `Show ${coupon.code} on open`
+                          }
+                        >
+                          {coupon.show_on_open ? (
+                            <EyeOff size={14} strokeWidth={2} />
+                          ) : (
+                            <Eye size={14} strokeWidth={2} />
+                          )}
+                          <span>{coupon.show_on_open ? "Hide opening" : "Show on open"}</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

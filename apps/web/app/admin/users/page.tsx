@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
+import { Plus } from "lucide-react";
 import {
   AdminAlert,
   AdminBadge,
@@ -100,11 +101,13 @@ export default function AdminUsersPage() {
   return (
     <>
       <AdminPageHeader
-        eyebrow=""
+        eyebrow="Access"
         title="Users"
+        description="Create staff accounts and assign roles for the admin panel."
         actions={
           <button type="button" className="btn" onClick={openCreate}>
-            + New user
+            <Plus size={15} />
+            New user
           </button>
         }
       />

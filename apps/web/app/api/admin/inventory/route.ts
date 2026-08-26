@@ -1,22 +1,43 @@
 import { NextRequest } from "next/server";
 import { fail, ok, requirePermission, writeAuditLog } from "../../../../lib/auth/api";
 import { query, queryOne } from "../../../../lib/db/pool";
+import { ensureGstSchema } from "../../../../lib/gst";
+
+const LOW_STOCK = 10;
 
 export async function GET(request: NextRequest) {
   const { error } = await requirePermission(request, "stock:operate");
   if (error) return error;
 
+  await ensureGstSchema();
+
   const { searchParams } = new URL(request.url);
   const q = (searchParams.get("q") || "").trim();
-  const limitRaw = Number(searchParams.get("limit") || "100");
-  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 200) : 100;
+  const productId = (searchParams.get("product") || "").trim();
+  const limitRaw = Number(searchParams.get("limit") || "200");
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
 
   const [movements, stock] = await Promise.all([
     query(
-      `select id, product_variant_id, type, quantity, reference_type, reference_id, note, created_by, created_at
-       from inventory_movements
-       order by created_at desc
-       limit 100`
+      `select
+         m.id,
+         m.product_variant_id,
+         m.type,
+         m.quantity,
+         m.reference_type,
+         m.reference_id,
+         m.note,
+         m.created_by,
+         m.created_at,
+         pv.sku,
+         pv.name as variant_name,
+         p.id as product_id,
+         p.name as product_name
+       from inventory_movements m
+       join product_variants pv on pv.id = m.product_variant_id
+       join products p on p.id = pv.product_id
+       order by m.created_at desc
+       limit 80`
     ),
     query(
       `select
@@ -28,6 +49,8 @@ export async function GET(request: NextRequest) {
          p.id as product_id,
          p.name as product_name,
          p.status as product_status,
+         p.hsn_code,
+         p.gst_rate,
          p.category_id,
          p.subcategory_id,
          c.name as category_name,
@@ -40,14 +63,29 @@ export async function GET(request: NextRequest) {
          $1::text = ''
          or p.name ilike '%' || $1 || '%'
          or coalesce(pv.sku, '') ilike '%' || $1 || '%'
+         or coalesce(pv.barcode, '') ilike '%' || $1 || '%'
+         or coalesce(p.hsn_code, '') ilike '%' || $1 || '%'
        )
+       and ($2::uuid is null or p.id = $2::uuid)
        order by p.name asc, pv.sku asc
        limit ${limit}`,
-      [q]
+      [q, productId || null]
     )
   ]);
 
-  return ok({ movements, stock });
+  const rows = stock as Array<{ stock_quantity: number }>;
+  const summary = {
+    skuCount: rows.length,
+    onHand: rows.reduce((sum, row) => sum + Number(row.stock_quantity || 0), 0),
+    inStock: rows.filter((row) => Number(row.stock_quantity) > LOW_STOCK).length,
+    lowStock: rows.filter((row) => {
+      const qty = Number(row.stock_quantity);
+      return qty > 0 && qty <= LOW_STOCK;
+    }).length,
+    outOfStock: rows.filter((row) => Number(row.stock_quantity) <= 0).length
+  };
+
+  return ok({ movements, stock, summary, lowStockThreshold: LOW_STOCK });
 }
 
 export async function POST(request: NextRequest) {
@@ -67,10 +105,7 @@ export async function POST(request: NextRequest) {
 
   if (body.type === "manual_adjustment") {
     const approve = await requirePermission(request, "stock:approve");
-    // inventory staff can operate; approve needed for unrestricted adjust if we want stricter —
-    // matrix: inventory can do approved adjustments; managers approve.
-    // Allow stock:operate for create; stock:approve only for large unrestricted — keep operate for MVP.
-    void approve;
+    if (approve.error) return approve.error;
   }
 
   const variant = await queryOne<{ id: string; stock_quantity: number }>(
@@ -112,6 +147,17 @@ export async function POST(request: NextRequest) {
     body.productVariantId,
     nextQty
   ]);
+
+  // Keep product-level stock in sync for catalogue views
+  await query(
+    `update products p
+     set stock_quantity = coalesce((
+       select sum(pv.stock_quantity)::int from product_variants pv where pv.product_id = p.id
+     ), 0),
+     updated_at = now()
+     where p.id = (select product_id from product_variants where id = $1)`,
+    [body.productVariantId]
+  );
 
   await writeAuditLog({
     actorUserId: ctx.userId,

@@ -1,5 +1,6 @@
 "use client";
 
+import { Check, PackageCheck, RotateCcw, X } from "lucide-react";
 import {
   AdminAlert,
   AdminBadge,
@@ -31,6 +32,16 @@ const NEXT: Record<string, string[]> = {
   refunded: []
 };
 
+const STATUS_ACTION: Record<
+  string,
+  { label: string; icon: typeof Check; primary?: boolean; danger?: boolean }
+> = {
+  approved: { label: "Mark approved", icon: Check, primary: true },
+  rejected: { label: "Mark rejected", icon: X, danger: true },
+  received: { label: "Mark received", icon: PackageCheck },
+  refunded: { label: "Mark refunded", icon: RotateCcw, primary: true }
+};
+
 export default function AdminReturnsPage() {
   const { data, error, loading, reload } = useAdminQuery<ReturnRow[]>("/api/admin/returns");
 
@@ -45,6 +56,7 @@ export default function AdminReturnsPage() {
   return (
     <>
       <AdminPageHeader
+        eyebrow="Orders"
         title="Returns"
         description="Approve, receive and refund customer returns."
       />
@@ -84,12 +96,31 @@ export default function AdminReturnsPage() {
                     </td>
                     <td>{formatDate(row.created_at)}</td>
                     <td>
-                      <div className="admin-row-actions">
-                        {(NEXT[row.status] || []).map((status) => (
-                          <button key={status} type="button" onClick={() => void update(row.id, status)}>
-                            Mark {status}
-                          </button>
-                        ))}
+                      <div className="admin-row-actions" role="group" aria-label="Return actions">
+                        {(NEXT[row.status] || []).map((status) => {
+                          const action = STATUS_ACTION[status];
+                          const Icon = action?.icon;
+                          const className = [
+                            "admin-action-btn",
+                            action?.primary ? "admin-action-btn--primary" : "",
+                            action?.danger ? "admin-action-btn--danger" : ""
+                          ]
+                            .filter(Boolean)
+                            .join(" ");
+                          return (
+                            <button
+                              key={status}
+                              type="button"
+                              className={className}
+                              onClick={() => void update(row.id, status)}
+                              title={action?.label || `Mark ${status}`}
+                              aria-label={`${action?.label || `Mark ${status}`} for ${row.return_number}`}
+                            >
+                              {Icon ? <Icon size={14} strokeWidth={2} /> : null}
+                              <span>{action?.label || `Mark ${status}`}</span>
+                            </button>
+                          );
+                        })}
                       </div>
                     </td>
                   </tr>
