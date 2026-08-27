@@ -6,7 +6,15 @@ declare global {
 }
 
 export function getDatabaseUrl() {
-  return process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5433/vasritha";
+  const url = process.env.DATABASE_URL;
+  if (url) return url;
+  // Never fall back to localhost on Vercel / hosted builds
+  if (process.env.VERCEL || process.env.NODE_ENV === "production") {
+    throw new Error(
+      "DATABASE_URL is required on hosted environments (set Supabase Postgres URI in Vercel env)."
+    );
+  }
+  return "postgresql://postgres:postgres@127.0.0.1:5433/vasritha";
 }
 
 export function getPool() {

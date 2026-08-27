@@ -54,6 +54,9 @@ export const metadata: Metadata = {
   description: "Sarees, jewelry, apparel, and handcrafted treasures."
 };
 
+// Storefront + admin always read live DB (local Postgres or Supabase).
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
