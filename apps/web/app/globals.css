@@ -6869,6 +6869,16 @@ body:has(.admin-login) .whatsapp-float {
 }
 
 .admin-sub { font-size: 0.75rem; margin-top: 3px; }
+.loyalty-prompt-preview {
+  max-width: 280px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: #475569;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #f8fafc;
+  border: 1px solid #eef2f7;
+}
 .strike { text-decoration: line-through; }
 
 .admin-row-actions {
