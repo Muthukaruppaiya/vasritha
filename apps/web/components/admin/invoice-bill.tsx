@@ -45,6 +45,12 @@ export function InvoiceBill({ data, id = "vasritha-invoice-bill" }: Props) {
         <div className="invoice-bill-shop-title">
           <strong>{seller?.legal_name || "VASRITHA"}</strong>
           <span>Timeless Elegance · Textile &amp; Lifestyle</span>
+          {seller?.shop_code ? (
+            <span className="invoice-bill-shop-code-line">
+              Shop: {seller.shop_name || seller.legal_name}
+              {seller.shop_code ? ` · ${seller.shop_code}` : ""}
+            </span>
+          ) : null}
           <em>{hasGstin ? "Tax Invoice" : isPos ? "Store counter bill" : "Online order bill"}</em>
         </div>
       </header>

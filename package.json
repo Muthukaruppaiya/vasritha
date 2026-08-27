@@ -26,6 +26,9 @@
     "db:patch:category-i18n": "node --env-file=apps/web/.env.local scripts/patch-category-i18n.mjs",
     "db:patch:gift-vouchers": "node --env-file=apps/web/.env.local scripts/patch-gift-vouchers.mjs",
     "db:patch:gst-hsn": "node --env-file=apps/web/.env.local scripts/patch-gst-hsn.mjs",
+    "db:patch:shops": "node --env-file=apps/web/.env.local scripts/patch-shops.mjs",
+    "db:patch:brands": "node --env-file=apps/web/.env.local scripts/patch-brands.mjs",
+    "db:patch:cart-reservations": "node --env-file=apps/web/.env.local scripts/patch-cart-reservations.mjs",
     "db:seed:opening-voucher": "node --env-file=apps/web/.env.local scripts/seed-opening-voucher.mjs",
     "db:reset": "docker compose down -v && docker compose up -d postgres && node scripts/init-local-db.mjs"
   }

@@ -10,6 +10,7 @@ import { query, queryOne } from "../../../../../lib/db/pool";
 import { emptyToNull, subcategoryBelongsToCategory } from "../../../../../lib/db/taxonomy";
 import { listProductItems, ensureProductUnitsSchema, recordPriceHistory } from "../../../../../lib/product-units";
 import { ensureGstSchema, normalizeGstRate, normalizeHsn } from "../../../../../lib/gst";
+import { ensureBrandsSchema, resolveBrandId } from "../../../../../lib/brands";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -33,7 +34,8 @@ const ALLOWED_FIELDS = [
   "is_featured",
   "parent_product_id",
   "hsn_code",
-  "gst_rate"
+  "gst_rate",
+  "brand_id"
 ] as const;
 
 export async function GET(request: NextRequest, { params }: Params) {
@@ -118,6 +120,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
   if ("gst_rate" in body) {
     body.gst_rate = normalizeGstRate(body.gst_rate, 5);
+  }
+  if ("brand_id" in body) {
+    await ensureBrandsSchema();
+    body.brand_id = await resolveBrandId(
+      body.brand_id == null || String(body.brand_id).trim() === ""
+        ? null
+        : String(body.brand_id)
+    );
   }
 
   const before = await queryOne<{

@@ -26,6 +26,8 @@ import {
   FileText,
   SlidersHorizontal,
   Plug,
+  Store,
+  Sparkles,
   type LucideIcon
 } from "lucide-react";
 import {
@@ -42,6 +44,7 @@ import {
   isAppRole,
   type AppRole
 } from "@/lib/auth/rbac";
+import { OPS_PLATFORM_NAME } from "@/lib/platform";
 import { BrandSplash } from "../brand-splash";
 
 type NavLeaf = {
@@ -138,6 +141,8 @@ const navModules: NavModule[] = [
     icon: Settings,
     children: [
       { label: "Settings", href: "/admin/settings", icon: Settings },
+      { label: "Brands", href: "/admin/brands", icon: Sparkles },
+      { label: "Shops", href: "/admin/shops", icon: Store },
       { label: "Integrations", href: "/admin/integrations", icon: Plug }
     ]
   }
@@ -381,11 +386,11 @@ export function AdminShell({ children }: { children: ReactNode }) {
         onMouseLeave={() => setHovered(false)}
       >
         <div className="admin-sidebar-top">
-          <Link href="/" className="admin-brand" aria-label="Vasritha home">
-            <img className="brand-logo" src={brandLogo} alt="Vasritha" />
+          <Link href="/admin" className="admin-brand" aria-label={`${OPS_PLATFORM_NAME} home`}>
+            <img className="brand-logo" src={brandLogo} alt={OPS_PLATFORM_NAME} />
             <div className="admin-brand-copy">
-              <strong>Vasritha</strong>
-              <span>Admin</span>
+              <strong>{OPS_PLATFORM_NAME}</strong>
+              <span>Operations</span>
             </div>
           </Link>
 
@@ -509,7 +514,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
       <div className="admin-main">
         <header className="admin-topbar">
           <div className="admin-topbar-left">
-            <p className="admin-topbar-kicker">Vasritha workspace</p>
+            <p className="admin-topbar-kicker">{OPS_PLATFORM_NAME} workspace</p>
             <strong className="admin-topbar-title">Admin console</strong>
           </div>
 
@@ -589,7 +594,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
                 {(user?.fullName || user?.email || "A").charAt(0).toUpperCase()}
               </span>
               <div className="admin-user-meta is-visible">
-                <strong>{user?.fullName || "Vasritha Admin"}</strong>
+                <strong>{user?.fullName || `${OPS_PLATFORM_NAME} Admin`}</strong>
                 <span>{user?.email}</span>
               </div>
             </div>

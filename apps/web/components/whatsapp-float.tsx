@@ -1,6 +1,7 @@
 "use client";
 
 import { FaWhatsapp } from "react-icons/fa";
+import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 
 type PublicWhatsApp = {
@@ -11,12 +12,14 @@ type PublicWhatsApp = {
 };
 
 export function WhatsAppFloat() {
+  const pathname = usePathname();
   const [wa, setWa] = useState<PublicWhatsApp | null>(null);
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
   const drag = useRef<{ offsetX: number; offsetY: number } | null>(null);
   const didDrag = useRef(false);
 
   useEffect(() => {
+    if (pathname?.startsWith("/admin")) return;
     let cancelled = false;
     (async () => {
       try {
@@ -30,7 +33,7 @@ export function WhatsAppFloat() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [pathname]);
 
   const move = (event: PointerEvent<HTMLAnchorElement>) => {
     if (!drag.current) return;
@@ -41,6 +44,7 @@ export function WhatsAppFloat() {
     setPosition({ left, top });
   };
 
+  if (pathname?.startsWith("/admin")) return null;
   if (!wa?.enabled || !wa.showFloat || !wa.phoneNumber) return null;
 
   const href = wa.prefillMessage

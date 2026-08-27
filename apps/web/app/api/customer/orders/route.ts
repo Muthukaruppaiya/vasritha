@@ -3,6 +3,8 @@ import { fail, ok, requirePermission } from "../../../../lib/auth/api";
 import { computeCouponDiscount } from "../../../../lib/coupon-discount";
 import { query, queryOne } from "../../../../lib/db/pool";
 import { ensureGstSchema, normalizeGstRate, summariseInclusiveLines } from "../../../../lib/gst";
+import { getPurchasableStock } from "../../../../lib/cart-reservations";
+import { ensureBrandsSchema, resolveBrandId } from "../../../../lib/brands";
 
 type OrderRow = {
   id: string;
@@ -71,10 +73,12 @@ export async function POST(request: NextRequest) {
   if (error || !ctx) return error;
 
   await ensureGstSchema();
+  await ensureBrandsSchema();
 
   const body = (await request.json().catch(() => null)) as {
     shippingAddressId?: string;
     couponCode?: string;
+    sessionKey?: string;
     items?: Array<{ productId: string; variantId?: string; quantity: number }>;
   } | null;
 
@@ -147,7 +151,6 @@ export async function POST(request: NextRequest) {
     let variantName: string | null = null;
     let sku: string | null = product.sku;
     let variantId: string | null = line.variantId ?? null;
-    let available = Number(product.stock_quantity);
     const hsnCode = product.hsn_code ? String(product.hsn_code).trim() || null : null;
     const gstRate = normalizeGstRate(product.gst_rate, 5);
 
@@ -157,9 +160,8 @@ export async function POST(request: NextRequest) {
         name: string;
         sku: string;
         price: string;
-        stock_quantity: number;
       }>(
-        `select id, name, sku, price, stock_quantity
+        `select id, name, sku, price
          from product_variants
          where id = $1 and product_id = $2`,
         [variantId, product.id]
@@ -168,16 +170,14 @@ export async function POST(request: NextRequest) {
       unitPrice = Number(variant.price);
       variantName = variant.name;
       sku = variant.sku;
-      available = Number(variant.stock_quantity);
     } else {
       const firstVariant = await queryOne<{
         id: string;
         name: string;
         sku: string;
         price: string;
-        stock_quantity: number;
       }>(
-        `select id, name, sku, price, stock_quantity
+        `select id, name, sku, price
          from product_variants
          where product_id = $1
          order by name asc
@@ -189,10 +189,14 @@ export async function POST(request: NextRequest) {
         unitPrice = Number(firstVariant.price);
         variantName = firstVariant.name;
         sku = firstVariant.sku;
-        available = Number(firstVariant.stock_quantity);
       }
     }
 
+    const available = await getPurchasableStock(
+      product.id,
+      variantId,
+      body.sessionKey || null
+    );
     if (available < quantity) {
       return fail(`Insufficient stock for ${product.name} (available ${available})`, 400);
     }
@@ -271,14 +275,15 @@ export async function POST(request: NextRequest) {
   const total = taxSummary.payable;
 
   const orderNumber = `VAS-${Date.now().toString().slice(-8)}`;
+  const brandId = await resolveBrandId(null);
   const order = await queryOne<{
     id: string;
     order_number: string;
     created_at: string;
     total_amount: string;
   }>(
-    `insert into orders (order_number, customer_id, shipping_address_id, status, payment_status, subtotal, discount_amount, tax_amount, shipping_amount, total_amount)
-     values ($1, $2, $3, 'pending', 'pending', $4, $5, $6, 0, $7)
+    `insert into orders (order_number, customer_id, shipping_address_id, status, payment_status, subtotal, discount_amount, tax_amount, shipping_amount, total_amount, brand_id)
+     values ($1, $2, $3, 'pending', 'pending', $4, $5, $6, 0, $7, $8)
      returning id, order_number, created_at, total_amount`,
     [
       orderNumber,
@@ -287,7 +292,8 @@ export async function POST(request: NextRequest) {
       subtotal,
       discountAmount,
       taxSummary.gst,
-      total
+      total,
+      brandId
     ]
   );
 

@@ -87,10 +87,46 @@ create table if not exists public.collections (
   description text
 );
 
+-- Sales brand plugins on Sukadhaa ops (e.g. Vasritha storefront)
+create table if not exists public.brands (
+  id uuid primary key default gen_random_uuid(),
+  code text not null,
+  name text not null,
+  slug text not null,
+  tagline text,
+  logo_path text,
+  support_email text,
+  support_phone text,
+  website_url text,
+  is_active boolean not null default true,
+  is_default boolean not null default false,
+  sort_order integer not null default 0,
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint brands_code_nonempty check (length(trim(code)) > 0),
+  constraint brands_name_nonempty check (length(trim(name)) > 0),
+  constraint brands_slug_nonempty check (length(trim(slug)) > 0)
+);
+
+create unique index if not exists brands_code_unique_idx
+  on public.brands (lower(code));
+
+create unique index if not exists brands_slug_unique_idx
+  on public.brands (lower(slug));
+
+create unique index if not exists brands_one_default_idx
+  on public.brands ((1))
+  where is_default;
+
+create index if not exists brands_active_idx
+  on public.brands (is_active, sort_order, name);
+
 create table if not exists public.products (
   id uuid primary key default gen_random_uuid(),
   category_id uuid not null references public.categories(id),
   subcategory_id uuid references public.subcategories(id),
+  brand_id uuid references public.brands(id),
   name text not null,
   short_name text not null default '',
   slug text not null unique,
@@ -192,6 +228,34 @@ create table if not exists public.wishlist_items (
   created_at timestamptz not null default now()
 );
 
+-- Physical store locations (multi-shop ready)
+create table if not exists public.shops (
+  id uuid primary key default gen_random_uuid(),
+  code text not null,
+  name text not null,
+  address text,
+  phone text,
+  email text,
+  state text,
+  state_code text,
+  gstin text,
+  brand_id uuid references public.brands(id),
+  is_active boolean not null default true,
+  is_default boolean not null default false,
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint shops_code_nonempty check (length(trim(code)) > 0),
+  constraint shops_name_nonempty check (length(trim(name)) > 0)
+);
+
+create unique index if not exists shops_code_unique_idx
+  on public.shops (lower(code));
+
+create unique index if not exists shops_one_default_idx
+  on public.shops ((1))
+  where is_default;
+
 create table if not exists public.orders (
   id uuid primary key default gen_random_uuid(),
   order_number text not null unique,
@@ -205,6 +269,8 @@ create table if not exists public.orders (
   shipping_amount numeric(12,2) not null default 0,
   total_amount numeric(12,2) not null check (total_amount >= 0),
   channel text not null default 'online' check (channel in ('online', 'pos')),
+  shop_id uuid references public.shops(id),
+  brand_id uuid references public.brands(id),
   pos_customer_name text,
   pos_customer_phone text,
   pos_customer_email text,
@@ -320,6 +386,7 @@ create table if not exists public.inventory_movements (
   reference_id uuid,
   note text,
   created_by uuid references public.users(id),
+  shop_id uuid references public.shops(id),
   created_at timestamptz not null default now()
 );
 
@@ -344,12 +411,57 @@ create table if not exists public.site_settings (
   company_state text,
   company_state_code text,
   prices_inclusive_of_gst boolean not null default true,
+  default_brand_id uuid references public.brands(id),
   updated_at timestamptz not null default now()
 );
 
 insert into public.site_settings (site_name, tagline, support_email, whatsapp_number, free_shipping_min)
 select 'Vasritha', 'Timeless Elegance', 'hello@vasritha.com', '919000000000', 2500
 where not exists (select 1 from public.site_settings);
+
+insert into public.brands (
+  code, name, slug, tagline, support_email, support_phone, is_active, is_default, sort_order
+)
+select
+  'VASRITHA',
+  coalesce(nullif(trim(site_name), ''), 'Vasritha'),
+  'vasritha',
+  coalesce(nullif(trim(tagline), ''), 'Timeless Elegance'),
+  support_email,
+  support_phone,
+  true,
+  true,
+  0
+from public.site_settings
+where not exists (select 1 from public.brands)
+limit 1;
+
+insert into public.brands (code, name, slug, tagline, is_active, is_default, sort_order)
+select 'VASRITHA', 'Vasritha', 'vasritha', 'Timeless Elegance', true, true, 0
+where not exists (select 1 from public.brands);
+
+update public.site_settings ss
+set default_brand_id = d.id
+from public.brands d
+where d.is_default
+  and ss.default_brand_id is null;
+
+insert into public.shops (code, name, is_active, is_default, brand_id)
+select 'MAIN', 'Main Store', true, true, d.id
+from public.brands d
+where d.is_default
+  and not exists (select 1 from public.shops)
+limit 1;
+
+insert into public.shops (code, name, is_active, is_default)
+select 'MAIN', 'Main Store', true, true
+where not exists (select 1 from public.shops);
+
+update public.shops s
+set brand_id = d.id
+from public.brands d
+where d.is_default
+  and s.brand_id is null;
 
 create table if not exists public.menus (
   id uuid primary key default gen_random_uuid(),
@@ -528,6 +640,8 @@ where code in (
 create index if not exists products_status_idx on public.products (status);
 create index if not exists products_category_status_idx on public.products (category_id, status);
 create index if not exists products_featured_idx on public.products (is_featured) where is_featured = true;
+create index if not exists products_brand_id_idx on public.products (brand_id) where brand_id is not null;
+create index if not exists orders_brand_id_idx on public.orders (brand_id) where brand_id is not null;
 create index if not exists product_images_product_id_idx on public.product_images (product_id, sort_order);
 create index if not exists product_variants_product_id_idx on public.product_variants (product_id);
 create index if not exists orders_status_created_idx on public.orders (status, created_at desc);

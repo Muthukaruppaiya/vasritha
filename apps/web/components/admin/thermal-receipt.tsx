@@ -47,6 +47,9 @@ export type ThermalReceiptData = {
     phone?: string | null;
     email?: string | null;
     prices_inclusive_of_gst?: boolean;
+    shop_id?: string | null;
+    shop_name?: string | null;
+    shop_code?: string | null;
   } | null;
   gst?: {
     taxable: number;

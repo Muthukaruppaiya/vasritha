@@ -45,7 +45,8 @@ Date: 25 August 2026
 ### Admin operations
 - Roles and permissions (admin, managers, inventory, POS, etc.).
 - Reviews: customer submits → admin approves → shown on the site.
-- One brand in Settings (company, logos, WhatsApp number).
+- Ops platform branded **Sukadhaa**; sales brand **Vasritha** (System → Brands).
+- Domains (when env set): `vasritha.in` = shop website; `sukadhaa.in` = admin / POS. Localhost still serves both.
 - WhatsApp chat (when enabled) and email sending (when enabled).
 - Coupons and gift vouchers: Admin → Gift vouchers. A voucher with **Show when website opens** appears as a popup on first visit this session. The shopper can **Use this voucher** (saved to checkout) or **Close and continue**. Discount applies at payment.
 
@@ -63,7 +64,7 @@ Do **not** expect these yet. They were agreed as post-release or on hold.
 | Cash denomination till + daily cash reconcile | Cash payment exists; no note-count register |
 | Strict customer merge (phone **or** email as one person) | Email unique; phone not a hard unique key |
 | Customer-interest analytics / extra invoice drill-down reports | Invoice list exists; interest reports do not |
-| Multiple brands in one admin | Single brand settings only |
+| Multiple storefront brands as plugins | Thin foundation: System → Brands; Vasritha seeded. Full isolation later |
 | Loyalty points | Not built |
 | Cart “add this at a reduced price” suggestions | Not built |
 | SMS | On hold (cost per message) |

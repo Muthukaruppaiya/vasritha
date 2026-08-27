@@ -8,6 +8,7 @@ import {
   recordPriceHistory
 } from "../../../../lib/product-units";
 import { ensureGstSchema, normalizeGstRate, normalizeHsn } from "../../../../lib/gst";
+import { ensureBrandsSchema, resolveBrandId } from "../../../../lib/brands";
 
 async function upsertDefaultVariant(input: {
   productId: string;
@@ -98,6 +99,7 @@ export async function POST(request: NextRequest) {
 
   await ensureProductUnitsSchema();
   await ensureGstSchema();
+  await ensureBrandsSchema();
 
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body?.name || !body?.slug || !body?.category_id || body.price == null) {
@@ -139,6 +141,10 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const brandId = await resolveBrandId(
+    body.brand_id != null ? String(body.brand_id) : null
+  );
+
   const data = await queryOne<{
     id: string;
     image_upload_token: string;
@@ -147,8 +153,8 @@ export async function POST(request: NextRequest) {
     `insert into products
        (name, slug, sku, barcode, tag, sku_prefix, label_size, category_id, subcategory_id,
         short_name, short_description, color, description,
-        price, compare_at_price, hsn_code, gst_rate, status, stock_quantity, is_featured, parent_product_id)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
+        price, compare_at_price, hsn_code, gst_rate, status, stock_quantity, is_featured, parent_product_id, brand_id)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
      returning *`,
     [
       String(body.name),
@@ -171,7 +177,8 @@ export async function POST(request: NextRequest) {
       body.status ? String(body.status) : "draft",
       0,
       Boolean(body.is_featured ?? body.fast_selling),
-      parentProductId
+      parentProductId,
+      brandId
     ]
   );
 

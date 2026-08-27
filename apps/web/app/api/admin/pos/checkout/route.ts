@@ -19,6 +19,8 @@ import {
   normalizeGstRate,
   summariseInclusiveLines
 } from "../../../../../lib/gst";
+import { ensureShopsSchema, resolveShopId, getShopById } from "../../../../../lib/shops";
+import { ensureBrandsSchema, resolveBrandId } from "../../../../../lib/brands";
 
 type CheckoutLine = {
   productId: string;
@@ -35,6 +37,7 @@ type CheckoutBody = {
   customerName?: string;
   customerPhone?: string;
   customerEmail?: string;
+  shopId?: string;
 };
 
 type Db = {
@@ -139,10 +142,18 @@ export async function POST(request: NextRequest) {
 
   await ensurePosSchema();
   await ensureGstSchema();
+  await ensureShopsSchema();
+  await ensureBrandsSchema();
 
   const body = (await request.json().catch(() => null)) as CheckoutBody | null;
   const items = body?.items || [];
   if (!items.length) return fail("Cart is empty");
+
+  const shopId = await resolveShopId(body?.shopId ? String(body.shopId) : null);
+  if (!shopId) return fail("No active shop configured. Add a shop under System → Shops.");
+
+  const shop = await getShopById(shopId);
+  const brandId = await resolveBrandId(shop?.brand_id || null);
 
   const customer = validatePosCustomer({
     name: body?.customerName,
@@ -301,6 +312,7 @@ export async function POST(request: NextRequest) {
         payment_status: string;
         status: string;
         channel: string;
+        shop_id: string | null;
         pos_customer_name: string | null;
         pos_customer_phone: string | null;
         pos_customer_email: string | null;
@@ -308,10 +320,10 @@ export async function POST(request: NextRequest) {
         `insert into orders (
            order_number, customer_id, shipping_address_id, status, payment_status,
            subtotal, discount_amount, tax_amount, shipping_amount, total_amount, channel,
-           pos_customer_name, pos_customer_phone, pos_customer_email
-         ) values ($1, $2, null, $3, $4, $5, $6, $7, 0, $8, 'pos', $9, $10, $11)
+           shop_id, brand_id, pos_customer_name, pos_customer_phone, pos_customer_email
+         ) values ($1, $2, null, $3, $4, $5, $6, $7, 0, $8, 'pos', $9, $10, $11, $12, $13)
          returning id, order_number, created_at, total_amount, subtotal, discount_amount, tax_amount, payment_status, status, channel,
-                   pos_customer_name, pos_customer_phone, pos_customer_email`,
+                   shop_id, brand_id, pos_customer_name, pos_customer_phone, pos_customer_email`,
         [
           orderNumber,
           walkInId,
@@ -321,6 +333,8 @@ export async function POST(request: NextRequest) {
           discountAmount,
           taxSummary.gst,
           total,
+          shopId,
+          brandId,
           customer.name,
           customer.phone,
           customer.email
@@ -457,7 +471,7 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    const seller = await getSellerGstProfile();
+    const seller = await getSellerGstProfile(shopId);
 
     return ok(
       {
@@ -467,6 +481,7 @@ export async function POST(request: NextRequest) {
           customer_phone: checkoutResult.pos_customer_phone,
           customer_email: checkoutResult.pos_customer_email,
           tax_amount: taxSummary.gst,
+          shop_id: shopId,
           gst: {
             taxable: taxSummary.taxable,
             cgst: taxSummary.cgst,

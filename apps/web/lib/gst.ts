@@ -1,4 +1,5 @@
 import { query, queryOne } from "./db/pool";
+import { ensureShopsSchema } from "./shops";
 
 export type SellerGstProfile = {
   legal_name: string | null;
@@ -9,6 +10,9 @@ export type SellerGstProfile = {
   phone: string | null;
   email: string | null;
   prices_inclusive_of_gst: boolean;
+  shop_id?: string | null;
+  shop_name?: string | null;
+  shop_code?: string | null;
 };
 
 export type GstMoneySplit = {
@@ -77,8 +81,9 @@ export async function ensureGstSchema() {
   `);
 }
 
-export async function getSellerGstProfile(): Promise<SellerGstProfile> {
+export async function getSellerGstProfile(shopId?: string | null): Promise<SellerGstProfile> {
   await ensureGstSchema();
+  await ensureShopsSchema();
   const row = await queryOne<{
     company_legal_name: string | null;
     site_name: string | null;
@@ -97,20 +102,53 @@ export async function getSellerGstProfile(): Promise<SellerGstProfile> {
      limit 1`
   );
 
-  const gstin = row?.company_gstin ? String(row.company_gstin).trim().toUpperCase() : null;
+  let shop: {
+    id: string;
+    code: string;
+    name: string;
+    address: string | null;
+    phone: string | null;
+    email: string | null;
+    state: string | null;
+    state_code: string | null;
+    gstin: string | null;
+  } | null = null;
+
+  if (shopId) {
+    shop = await queryOne(
+      `select id, code, name, address, phone, email, state, state_code, gstin
+       from shops where id = $1`,
+      [shopId]
+    );
+  }
+  if (!shop) {
+    shop = await queryOne(
+      `select id, code, name, address, phone, email, state, state_code, gstin
+       from shops
+       where is_default = true and is_active = true
+       limit 1`
+    );
+  }
+
+  const gstinRaw = shop?.gstin || row?.company_gstin;
+  const gstin = gstinRaw ? String(gstinRaw).trim().toUpperCase() : null;
   const stateCode =
+    (shop?.state_code ? String(shop.state_code).trim() : null) ||
     (row?.company_state_code ? String(row.company_state_code).trim() : null) ||
     stateCodeFromGstin(gstin);
 
   return {
-    legal_name: row?.company_legal_name || row?.site_name || "Vasritha",
-    address: row?.company_address || null,
+    legal_name: shop?.name || row?.company_legal_name || row?.site_name || "Vasritha",
+    address: shop?.address || row?.company_address || null,
     gstin,
-    state: row?.company_state || null,
+    state: shop?.state || row?.company_state || null,
     state_code: stateCode,
-    phone: row?.support_phone || null,
-    email: row?.support_email || null,
-    prices_inclusive_of_gst: row?.prices_inclusive_of_gst !== false
+    phone: shop?.phone || row?.support_phone || null,
+    email: shop?.email || row?.support_email || null,
+    prices_inclusive_of_gst: row?.prices_inclusive_of_gst !== false,
+    shop_id: shop?.id || null,
+    shop_name: shop?.name || null,
+    shop_code: shop?.code || null
   };
 }
 

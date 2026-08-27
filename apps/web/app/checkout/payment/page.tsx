@@ -168,7 +168,9 @@ function PaymentContent() {
           variantId: item.variantId || undefined,
           quantity: item.quantity
         })),
-        couponCode: getAppliedCoupon()?.code
+        couponCode: getAppliedCoupon()?.code,
+        sessionKey:
+          typeof window !== "undefined" ? window.localStorage.getItem("vasritha_cart_session") : null
       }
     });
 
@@ -206,6 +208,7 @@ function PaymentContent() {
         json: {
           orderId: created.data!.order.id,
           paymentId: payment.data!.paymentId,
+          sessionKey: typeof window !== "undefined" ? window.localStorage.getItem("vasritha_cart_session") : null,
           ...payload
         }
       });

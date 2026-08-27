@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { adminFetch, setAdminSession } from "../../../lib/admin-api";
+import { OPS_PLATFORM_NAME } from "../../../lib/platform";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -59,9 +60,11 @@ export default function AdminLoginPage() {
   return (
     <main className="admin-login">
       <section className="admin-login-card">
-        <div className="eyebrow">Vasritha admin</div>
-        <h1>Sign in to workspace</h1>
-        <p className="muted">Manage catalogue, orders, inventory, CMS and billing.</p>
+        <div className="eyebrow">{OPS_PLATFORM_NAME}</div>
+        <h1>Sign in to operations</h1>
+        <p className="muted">
+          Inventory, POS, orders, and staff tools. Customer brands (e.g. Vasritha) plug in separately.
+        </p>
 
         <form className="admin-form" onSubmit={onSubmit}>
           <label>

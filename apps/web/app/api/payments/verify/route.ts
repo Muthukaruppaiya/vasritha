@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { fail, ok, requirePermission, writeAuditLog } from "../../../../lib/auth/api";
 import { query, queryOne, withTransaction } from "../../../../lib/db/pool";
 import { isTestPaymentProvider, verifyRazorpayHmac } from "../../../../lib/payment-verify";
+import { consumeReservationsForOrder } from "../../../../lib/cart-reservations";
 
 export async function POST(request: NextRequest) {
   const { error, ctx } = await requirePermission(request, "checkout:own");
@@ -14,6 +15,7 @@ export async function POST(request: NextRequest) {
     razorpayPaymentId?: string;
     razorpaySignature?: string;
     testSuccess?: boolean;
+    sessionKey?: string;
   } | null;
 
   if (!body?.orderId || !body?.paymentId) return fail("orderId and paymentId are required");
@@ -118,36 +120,10 @@ export async function POST(request: NextRequest) {
         quantity: number;
       }>(`select variant_id, product_id, quantity from order_items where order_id = $1`, [order.id]);
 
-      for (const item of items) {
-        if (item.variant_id) {
-          const updated = await db.queryOne<{ id: string }>(
-            `update product_variants
-             set stock_quantity = stock_quantity - $2
-             where id = $1 and stock_quantity >= $2
-             returning id`,
-            [item.variant_id, item.quantity]
-          );
-          if (!updated) {
-            throw new Error("Insufficient stock to complete this order");
-          }
-          await db.query(
-            `insert into inventory_movements (product_variant_id, type, quantity, reference_type, reference_id, created_by)
-             values ($1, 'sale', $2, 'order', $3, $4)`,
-            [item.variant_id, item.quantity, order.id, ctx.userId]
-          );
-        }
-        if (item.product_id) {
-          await db.query(
-            `update products set stock_quantity = greatest(0, stock_quantity - $2) where id = $1`,
-            [item.product_id, item.quantity]
-          );
-        }
-      }
-
-      return { alreadyPaid: false as const, payment: paidPayment };
+      return { alreadyPaid: false as const, payment: paidPayment, items };
     });
 
-    if (result.alreadyPaid) {
+    if ("alreadyPaid" in result && result.alreadyPaid) {
       return ok({
         orderId: order.id,
         paymentStatus: "paid",
@@ -155,19 +131,49 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const paidResult = result as {
+      alreadyPaid: false;
+      payment: unknown;
+      items: Array<{ variant_id: string | null; product_id: string | null; quantity: number }>;
+    };
+
+    // Convert bag holds → sold / deduct remaining qty stock
+    await consumeReservationsForOrder({
+      sessionKey: body.sessionKey || null,
+      customerId: ctx.userId,
+      orderId: order.id,
+      lines: paidResult.items
+        .filter((item) => item.product_id)
+        .map((item) => ({
+          product_id: item.product_id as string,
+          variant_id: item.variant_id,
+          quantity: item.quantity
+        }))
+    });
+
+    for (const item of paidResult.items) {
+      if (item.variant_id) {
+        await query(
+          `insert into inventory_movements (product_variant_id, type, quantity, reference_type, reference_id, created_by)
+           values ($1, 'sale', $2, 'order', $3, $4)`,
+          [item.variant_id, item.quantity, order.id, ctx.userId]
+        );
+      }
+    }
+
     await writeAuditLog({
       actorUserId: ctx.userId,
       action: "payment_paid",
       entityType: "orders",
       entityId: order.id,
-      after: result.payment
+      after: paidResult.payment
     });
 
     return ok({
       orderId: order.id,
       paymentStatus: "paid",
       orderStatus: "confirmed",
-      payment: result.payment
+      payment: paidResult.payment
     });
   } catch (err) {
     return fail(err instanceof Error ? err.message : "Payment verification failed", 400);

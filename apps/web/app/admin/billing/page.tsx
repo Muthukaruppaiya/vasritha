@@ -19,6 +19,7 @@ import {
 } from "../../../components/admin/admin-ui";
 import { InvoiceBill } from "../../../components/admin/invoice-bill";
 import { adminFetch, formatMoney } from "../../../lib/admin-api";
+import { OPS_PLATFORM_NAME } from "../../../lib/platform";
 import Link from "next/link";
 
 type PosItem = {
@@ -35,6 +36,15 @@ type PosItem = {
 };
 
 type CartLine = PosItem & { quantity: number; key: string };
+
+type ShopOption = {
+  id: string;
+  code: string;
+  name: string;
+  is_default: boolean;
+};
+
+const POS_SHOP_KEY = "vasritha_pos_shop_id";
 
 type InvoiceOrder = {
   id: string;
@@ -125,6 +135,8 @@ export default function AdminBillingPage() {
   const [error, setError] = useState("");
   const [lastInvoice, setLastInvoice] = useState<InvoiceOrder | null>(null);
   const [flashKey, setFlashKey] = useState<string | null>(null);
+  const [shops, setShops] = useState<ShopOption[]>([]);
+  const [shopId, setShopId] = useState("");
 
   const itemCount = cart.reduce((sum, line) => sum + line.quantity, 0);
   const subtotal = cart.reduce((sum, line) => sum + line.price * line.quantity, 0);
@@ -138,6 +150,26 @@ export default function AdminBillingPage() {
   useEffect(() => {
     scanRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    void (async () => {
+      const result = await adminFetch<ShopOption[]>("/api/admin/shops?active=1");
+      if (result.error || !result.data?.length) return;
+      setShops(result.data);
+      const saved =
+        typeof window !== "undefined" ? window.localStorage.getItem(POS_SHOP_KEY) : null;
+      const preferred =
+        result.data.find((shop) => shop.id === saved) ||
+        result.data.find((shop) => shop.is_default) ||
+        result.data[0];
+      if (preferred) setShopId(preferred.id);
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!shopId || typeof window === "undefined") return;
+    window.localStorage.setItem(POS_SHOP_KEY, shopId);
+  }, [shopId]);
 
   useEffect(() => {
     if (!query.trim()) {
@@ -307,7 +339,8 @@ export default function AdminBillingPage() {
         paymentMethod,
         customerName: name,
         customerPhone: phone,
-        customerEmail: email || null
+        customerEmail: email || null,
+        shopId: shopId || null
       }
     });
 
@@ -360,7 +393,7 @@ export default function AdminBillingPage() {
       key: rzp.keyId,
       amount: Math.round(Number(rzp.amount) * 100),
       currency: rzp.currency,
-      name: "Vasritha Store POS",
+      name: `${OPS_PLATFORM_NAME} Store POS`,
       description: orderSnapshot.order_number,
       order_id: rzp.razorpayOrderId,
       prefill: {
@@ -406,10 +439,27 @@ export default function AdminBillingPage() {
     <div className="pos-screen">
       <header className="pos-screen-head">
         <div>
-          <p className="eyebrow">In-store</p>
+          <p className="eyebrow">{OPS_PLATFORM_NAME} · POS</p>
           <h1>Store POS</h1>
         </div>
         <div className="pos-screen-actions">
+          {shops.length > 0 ? (
+            <label className="pos-shop-select">
+              <span>Shop</span>
+              <select
+                value={shopId}
+                onChange={(e) => setShopId(e.target.value)}
+                disabled={busy || !shops.length}
+              >
+                {shops.map((shop) => (
+                  <option key={shop.id} value={shop.id}>
+                    {shop.name}
+                    {shop.is_default ? " (default)" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <Link href="/admin/invoices/store" className="pos-invoice-mini">
             Past invoices
           </Link>

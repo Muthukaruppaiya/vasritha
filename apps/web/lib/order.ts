@@ -121,7 +121,7 @@ export function saveLastOrder(order: PlacedOrder) {
 export function finalizeLocalOrder(order: PlacedOrder, fromCart: boolean) {
   window.localStorage.setItem(LAST_ORDER_KEY, JSON.stringify(order));
   clearPendingOrder();
-  if (fromCart) clearCart();
+  if (fromCart) void clearCart();
 }
 
 export function getLastOrder(): PlacedOrder | null {

@@ -9,3 +9,5 @@ coverage
 .DS_Store
 apps/web/public/uploads/**
 !apps/web/public/uploads/.gitkeep
+supabase/.temp/
+*.tsbuildinfo

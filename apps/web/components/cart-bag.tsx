@@ -7,9 +7,12 @@ import { useEffect, useMemo, useState } from "react";
 import {
   CART_EVENT,
   CartItem,
+  formatHoldRemaining,
   formatPrice,
   getCartItems,
+  pruneExpiredCartItems,
   removeFromCart,
+  syncCartHoldTimers,
   updateCartQuantity
 } from "../lib/cart";
 import { resolveCartCheckoutPath } from "../lib/customer-session";
@@ -35,6 +38,8 @@ export function CartBag() {
   const [ready, setReady] = useState(false);
   const [suggestions, setSuggestions] = useState<SuggestProduct[]>([]);
   const [appliedVoucher, setAppliedVoucher] = useState<AppliedCoupon | null>(null);
+  const [actionError, setActionError] = useState("");
+  const [tick, setTick] = useState(0);
 
   const browseLinks = [
     { href: "/sarees", label: localizeCategoryName("sarees", locale) },
@@ -45,11 +50,13 @@ export function CartBag() {
 
   useEffect(() => {
     const sync = () => {
+      pruneExpiredCartItems();
       setItems(getCartItems());
       setAppliedVoucher(getAppliedCoupon());
     };
     sync();
     setReady(true);
+    void syncCartHoldTimers().then(() => setItems(getCartItems()));
     window.addEventListener(CART_EVENT, sync);
     window.addEventListener(COUPON_EVENT, sync);
     window.addEventListener("storage", sync);
@@ -58,6 +65,15 @@ export function CartBag() {
       window.removeEventListener(COUPON_EVENT, sync);
       window.removeEventListener("storage", sync);
     };
+  }, []);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      pruneExpiredCartItems();
+      setItems(getCartItems());
+      setTick((n) => n + 1);
+    }, 1000);
+    return () => window.clearInterval(id);
   }, []);
 
   useEffect(() => {
@@ -77,6 +93,29 @@ export function CartBag() {
   );
   const savings = Math.max(0, compareTotal - subtotal);
   const freeShipping = subtotal >= 2500;
+  const holdHint = useMemo(() => {
+    void tick;
+    return lines
+      .map((line) => formatHoldRemaining(line.reservedUntil))
+      .find((text) => text && !text.startsWith("Hold expired"));
+  }, [lines, tick]);
+
+  const onQty = async (
+    productId: string,
+    variantId: string | null | undefined,
+    quantity: number
+  ) => {
+    setActionError("");
+    const result = await updateCartQuantity(productId, variantId, quantity);
+    if (!result.ok) setActionError(result.error);
+    setItems(getCartItems());
+  };
+
+  const onRemove = async (productId: string, variantId?: string | null) => {
+    setActionError("");
+    await removeFromCart(productId, variantId);
+    setItems(getCartItems());
+  };
 
   if (!ready) {
     return (
@@ -134,19 +173,19 @@ export function CartBag() {
                     locale
                   );
                   return (
-                  <Link key={product.slug} href={`/products/${product.slug}`} className="bag-suggest-card">
-                    <div className="bag-suggest-media">
-                      <Image src={product.imageSrc} alt={localized.name} fill sizes="160px" />
-                    </div>
-                    <div className="bag-suggest-copy">
-                      <span>{localized.type}</span>
-                      <strong>{localized.shortName || localized.name}</strong>
-                      <div className="bag-price-row">
-                        <em>{product.price}</em>
-                        {product.compareAtPrice && <s>{product.compareAtPrice}</s>}
+                    <Link key={product.slug} href={`/products/${product.slug}`} className="bag-suggest-card">
+                      <div className="bag-suggest-media">
+                        <Image src={product.imageSrc} alt={localized.name} fill sizes="160px" />
                       </div>
-                    </div>
-                  </Link>
+                      <div className="bag-suggest-copy">
+                        <span>{localized.type}</span>
+                        <strong>{localized.shortName || localized.name}</strong>
+                        <div className="bag-price-row">
+                          <em>{product.price}</em>
+                          {product.compareAtPrice && <s>{product.compareAtPrice}</s>}
+                        </div>
+                      </div>
+                    </Link>
                   );
                 })}
               </div>
@@ -163,8 +202,10 @@ export function CartBag() {
         <p className="eyebrow">{t("bag.eyebrow")}</p>
         <h1>{t("bag.title")}</h1>
         <p className="muted bag-lead">
-          {lines.length} {t("bag.items")} — {t("checkout.checkout")}
+          {lines.length} {t("bag.items")} — reserved for 30 minutes while you checkout
         </p>
+        {holdHint ? <p className="bag-hold-banner">Stock hold · {holdHint}</p> : null}
+        {actionError ? <p className="bag-hold-error">{actionError}</p> : null}
       </header>
 
       <div className="bag-layout">
@@ -179,67 +220,74 @@ export function CartBag() {
               },
               locale
             );
+            const holdText = formatHoldRemaining(line.reservedUntil);
             return (
-            <article key={`${line.productId}-${line.size}`} className="bag-line">
-              <Link href={`/products/${line.slug}`} className="bag-line-media">
-                <Image src={line.imageSrc} alt={localized.name} fill sizes="120px" />
-              </Link>
-              <div className="bag-line-body">
-                <div className="bag-line-top">
-                  <div className="bag-line-info">
-                    <div className="bag-line-type">{localized.type}</div>
-                    <h2>
-                      <Link href={`/products/${line.slug}`}>{localized.name}</Link>
-                    </h2>
-                    <p className="muted">
-                      {t("common.size")} {localizeSize(line.size, locale)}
-                    </p>
+              <article key={`${line.productId}-${line.size}`} className="bag-line">
+                <Link href={`/products/${line.slug}`} className="bag-line-media">
+                  <Image src={line.imageSrc} alt={localized.name} fill sizes="120px" />
+                </Link>
+                <div className="bag-line-body">
+                  <div className="bag-line-top">
+                    <div className="bag-line-info">
+                      <div className="bag-line-type">{localized.type}</div>
+                      <h2>
+                        <Link href={`/products/${line.slug}`}>{localized.name}</Link>
+                      </h2>
+                      <p className="muted">
+                        {t("common.size")} {localizeSize(line.size, locale)}
+                      </p>
+                      {holdText ? (
+                        <p
+                          className={`bag-line-hold${holdText.startsWith("Hold expired") ? " is-expired" : ""}`}
+                        >
+                          {holdText}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="bag-line-prices">
+                      <strong>{formatPrice(line.price * line.quantity)}</strong>
+                      {line.compareAtPrice ? (
+                        <s>{formatPrice(line.compareAtPrice * line.quantity)}</s>
+                      ) : null}
+                    </div>
                   </div>
-                  <div className="bag-line-prices">
-                    <strong>{formatPrice(line.price * line.quantity)}</strong>
-                    {line.compareAtPrice ? (
-                      <s>{formatPrice(line.compareAtPrice * line.quantity)}</s>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="bag-line-controls">
-                  <div className="bag-qty" aria-label={t("bag.qty")}>
+                  <div className="bag-line-controls">
+                    <div className="bag-qty" aria-label={t("bag.qty")}>
+                      <button
+                        type="button"
+                        aria-label={t("bag.decrease")}
+                        onClick={() => void onQty(line.productId, line.variantId, line.quantity - 1)}
+                      >
+                        −
+                      </button>
+                      <span>{line.quantity}</span>
+                      <button
+                        type="button"
+                        aria-label={t("bag.increase")}
+                        onClick={() => void onQty(line.productId, line.variantId, line.quantity + 1)}
+                      >
+                        +
+                      </button>
+                    </div>
                     <button
                       type="button"
-                      aria-label={t("bag.decrease")}
-                      onClick={() =>
-                        updateCartQuantity(line.productId, line.variantId, line.quantity - 1)
-                      }
+                      className="bag-remove"
+                      onClick={() => void onRemove(line.productId, line.variantId)}
                     >
-                      −
-                    </button>
-                    <span>{line.quantity}</span>
-                    <button
-                      type="button"
-                      aria-label={t("bag.increase")}
-                      onClick={() =>
-                        updateCartQuantity(line.productId, line.variantId, line.quantity + 1)
-                      }
-                    >
-                      +
+                      {t("bag.remove")}
                     </button>
                   </div>
-                  <button
-                    type="button"
-                    className="bag-remove"
-                    onClick={() => removeFromCart(line.productId, line.variantId)}
-                  >
-                    {t("bag.remove")}
-                  </button>
                 </div>
-              </div>
-            </article>
+              </article>
             );
           })}
         </section>
 
         <aside className="bag-summary">
           <h2>{t("checkout.checkout")}</h2>
+          <p className="bag-summary-hold muted">
+            Items stay reserved until the timer ends. After that, stock returns for others.
+          </p>
           {appliedVoucher ? (
             <p className="voucher-applied">
               Gift voucher <strong>{appliedVoucher.code}</strong> is ready. It applies when you pay.
@@ -262,9 +310,7 @@ export function CartBag() {
             </strong>
           </div>
           <p className="muted bag-shipping-note">
-            {freeShipping
-              ? t("bag.freeShippingUnlocked")
-              : t("bag.freeShippingHint")}
+            {freeShipping ? t("bag.freeShippingUnlocked") : t("bag.freeShippingHint")}
           </p>
           <div className="bag-summary-total">
             <span>{t("account.total")}</span>

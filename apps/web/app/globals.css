@@ -2331,6 +2331,39 @@ a.account-tile:hover .account-tile-chevron { transform:translateX(3px); }
   line-height:1.55;
   text-wrap:pretty;
 }
+.bag-hold-banner {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: #f3ebe2;
+  color: #6f4a38;
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+.bag-hold-error,
+.product-purchase-error {
+  margin: 8px 0 0;
+  color: #9b2c2c;
+  font-size: 0.88rem;
+}
+.bag-line-hold {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: #6f4a38;
+}
+.bag-line-hold.is-expired {
+  color: #9b2c2c;
+}
+.bag-summary-hold {
+  margin: 0 0 10px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+.product-hold-hint {
+  margin: 10px 0 0;
+  font-size: 0.78rem;
+}
 .bag-empty {
   display:grid;
   gap:36px;
@@ -7556,7 +7589,41 @@ body:has(.pos-screen) .admin-topbar-title {
 .pos-screen-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
+}
+.pos-shop-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 4px 8px 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fffaf5;
+  font-size: 0.78rem;
+  color: #6f4a38;
+}
+.pos-shop-select span {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 0.65rem;
+}
+.pos-shop-select select {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: 650;
+  color: #2a1c14;
+  max-width: 180px;
+}
+.invoice-bill-shop-code-line {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.72rem;
+  font-weight: 650;
+  color: #6f4a38;
 }
 .pos-invoice-mini {
   font-size: 0.8rem;

@@ -354,6 +354,8 @@ export const ADMIN_NAV_PERMISSIONS: Record<string, Permission[]> = {
   "/admin/configuration": ["cms:manage"],
   "/admin/cms": ["cms:manage"],
   "/admin/settings": ["settings:business", "roles:manage", "config:all"],
+  "/admin/brands": ["settings:business", "config:all"],
+  "/admin/shops": ["settings:business", "config:all"],
   "/admin/integrations": ["settings:business", "config:all"]
 };
 

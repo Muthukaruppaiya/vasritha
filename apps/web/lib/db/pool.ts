@@ -11,11 +11,16 @@ export function getDatabaseUrl() {
 
 export function getPool() {
   if (!global.__vasrithaPgPool) {
+    const connectionString = getDatabaseUrl();
+    const needsSsl =
+      /supabase\.co|sslmode=require/i.test(connectionString) ||
+      process.env.PGSSLMODE === "require";
     global.__vasrithaPgPool = new Pool({
-      connectionString: getDatabaseUrl(),
+      connectionString,
       max: 20,
       idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 5_000
+      connectionTimeoutMillis: 10_000,
+      ssl: needsSsl ? { rejectUnauthorized: false } : undefined
     });
   }
   return global.__vasrithaPgPool;

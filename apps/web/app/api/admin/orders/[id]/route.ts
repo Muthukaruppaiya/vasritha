@@ -37,6 +37,7 @@ export async function GET(
     shipping_amount: string;
     total_amount: string;
     channel: string;
+    shop_id: string | null;
     created_at: string;
     customer_name: string | null;
     customer_email: string | null;
@@ -46,7 +47,7 @@ export async function GET(
             o.status, o.payment_status, o.subtotal,
             coalesce(o.discount_amount, 0) as discount_amount,
             o.tax_amount, o.shipping_amount, o.total_amount,
-            coalesce(o.channel, 'online') as channel, o.created_at,
+            coalesce(o.channel, 'online') as channel, o.shop_id, o.created_at,
             coalesce(nullif(o.pos_customer_name, ''), c.full_name) as customer_name,
             coalesce(nullif(o.pos_customer_email, ''), c.email) as customer_email,
             coalesce(nullif(o.pos_customer_phone, ''), c.phone) as customer_phone
@@ -101,7 +102,7 @@ export async function GET(
        from payments where order_id = $1 order by created_at desc limit 1`,
       [id]
     ),
-    getSellerGstProfile()
+    getSellerGstProfile(order.shop_id)
   ]);
 
   // Fallback: default / latest customer address if order has none linked

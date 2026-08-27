@@ -1,7 +1,7 @@
 import type { QueryResultRow } from "pg";
 import { query, queryOne, withTransaction } from "./db/pool";
 
-export type UnitStatus = "to_sell" | "sold" | "returned" | "damaged";
+export type UnitStatus = "to_sell" | "sold" | "returned" | "damaged" | "reserved";
 export type LabelSize = "accessory" | "dress";
 
 export type ProductItem = {
@@ -33,8 +33,21 @@ export function compactBarcodeBase(sku: string) {
 export async function ensureProductUnitsSchema() {
   await query(`
     do $$ begin
-      create type public.product_item_status as enum ('to_sell','sold','returned','damaged');
+      create type public.product_item_status as enum ('to_sell','sold','returned','damaged','reserved');
     exception when duplicate_object then null;
+    end $$;
+  `);
+  await query(`
+    do $$ begin
+      if not exists (
+        select 1
+        from pg_enum e
+        join pg_type t on t.oid = e.enumtypid
+        where t.typname = 'product_item_status'
+          and e.enumlabel = 'reserved'
+      ) then
+        alter type public.product_item_status add value 'reserved';
+      end if;
     end $$;
   `);
   await query(`
@@ -192,7 +205,7 @@ export async function markItemsSold(db: Db, itemIds: string[], orderId: string, 
        set status = 'sold', date_sold = now(), bill_id = $2
        where id = any($1::uuid[])
          and variant_id = $3
-         and status = 'to_sell'`,
+         and status in ('to_sell', 'reserved')`,
       [itemIds, orderId, variantId]
     );
     return;
@@ -201,7 +214,7 @@ export async function markItemsSold(db: Db, itemIds: string[], orderId: string, 
     `update product_items
      set status = 'sold', date_sold = now(), bill_id = $2
      where id = any($1::uuid[])
-       and status = 'to_sell'`,
+       and status in ('to_sell', 'reserved')`,
     [itemIds, orderId]
   );
 }

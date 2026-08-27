@@ -21,13 +21,17 @@ export function ProductPurchase({
   const router = useRouter();
   const [size, setSize] = useState(product.sizes[0] ?? "Free Size");
   const [added, setAdded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const showSizePicker = product.sizes.length > 1;
 
   const selectedVariant =
     product.variants.find((variant) => variant.name === size) || product.variants[0] || null;
 
-  const onAddToBag = () => {
-    addToCart({
+  const onAddToBag = async () => {
+    setBusy(true);
+    setError("");
+    const result = await addToCart({
       productId: product.id,
       variantId: selectedVariant?.id ?? null,
       slug: product.slug,
@@ -40,6 +44,11 @@ export function ProductPurchase({
       type: product.type,
       quantity: 1
     });
+    setBusy(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
     setAdded(true);
     window.setTimeout(() => setAdded(false), 1800);
   };
@@ -78,8 +87,13 @@ export function ProductPurchase({
         <BuyButton productSlug={product.slug} size={size} className="btn product-detail-buy">
           {t("common.buyNow")}
         </BuyButton>
-        <button type="button" className="btn product-detail-cta" onClick={onAddToBag}>
-          {added ? t("common.addedToBag") : t("common.addToBag")}
+        <button
+          type="button"
+          className="btn product-detail-cta"
+          onClick={() => void onAddToBag()}
+          disabled={busy}
+        >
+          {busy ? "Reserving…" : added ? t("common.addedToBag") : t("common.addToBag")}
         </button>
         {added && (
           <button type="button" className="product-detail-secondary" onClick={() => router.push("/cart")}>
@@ -92,6 +106,10 @@ export function ProductPurchase({
           </Link>
         )}
       </div>
+      {error ? <p className="product-purchase-error">{error}</p> : null}
+      <p className="product-hold-hint muted">
+        Bag hold: stock is reserved for 30 minutes after you add an item.
+      </p>
     </div>
   );
 }
