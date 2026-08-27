@@ -11,6 +11,7 @@ import {
   getCustomerSession,
   isLoggedIn
 } from "../../lib/customer-session";
+import { getStoreToken } from "../../lib/store-api";
 import { cartItemsToPendingLines, createPendingFromCheckout } from "../../lib/order";
 import type { StoreProduct } from "../../lib/catalog";
 import { useLocale } from "../../lib/i18n/provider";
@@ -42,6 +43,8 @@ function CheckoutContent() {
   const [ready, setReady] = useState(false);
   const [lineItems, setLineItems] = useState<CheckoutLine[]>([]);
   const [appliedVoucher, setAppliedVoucher] = useState<AppliedCoupon | null>(null);
+  const [loyaltyNote, setLoyaltyNote] = useState<string | null>(null);
+  const [loyaltyPoints, setLoyaltyPoints] = useState<number | null>(null);
 
   const session = useMemo(() => (ready ? getCustomerSession() : null), [ready]);
   const nextCheckout = `/checkout?${searchParams.toString()}`;
@@ -65,6 +68,39 @@ function CheckoutContent() {
       window.removeEventListener("storage", syncCoupon);
     };
   }, []);
+
+  useEffect(() => {
+    if (!ready || !isLoggedIn() || orderTotal <= 0) {
+      setLoyaltyNote(null);
+      setLoyaltyPoints(0);
+      return;
+    }
+    const token = getStoreToken();
+    if (!token) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/customer/loyalty?total=${encodeURIComponent(String(orderTotal))}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const json = (await res.json().catch(() => ({}))) as {
+          data?: { primary_prompt?: string | null; points_to_earn?: number };
+        };
+        if (cancelled) return;
+        setLoyaltyNote(json.data?.primary_prompt || null);
+        setLoyaltyPoints(Number(json.data?.points_to_earn || 0));
+      } catch {
+        if (!cancelled) {
+          setLoyaltyNote(null);
+          setLoyaltyPoints(0);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, orderTotal]);
 
   useEffect(() => {
     if (!isLoggedIn()) {
@@ -293,6 +329,12 @@ function CheckoutContent() {
               <span>Total</span>
               <strong>{formatPrice(orderTotal)}</strong>
             </div>
+            {loyaltyPoints != null && loyaltyPoints > 0 ? (
+              <p className="checkout-loyalty-earn muted">
+                You will earn <strong>{loyaltyPoints}</strong> loyalty points on this order.
+              </p>
+            ) : null}
+            {loyaltyNote ? <p className="checkout-loyalty-note">{loyaltyNote}</p> : null}
           </div>
 
           <form className="checkout-pay-form" onSubmit={onPay}>

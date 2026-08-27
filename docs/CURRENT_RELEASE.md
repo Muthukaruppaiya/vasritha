@@ -65,7 +65,7 @@ Do **not** expect these yet. They were agreed as post-release or on hold.
 | Strict customer merge (phone **or** email as one person) | Email unique; phone not a hard unique key |
 | Customer-interest analytics / extra invoice drill-down reports | Invoice list exists; interest reports do not |
 | Multiple storefront brands as plugins | Thin foundation: System → Brands; Vasritha seeded. Full isolation later |
-| Loyalty points | Not built |
+| Loyalty points / spend milestones | Thin foundation shipped: System → Loyalty; prompts on checkout + POS bill |
 | Cart “add this at a reduced price” suggestions | Not built |
 | SMS | On hold (cost per message) |
 

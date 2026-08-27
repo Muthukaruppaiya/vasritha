@@ -31,6 +31,7 @@ npm run db:patch:gst-hsn
 npm run db:patch:shops
 npm run db:patch:cart-reservations
 npm run db:patch:brands
+npm run db:patch:loyalty
 ```
 
 - Schema: `db/local/schema.sql` (includes `products.parent_product_id` for Case 2 design groups)
@@ -40,6 +41,7 @@ npm run db:patch:brands
 - Multi-shop locations: `db/local/shops_v1.sql` via `npm run db:patch:shops` (seeds `MAIN` shop)
 - Cart 30-min stock holds: `db/local/cart_reservations_v1.sql` via `npm run db:patch:cart-reservations`
 - Multi-brand plugins (Sukadhaa ops + Vasritha sales brand): `db/local/brands_v1.sql` via `npm run db:patch:brands`
+- Loyalty / points (central customers, milestones): `db/local/loyalty_v1.sql` via `npm run db:patch:loyalty`
 - Relationship walkthrough for DBA review: [`docs/DATABASE.md`](./DATABASE.md)
 
 **Product models:** Case 1 (saree / dress qty) leaves parent empty and uses unique `product_items` barcodes. Case 2 links child designs via `parent_product_id`; each child still has its own stock and barcodes.

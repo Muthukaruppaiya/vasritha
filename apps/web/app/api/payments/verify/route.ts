@@ -3,6 +3,7 @@ import { fail, ok, requirePermission, writeAuditLog } from "../../../../lib/auth
 import { query, queryOne, withTransaction } from "../../../../lib/db/pool";
 import { isTestPaymentProvider, verifyRazorpayHmac } from "../../../../lib/payment-verify";
 import { consumeReservationsForOrder } from "../../../../lib/cart-reservations";
+import { earnLoyaltyForPaidOrder } from "../../../../lib/loyalty";
 
 export async function POST(request: NextRequest) {
   const { error, ctx } = await requirePermission(request, "checkout:own");
@@ -169,11 +170,14 @@ export async function POST(request: NextRequest) {
       after: paidResult.payment
     });
 
+    const loyalty = await earnLoyaltyForPaidOrder(order.id);
+
     return ok({
       orderId: order.id,
       paymentStatus: "paid",
       orderStatus: "confirmed",
-      payment: paidResult.payment
+      payment: paidResult.payment,
+      loyalty
     });
   } catch (err) {
     return fail(err instanceof Error ? err.message : "Payment verification failed", 400);

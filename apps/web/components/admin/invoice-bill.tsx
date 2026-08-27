@@ -219,6 +219,13 @@ export function InvoiceBill({ data, id = "vasritha-invoice-bill" }: Props) {
             ? "Prices inclusive of GST · Tax breakup shown above"
             : "Tax as applicable under GST"}
         </p>
+        {data.loyalty_prompt ? <p className="invoice-bill-loyalty">{data.loyalty_prompt}</p> : null}
+        {data.loyalty_points_earned != null && Number(data.loyalty_points_earned) > 0 ? (
+          <p>
+            Points earned: {data.loyalty_points_earned}
+            {data.loyalty_balance_after != null ? ` · Balance: ${data.loyalty_balance_after}` : ""}
+          </p>
+        ) : null}
         <p>Thank you for shopping at Vasritha</p>
         <p>Goods once sold are exchangeable with this bill as per store policy</p>
         <p className="invoice-bill-shop-code">{data.order_number}</p>

@@ -21,6 +21,11 @@ import {
 } from "../../../../../lib/gst";
 import { ensureShopsSchema, resolveShopId, getShopById } from "../../../../../lib/shops";
 import { ensureBrandsSchema, resolveBrandId } from "../../../../../lib/brands";
+import {
+  ensureLoyaltySchema,
+  earnLoyaltyForPaidOrder,
+  resolveOrCreateCustomerByPhone
+} from "../../../../../lib/loyalty";
 
 type CheckoutLine = {
   productId: string;
@@ -144,6 +149,7 @@ export async function POST(request: NextRequest) {
   await ensureGstSchema();
   await ensureShopsSchema();
   await ensureBrandsSchema();
+  await ensureLoyaltySchema();
 
   const body = (await request.json().catch(() => null)) as CheckoutBody | null;
   const items = body?.items || [];
@@ -167,7 +173,13 @@ export async function POST(request: NextRequest) {
   const discountValue = Math.max(0, Number(body?.discountValue || 0));
 
   try {
-    const walkInId = await getWalkInCustomerId();
+    // Central customer by phone (website + store share the same profile).
+    let customerId: string;
+    try {
+      customerId = await resolveOrCreateCustomerByPhone(customer);
+    } catch {
+      customerId = await getWalkInCustomerId();
+    }
 
     const orderItems: Array<{
       product_id: string;
@@ -326,7 +338,7 @@ export async function POST(request: NextRequest) {
                    shop_id, brand_id, pos_customer_name, pos_customer_phone, pos_customer_email`,
         [
           orderNumber,
-          walkInId,
+          customerId,
           paid ? "confirmed" : "pending",
           paid ? "paid" : "pending",
           subtotal,
@@ -467,9 +479,15 @@ export async function POST(request: NextRequest) {
         total,
         discountAmount,
         customerName: customer.name,
-        customerPhone: customer.phone
+        customerPhone: customer.phone,
+        customerId
       }
     });
+
+    let loyalty: Awaited<ReturnType<typeof earnLoyaltyForPaidOrder>> = null;
+    if (paid) {
+      loyalty = await earnLoyaltyForPaidOrder(checkoutResult.id);
+    }
 
     const seller = await getSellerGstProfile(shopId);
 
@@ -480,6 +498,9 @@ export async function POST(request: NextRequest) {
           customer_name: checkoutResult.pos_customer_name,
           customer_phone: checkoutResult.pos_customer_phone,
           customer_email: checkoutResult.pos_customer_email,
+          loyalty_points_earned: loyalty?.points_earned ?? 0,
+          loyalty_balance_after: loyalty?.balance_after ?? null,
+          loyalty_prompt: loyalty?.prompt ?? null,
           tax_amount: taxSummary.gst,
           shop_id: shopId,
           gst: {
@@ -492,6 +513,9 @@ export async function POST(request: NextRequest) {
           seller,
           items: orderItems
         },
+        loyalty,
+        seller,
+        items: orderItems,
         paymentMethod,
         razorpay
       },

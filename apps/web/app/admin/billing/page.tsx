@@ -59,6 +59,9 @@ type InvoiceOrder = {
   customer_name?: string | null;
   customer_phone?: string | null;
   customer_email?: string | null;
+  loyalty_points_earned?: number | null;
+  loyalty_balance_after?: number | null;
+  loyalty_prompt?: string | null;
   items: Array<{
     product_id: string;
     product_name: string;
@@ -72,6 +75,11 @@ type InvoiceOrder = {
 
 type CheckoutResult = {
   order: InvoiceOrder;
+  loyalty?: {
+    points_earned?: number;
+    balance_after?: number;
+    prompt?: string | null;
+  } | null;
   paymentMethod: "cash" | "razorpay";
   razorpay: {
     mode: string;
@@ -351,7 +359,14 @@ export default function AdminBillingPage() {
     }
 
     if (paymentMethod === "cash" || !checkout.data.razorpay) {
-      setLastInvoice(checkout.data.order);
+      setLastInvoice({
+        ...checkout.data.order,
+        loyalty_points_earned:
+          checkout.data.loyalty?.points_earned ?? checkout.data.order.loyalty_points_earned,
+        loyalty_balance_after:
+          checkout.data.loyalty?.balance_after ?? checkout.data.order.loyalty_balance_after,
+        loyalty_prompt: checkout.data.loyalty?.prompt ?? checkout.data.order.loyalty_prompt
+      });
       resetAfterPaid();
       setBusy(false);
       scanRef.current?.focus();
@@ -375,7 +390,20 @@ export default function AdminBillingPage() {
         setError(verified.error);
         return;
       }
-      setLastInvoice({ ...checkout.data.order, payment_status: "paid", status: "confirmed" });
+      setLastInvoice({
+        ...checkout.data.order,
+        payment_status: "paid",
+        status: "confirmed",
+        loyalty_points_earned:
+          (verified.data as { loyalty?: { points_earned?: number } } | undefined)?.loyalty
+            ?.points_earned ?? checkout.data.order.loyalty_points_earned,
+        loyalty_balance_after:
+          (verified.data as { loyalty?: { balance_after?: number } } | undefined)?.loyalty
+            ?.balance_after ?? checkout.data.order.loyalty_balance_after,
+        loyalty_prompt:
+          (verified.data as { loyalty?: { prompt?: string | null } } | undefined)?.loyalty
+            ?.prompt ?? checkout.data.order.loyalty_prompt
+      });
       resetAfterPaid();
       scanRef.current?.focus();
       return;
@@ -421,7 +449,20 @@ export default function AdminBillingPage() {
           setError(verified.error);
           return;
         }
-        setLastInvoice({ ...orderSnapshot, payment_status: "paid", status: "confirmed" });
+        setLastInvoice({
+          ...orderSnapshot,
+          payment_status: "paid",
+          status: "confirmed",
+          loyalty_points_earned:
+            (verified.data as { loyalty?: { points_earned?: number } } | undefined)?.loyalty
+              ?.points_earned ?? orderSnapshot.loyalty_points_earned,
+          loyalty_balance_after:
+            (verified.data as { loyalty?: { balance_after?: number } } | undefined)?.loyalty
+              ?.balance_after ?? orderSnapshot.loyalty_balance_after,
+          loyalty_prompt:
+            (verified.data as { loyalty?: { prompt?: string | null } } | undefined)?.loyalty
+              ?.prompt ?? orderSnapshot.loyalty_prompt
+        });
         resetAfterPaid();
         scanRef.current?.focus();
       },
@@ -753,6 +794,11 @@ export default function AdminBillingPage() {
       {lastInvoice && (
         <div className="pos-invoice-overlay" role="dialog" aria-modal="true">
           <div className="pos-invoice-sheet pos-invoice-sheet--a4">
+            {lastInvoice.loyalty_prompt ? (
+              <AdminAlert tone="ok">
+                Tell the customer: {lastInvoice.loyalty_prompt}
+              </AdminAlert>
+            ) : null}
             <div className="tvs-receipt-preview-label">Shop bill · 5″ wide · height auto-cuts</div>
             <InvoiceBill data={lastInvoice} id="pos-invoice-print" />
             <div className="pos-invoice-actions">

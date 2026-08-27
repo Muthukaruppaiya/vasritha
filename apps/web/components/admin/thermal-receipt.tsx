@@ -28,6 +28,9 @@ export type ThermalReceiptData = {
   customer_name?: string | null;
   customer_phone?: string | null;
   customer_email?: string | null;
+  loyalty_points_earned?: number | null;
+  loyalty_balance_after?: number | null;
+  loyalty_prompt?: string | null;
   shipping_address?: {
     recipient_name: string;
     phone: string;
@@ -254,6 +257,13 @@ export function ThermalReceipt({ data, id = "tvs-l46-receipt" }: Props) {
 
       <footer className="tvs-receipt-foot">
         <p>Status: {data.status}</p>
+        {data.loyalty_prompt ? <p className="tvs-receipt-loyalty">{data.loyalty_prompt}</p> : null}
+        {data.loyalty_points_earned != null && Number(data.loyalty_points_earned) > 0 ? (
+          <p>
+            Points earned: {data.loyalty_points_earned}
+            {data.loyalty_balance_after != null ? ` · Balance: ${data.loyalty_balance_after}` : ""}
+          </p>
+        ) : null}
         <p>Thank you for shopping at Vasritha</p>
         <p>Please retain this bill for exchange</p>
         <p className="tvs-receipt-code">{data.order_number}</p>
