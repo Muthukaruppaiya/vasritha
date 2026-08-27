@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
-import { fail, ok, requirePermission, writeAuditLog } from "../../../../../lib/auth/api";
-import { query, queryOne } from "../../../../../lib/db/pool";
-import { ensureLoyaltySchema, type LoyaltyRule } from "../../../../../lib/loyalty";
+import { fail, ok, requirePermission, writeAuditLog } from "../../../../../../lib/auth/api";
+import { query, queryOne } from "../../../../../../lib/db/pool";
+import { ensureLoyaltySchema, type LoyaltyRule } from "../../../../../../lib/loyalty";
 
 type Params = { params: Promise<{ id: string }> };
 

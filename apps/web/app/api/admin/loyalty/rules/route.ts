@@ -1,11 +1,11 @@
 import { NextRequest } from "next/server";
-import { fail, ok, requirePermission, writeAuditLog } from "../../../../lib/auth/api";
-import { query, queryOne } from "../../../../lib/db/pool";
+import { fail, ok, requirePermission, writeAuditLog } from "../../../../../lib/auth/api";
+import { query, queryOne } from "../../../../../lib/db/pool";
 import {
   ensureLoyaltySchema,
   listLoyaltyRules,
   type LoyaltyRule
-} from "../../../../lib/loyalty";
+} from "../../../../../lib/loyalty";
 
 export async function GET(request: NextRequest) {
   const { error } = await requirePermission(request, "settings:business");
