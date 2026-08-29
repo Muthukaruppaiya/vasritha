@@ -192,11 +192,21 @@ export function InvoiceDirectory({
 
       {selected && (
         <div className="pos-invoice-overlay" role="dialog" aria-modal="true">
-          <div className="pos-invoice-sheet pos-invoice-sheet--a4">
-            <div className="tvs-receipt-preview-label">Shop bill · 5″ wide · height auto-cuts</div>
+          <div className={`pos-invoice-sheet${isStore ? "" : " pos-invoice-sheet--a4"}`}>
+            <div className="tvs-receipt-preview-label">
+              {isStore ? "Store bill · 5″ roll" : "Tax invoice · A4"}
+            </div>
             <InvoiceBill data={selected} id={`${channel}-invoice-print`} />
             <div className="pos-invoice-actions">
-              <button type="button" className="btn" onClick={() => window.print()}>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  if (!isStore) document.body.classList.add("print-a4-invoice");
+                  window.print();
+                  window.setTimeout(() => document.body.classList.remove("print-a4-invoice"), 500);
+                }}
+              >
                 <Printer size={14} />
                 Print bill
               </button>
@@ -206,8 +216,9 @@ export function InvoiceDirectory({
               </button>
             </div>
             <p className="tvs-print-hint muted">
-              Paper width <b>5 inch</b> · height follows bill length (auto-cut). TVS LP 46 is only for
-              barcode stickers.
+              {isStore
+                ? "Paper width 5 inch · height follows bill length (auto-cut)."
+                : "Print on A4 paper for customer tax invoice."}
             </p>
           </div>
         </div>

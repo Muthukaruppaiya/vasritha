@@ -60,6 +60,22 @@ type ShippingAddress = {
 
 type OrderDetail = Order & {
   shipping_address: ShippingAddress | null;
+  seller?: {
+    legal_name?: string | null;
+    address?: string | null;
+    gstin?: string | null;
+    state?: string | null;
+    state_code?: string | null;
+    phone?: string | null;
+    shop_code?: string | null;
+  } | null;
+  gst?: {
+    taxable: number;
+    cgst: number;
+    sgst: number;
+    igst: number;
+    inclusive?: boolean;
+  } | null;
   payment?: {
     provider: string;
     provider_payment_id: string | null;
@@ -71,6 +87,8 @@ type OrderDetail = Order & {
     product_name: string;
     variant_name: string | null;
     sku: string | null;
+    hsn_code?: string | null;
+    gst_rate?: number | string | null;
     unit_price: number;
     quantity: number;
     line_total: number;
@@ -313,10 +331,15 @@ export default function AdminOrdersPage() {
     setPrintMode(mode);
     if (mode === "invoice") setDeskTab("invoice");
     if (mode === "courier") setDeskTab("courier");
-    document.body.classList.toggle("print-thermal", mode === "courier");
+    document.body.classList.remove("print-thermal", "print-parcel", "print-a4-invoice");
+    if (mode === "invoice" || mode === "both") document.body.classList.add("print-a4-invoice");
+    if (mode === "courier" || mode === "both") document.body.classList.add("print-parcel");
     window.setTimeout(() => {
       window.print();
-      window.setTimeout(() => document.body.classList.remove("print-thermal"), 500);
+      window.setTimeout(
+        () => document.body.classList.remove("print-thermal", "print-parcel", "print-a4-invoice"),
+        500
+      );
     }, 80);
   };
 
@@ -748,14 +771,14 @@ export default function AdminOrdersPage() {
 
               {deskTab === "invoice" && (
                 <div className="orders-invoice-wrap">
-                  <div className="tvs-receipt-preview-label">Shop bill · 5″ wide · height auto-cuts</div>
-                  <InvoiceBill data={selected} id="online-invoice-print" />
+                  <div className="tvs-receipt-preview-label">Tax invoice · A4</div>
+                  <InvoiceBill data={{ ...selected, channel: "online" }} id="online-invoice-print" />
                 </div>
               )}
 
               {deskTab === "courier" && (
                 <div className="orders-invoice-wrap">
-                  <div className="tvs-receipt-preview-label">Courier label · TVS LP 46</div>
+                  <div className="tvs-receipt-preview-label">Parcel label · paste on package</div>
                   <CourierLabel
                     data={{
                       order_number: selected.order_number,
@@ -767,7 +790,8 @@ export default function AdminOrdersPage() {
                       status: selected.status,
                       total_amount: selected.total_amount,
                       item_count: itemCount,
-                      shipping_address: selected.shipping_address
+                      shipping_address: selected.shipping_address,
+                      seller: selected.seller
                     }}
                     id="online-courier-print"
                   />
@@ -795,12 +819,12 @@ export default function AdminOrdersPage() {
                 </button>
               </div>
               <p className="tvs-print-hint muted">
-                Bill: 5″ wide, height auto-cuts with content. Courier / barcodes use TVS LP 46.
+                Invoice prints on A4. Parcel label is sized for pasting on the shipping package.
               </p>
             </footer>
 
             <div className={`orders-print-stack is-mode-${printMode}`} aria-hidden="true">
-              <InvoiceBill data={selected} id="online-invoice-print-stack" />
+              <InvoiceBill data={{ ...selected, channel: "online" }} id="online-invoice-print-stack" />
               <div className="tvs-print-break" />
               <CourierLabel
                 data={{
@@ -813,7 +837,8 @@ export default function AdminOrdersPage() {
                   status: selected.status,
                   total_amount: selected.total_amount,
                   item_count: itemCount,
-                  shipping_address: selected.shipping_address
+                  shipping_address: selected.shipping_address,
+                  seller: selected.seller
                 }}
                 id="online-courier-print-stack"
               />

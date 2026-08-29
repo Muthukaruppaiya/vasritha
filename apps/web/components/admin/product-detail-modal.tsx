@@ -252,16 +252,30 @@ export function ProductDetailModal({
                             ? pending
                             : items.filter((item) => !item.status || item.status === "to_sell");
                           if (!list.length || !data) return;
-                          printProductStickers({
+                          const ids = list.map((item) => item.id);
+                          void printProductStickers({
                             price: data.price,
                             labelSize: data.label_size === "accessory" ? "accessory" : "dress",
-                            items: list
-                          });
-                          const ids = list.map((item) => item.id);
-                          void adminFetch(`/api/admin/products/${data.id}/items`, {
-                            method: "PATCH",
-                            json: { itemIds: ids, label_printed: true }
-                          }).then(() => {
+                            meta: {
+                              productName: data.name,
+                              categoryName: data.category_name || undefined,
+                              sku: data.sku,
+                              color: data.color,
+                              tag: data.tag,
+                              compareAtPrice: data.compare_at_price
+                            },
+                            items: list.map((item) => ({
+                              ...item,
+                              tag: item.tag,
+                              seq: item.seq,
+                              sizeLabel: data.color
+                            }))
+                          }).then(() =>
+                            adminFetch(`/api/admin/products/${data.id}/items`, {
+                              method: "PATCH",
+                              json: { itemIds: ids, label_printed: true }
+                            })
+                          ).then(() => {
                             setData((current) =>
                               current
                                 ? {
@@ -337,13 +351,29 @@ export function ProductDetailModal({
                     <button
                       type="button"
                       className="btn"
-                      onClick={() =>
-                        printProductStickers({
+                      onClick={() => {
+                        if (!data || !selected) return;
+                        void printProductStickers({
                           price: data.price,
                           labelSize: data.label_size === "accessory" ? "accessory" : "dress",
-                          items: [selected]
-                        })
-                      }
+                          meta: {
+                            productName: data.name,
+                            categoryName: data.category_name || undefined,
+                            sku: data.sku,
+                            color: data.color,
+                            tag: data.tag,
+                            compareAtPrice: data.compare_at_price
+                          },
+                          items: [
+                            {
+                              ...selected,
+                              tag: selected.tag,
+                              seq: selected.seq,
+                              sizeLabel: data.color
+                            }
+                          ]
+                        });
+                      }}
                     >
                       <Printer size={14} />
                       Print this sticker

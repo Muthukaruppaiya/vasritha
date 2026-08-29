@@ -1,5 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { formatMoney } from "../../lib/admin-api";
+import { barcodeDataUrl, qrDataUrl } from "../../lib/print-barcodes";
+
 export type CourierAddress = {
   recipient_name: string;
   phone: string;
@@ -10,6 +14,16 @@ export type CourierAddress = {
   postal_code: string;
   country: string;
   label?: string | null;
+};
+
+export type CourierSeller = {
+  legal_name?: string | null;
+  address?: string | null;
+  gstin?: string | null;
+  state?: string | null;
+  state_code?: string | null;
+  phone?: string | null;
+  shop_code?: string | null;
 };
 
 export type CourierLabelData = {
@@ -23,6 +37,7 @@ export type CourierLabelData = {
   total_amount: string | number;
   item_count: number;
   shipping_address: CourierAddress | null;
+  seller?: CourierSeller | null;
 };
 
 type Props = {
@@ -33,100 +48,116 @@ type Props = {
 function formatStamp(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("en-IN", {
+  return date.toLocaleDateString("en-IN", {
     day: "2-digit",
     month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true
+    year: "numeric"
   });
 }
 
-export function CourierLabel({ data, id = "tvs-l46-courier" }: Props) {
+export function CourierLabel({ data, id = "vasritha-parcel-label" }: Props) {
   const ship = data.shipping_address;
+  const seller = data.seller;
   const name = ship?.recipient_name || data.customer_name || "Customer";
   const phone = ship?.phone || data.customer_phone || "—";
+  const isPrepaid = ["paid", "captured", "success"].includes(
+    String(data.payment_status || "").toLowerCase()
+  );
+  const routeCode = `${ship?.postal_code || "000000"}-${seller?.state_code || "00"}`;
+  const awb = `VSR${String(data.order_number).replace(/\D/g, "").slice(-10).padStart(10, "0")}`;
+
+  const [barcodeSrc, setBarcodeSrc] = useState("");
+  const [qrSrc, setQrSrc] = useState("");
+
+  useEffect(() => {
+    setBarcodeSrc(barcodeDataUrl(awb, 44, 1.5));
+    void qrDataUrl(
+      `${awb}|${data.order_number}|${ship?.postal_code || ""}`,
+      92
+    ).then(setQrSrc);
+  }, [awb, data.order_number, ship?.postal_code]);
 
   return (
-    <article className="tvs-receipt tvs-courier" id={id}>
-      <header className="tvs-receipt-brand">
-        <img src="/vasritha-logo.svg" alt="Vasritha" className="tvs-receipt-logo" />
-        <strong>VASRITHA</strong>
-        <span>Timeless Elegance</span>
-        <span className="tvs-receipt-store">COURIER / SHIPPING LABEL</span>
+    <article className="parcel-label" id={id}>
+      <header className="parcel-label-top">
+        <div className="parcel-label-carrier">
+          <strong>Vasritha Logistics</strong>
+          <span>
+            {seller?.shop_code || "VSR"} / {seller?.state_code || "IN"}
+          </span>
+          <span>{routeCode}</span>
+        </div>
+        <div className="parcel-label-pay">
+          <span className={`parcel-label-badge${isPrepaid ? " is-prepaid" : " is-cod"}`}>
+            {isPrepaid ? "Prepaid" : "COD"}
+          </span>
+          <b>{isPrepaid ? "Rs. 0.0" : formatMoney(data.total_amount)}</b>
+          <span>NORMAL · Fwd</span>
+        </div>
       </header>
 
-      <div className="tvs-receipt-rule" aria-hidden="true">
-        ----------------------------------------
+      <div className="parcel-label-awb">
+        {barcodeSrc ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={barcodeSrc} alt="" />
+        ) : null}
+        <b>{awb}</b>
       </div>
 
-      <div className="tvs-courier-badge">SHIP TO</div>
-
-      <div className="tvs-courier-to">
-        <strong>{name}</strong>
-        <p>Ph: {phone}</p>
-        {data.customer_email ? <p>{data.customer_email}</p> : null}
-
-        {ship ? (
-          <div className="tvs-courier-address">
-            <p>{ship.line1}</p>
-            {ship.line2 ? <p>{ship.line2}</p> : null}
+      <div className="parcel-label-body">
+        <section className="parcel-label-ship">
+          <h2>Buyer&apos;s Name And Address</h2>
+          <strong>{name}</strong>
+          {ship ? (
             <p>
-              {ship.city}, {ship.state}
+              {ship.line1}
+              {ship.line2 ? `, ${ship.line2}` : ""}, {ship.city} {ship.postal_code} {ship.country}
             </p>
-            <p className="tvs-courier-pin">PIN {ship.postal_code}</p>
-            <p>{ship.country}</p>
-          </div>
-        ) : (
-          <div className="tvs-courier-address">
-            <p className="tvs-courier-missing">No shipping address on file</p>
-            <p>Contact customer before dispatch</p>
-          </div>
-        )}
+          ) : (
+            <p>Address not on file — contact customer before dispatch</p>
+          )}
+          <p>Ph: {phone}</p>
+          <p>Order: {data.order_number}</p>
+          <p>
+            Pieces: {data.item_count} · Placed: {formatStamp(data.created_at)}
+          </p>
+        </section>
+        {qrSrc ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={qrSrc} alt="" className="parcel-label-qr" />
+        ) : null}
       </div>
 
-      <div className="tvs-receipt-rule" aria-hidden="true">
-        ----------------------------------------
-      </div>
+      <section className="parcel-label-return">
+        <h3>If undelivered, please return to</h3>
+        <strong>{seller?.legal_name || "Vasritha"}</strong>
+        <p>{seller?.address || "Return to dispatch warehouse as per seller policy."}</p>
+        {seller?.state ? (
+          <p>
+            {seller.state}
+            {seller.state_code ? ` - ${seller.state_code}` : ""}
+          </p>
+        ) : null}
+      </section>
 
-      <div className="tvs-receipt-meta">
-        <div>
-          <span>Order</span>
-          <b>{data.order_number}</b>
-        </div>
-        <div>
-          <span>Placed</span>
-          <b>{formatStamp(data.created_at)}</b>
-        </div>
-        <div>
-          <span>Payment</span>
-          <b>{data.payment_status.toUpperCase()}</b>
-        </div>
-        <div>
-          <span>Status</span>
-          <b>{data.status.toUpperCase()}</b>
-        </div>
-        <div>
-          <span>Pieces</span>
-          <b>{data.item_count}</b>
-        </div>
-      </div>
+      <section className="parcel-label-seller">
+        <h3>Seller Details</h3>
+        <p>
+          <b>{seller?.legal_name || "Vasritha"}</b>
+        </p>
+        {seller?.gstin ? <p>GSTIN: {seller.gstin}</p> : null}
+        {seller?.phone ? <p>Ph: {seller.phone}</p> : null}
+      </section>
 
-      <div className="tvs-receipt-rule" aria-hidden="true">
-        ----------------------------------------
-      </div>
-
-      <div className="tvs-courier-from">
-        <div className="tvs-courier-badge is-from">FROM</div>
-        <strong>Vasritha Boutique</strong>
-        <p>Handle with care · Fragile textiles</p>
-        <p>Return to sender if undelivered</p>
-      </div>
-
-      <footer className="tvs-receipt-foot">
-        <p className="tvs-receipt-code">{data.order_number}</p>
-        <p className="tvs-receipt-printer">TVS LP 46 · Courier slip</p>
+      <footer className="parcel-label-foot">
+        <p>
+          Buyer declaration: {name} declares that the goods in this shipment are for personal use
+          and not for resale.
+        </p>
+        <div className="parcel-label-brand">
+          <span>Purchase made at</span>
+          <strong>vasritha.in</strong>
+        </div>
       </footer>
     </article>
   );

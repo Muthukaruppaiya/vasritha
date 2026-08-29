@@ -2,6 +2,7 @@
 
 import { formatDate, formatMoney } from "../../lib/admin-api";
 import type { ThermalReceiptData, ThermalReceiptItem } from "./thermal-receipt";
+import { TaxInvoiceA4 } from "./tax-invoice-a4";
 
 export type InvoiceBillData = ThermalReceiptData;
 export type InvoiceBillItem = ThermalReceiptItem;
@@ -24,8 +25,12 @@ function formatReceiptDate(value: string) {
   });
 }
 
-/** Compact textile-shop GST bill: 5" wide, height follows content (auto-cut). */
+/** GST bill: A4 tax invoice for online orders; 5″ shop roll for POS. */
 export function InvoiceBill({ data, id = "vasritha-invoice-bill" }: Props) {
+  if (data.channel === "online") {
+    return <TaxInvoiceA4 data={data} id={id} />;
+  }
+
   const isPos = data.channel === "pos";
   const discount = Number(data.discount_amount || 0);
   const shipping = Number(data.shipping_amount || 0);

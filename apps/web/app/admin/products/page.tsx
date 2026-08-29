@@ -439,13 +439,23 @@ function AdminProductsPageInner() {
         );
       }
 
-      printProductStickers({
+      await printProductStickers({
         price: product.price,
         labelSize: product.label_size === "accessory" ? "accessory" : "dress",
+        meta: {
+          productName: product.name,
+          categoryName: product.subcategory_name || product.category_name || undefined,
+          sku: product.sku,
+          color: product.color,
+          tag: product.tag,
+          compareAtPrice: product.compare_at_price
+        },
         items: stickers.map((item) => ({
           id: item.id,
           unit_code: item.unit_code,
           barcode: item.barcode,
+          tag: product.tag || undefined,
+          sizeLabel: product.color,
           price: product.price,
           labelSize: product.label_size === "accessory" ? "accessory" : "dress"
         }))
@@ -522,6 +532,13 @@ function AdminProductsPageInner() {
             barcode: item.barcode,
             price: product.price,
             labelSize,
+            productName: product.name,
+            categoryName: product.subcategory_name || product.category_name || undefined,
+            sku: product.sku,
+            color: product.color,
+            tag: product.tag || undefined,
+            sizeLabel: product.color,
+            compareAtPrice: product.compare_at_price,
             productId: id
           });
           if (item.id) {
@@ -536,7 +553,7 @@ function AdminProductsPageInner() {
         throw new Error("No unprinted barcodes on selected products. Receive stock first.");
       }
 
-      printProductStickers({
+      await printProductStickers({
         price: allStickers[0].price,
         labelSize: allStickers[0].labelSize,
         items: allStickers

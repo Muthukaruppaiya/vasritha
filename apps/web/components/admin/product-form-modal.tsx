@@ -220,13 +220,25 @@ export function ProductFormModal({
     setError("");
     setPrintBusy(true);
     try {
+      const category = categories.find((c) => c.id === form.category_id);
+      const subcategory = category?.subcategories?.find((s) => s.id === form.subcategory_id);
+      const stickerMeta = {
+        productName: form.name,
+        categoryName: subcategory?.name || category?.name,
+        sku: form.sku,
+        color: form.color,
+        tag: form.tag,
+        compareAtPrice: form.compare_at_price
+      };
+
       if (kind === "family") {
         const code = (form.barcode || form.sku).replace(/[^A-Za-z0-9]/g, "").toUpperCase();
         if (!code) throw new Error("Enter a product code before printing.");
-        printProductStickers({
+        await printProductStickers({
           price: form.price,
           labelSize: form.label_size,
-          items: [{ unit_code: form.sku || code, barcode: code }]
+          meta: stickerMeta,
+          items: [{ unit_code: form.sku || code, barcode: code, sizeLabel: form.color }]
         });
         return;
       }
@@ -245,10 +257,14 @@ export function ProductFormModal({
             : "No unique barcodes yet. Set opening stock and save, or inward stock."
         );
       }
-      printProductStickers({
+      await printProductStickers({
         price: form.price,
         labelSize: form.label_size,
-        items: chosen
+        meta: stickerMeta,
+        items: chosen.map((row) => ({
+          ...row,
+          sizeLabel: form.color
+        }))
       });
       if (form.id && chosen.some((row) => row.id)) {
         await adminFetch(`/api/admin/products/${form.id}/items`, {

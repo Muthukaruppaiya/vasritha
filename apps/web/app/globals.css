@@ -8417,6 +8417,255 @@ body:has(.pos-screen) .admin-topbar-title {
   letter-spacing: 0.08em;
   color: #3d241a !important;
 }
+
+/* A4 online tax invoice (Myntra / marketplace style) */
+.tax-invoice-a4 {
+  box-sizing: border-box;
+  width: min(210mm, 100%);
+  max-width: 210mm;
+  margin: 0 auto;
+  padding: 10mm 12mm;
+  background: #fff;
+  color: #111;
+  border: 1px solid #d7d7d7;
+  font: 400 11px/1.35 Arial, Helvetica, sans-serif;
+}
+.tax-invoice-a4 h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+}
+.tax-invoice-a4 h2 {
+  margin: 0 0 6px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.tax-invoice-a4-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  border-bottom: 2px solid #111;
+  padding-bottom: 8px;
+}
+.tax-invoice-a4-brand {
+  margin: 4px 0 0;
+  font-weight: 700;
+  font-size: 12px;
+}
+.tax-invoice-a4-packet {
+  text-align: right;
+}
+.tax-invoice-a4-packet span {
+  display: block;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.tax-invoice-a4-barcode {
+  display: block;
+  width: 140px;
+  height: auto;
+  margin: 0 0 4px auto;
+}
+.tax-invoice-a4-meta {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px 10px;
+  margin: 10px 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #ccc;
+}
+.tax-invoice-a4-meta span {
+  display: block;
+  font-size: 9px;
+  color: #555;
+  text-transform: uppercase;
+}
+.tax-invoice-a4-meta b {
+  font-size: 11px;
+}
+.tax-invoice-a4-parties {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+.tax-invoice-a4-parties p {
+  margin: 2px 0;
+}
+.tax-invoice-a4-muted {
+  color: #666;
+  font-size: 10px;
+}
+.tax-invoice-a4-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9px;
+}
+.tax-invoice-a4-table th,
+.tax-invoice-a4-table td {
+  border: 1px solid #bbb;
+  padding: 5px 4px;
+  vertical-align: top;
+  text-align: right;
+}
+.tax-invoice-a4-table th:first-child,
+.tax-invoice-a4-table td:first-child,
+.tax-invoice-a4-table .is-desc {
+  text-align: left;
+}
+.tax-invoice-a4-table .is-desc span {
+  display: block;
+  color: #555;
+  margin-top: 2px;
+}
+.tax-invoice-a4-table thead th {
+  background: #f3f3f3;
+  font-weight: 700;
+}
+.tax-invoice-a4-table .is-total {
+  background: #fafafa;
+  font-weight: 700;
+}
+.tax-invoice-a4-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px solid #ccc;
+}
+.tax-invoice-a4-qr-wrap {
+  text-align: center;
+}
+.tax-invoice-a4-qr {
+  width: 88px;
+  height: 88px;
+  object-fit: contain;
+}
+
+/* Parcel / shipping label (courier paste-on) */
+.parcel-label {
+  box-sizing: border-box;
+  width: min(100mm, 100%);
+  max-width: 100mm;
+  margin: 0 auto;
+  padding: 4mm;
+  background: #fff;
+  color: #000;
+  border: 2px solid #111;
+  font: 600 10px/1.35 Arial, Helvetica, sans-serif;
+}
+.parcel-label-top {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  border-bottom: 1px solid #111;
+  padding-bottom: 4px;
+}
+.parcel-label-carrier strong {
+  display: block;
+  font-size: 11px;
+}
+.parcel-label-carrier span {
+  display: block;
+  font-size: 9px;
+}
+.parcel-label-pay {
+  text-align: right;
+}
+.parcel-label-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border: 1px solid #111;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.parcel-label-badge.is-prepaid {
+  background: #111;
+  color: #fff;
+}
+.parcel-label-awb {
+  text-align: center;
+  padding: 4px 0;
+  border-bottom: 1px solid #111;
+}
+.parcel-label-awb img {
+  width: 100%;
+  max-width: 92mm;
+  height: auto;
+}
+.parcel-label-awb b {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+.parcel-label-body {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  padding: 6px 0;
+  border-bottom: 1px solid #111;
+}
+.parcel-label-ship h2 {
+  margin: 0 0 4px;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.parcel-label-ship strong {
+  display: block;
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+.parcel-label-ship p {
+  margin: 0 0 2px;
+  font-size: 10px;
+  font-weight: 500;
+}
+.parcel-label-qr {
+  width: 24mm;
+  height: 24mm;
+  object-fit: contain;
+}
+.parcel-label-return,
+.parcel-label-seller {
+  padding: 5px 0;
+  border-bottom: 1px dashed #666;
+}
+.parcel-label-return h3,
+.parcel-label-seller h3 {
+  margin: 0 0 3px;
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.parcel-label-return p,
+.parcel-label-seller p {
+  margin: 0 0 2px;
+  font-size: 9px;
+  font-weight: 500;
+}
+.parcel-label-foot {
+  padding-top: 5px;
+}
+.parcel-label-foot p {
+  margin: 0 0 4px;
+  font-size: 8px;
+  font-weight: 500;
+}
+.parcel-label-brand {
+  text-align: right;
+}
+.parcel-label-brand strong {
+  display: block;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pos-layout,
   .pos-suggest-row,
@@ -9423,8 +9672,19 @@ body:has(.pos-screen) .admin-topbar-title {
 }
 
 @media print {
+  @page shop-roll {
+    size: 5in auto;
+    margin: 3mm;
+  }
+  @page invoice-a4 {
+    size: A4 portrait;
+    margin: 8mm;
+  }
+  @page parcel-label {
+    size: 100mm 148mm;
+    margin: 2mm;
+  }
   @page {
-    /* 5" roll width; height follows bill length for auto-cut printers */
     size: 5in auto;
     margin: 3mm;
   }
@@ -9663,11 +9923,60 @@ body:has(.pos-screen) .admin-topbar-title {
     display: block !important;
   }
 
+  .orders-print-stack.is-mode-invoice .parcel-label,
   .orders-print-stack.is-mode-invoice .tvs-courier,
   .orders-print-stack.is-mode-invoice .tvs-print-break,
+  .orders-print-stack.is-mode-courier .tax-invoice-a4,
   .orders-print-stack.is-mode-courier .invoice-bill,
   .orders-print-stack.is-mode-courier .tvs-print-break {
     display: none !important;
+  }
+
+  body.print-a4-invoice .tax-invoice-a4,
+  body.print-a4-invoice .orders-print-stack .tax-invoice-a4 {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  body.print-a4-invoice .invoice-bill--shop {
+    display: none !important;
+  }
+
+  body.print-parcel .parcel-label,
+  body.print-parcel .orders-print-stack .parcel-label {
+    display: block !important;
+    position: static !important;
+    width: 100mm !important;
+    max-width: 100mm !important;
+    margin: 0 auto !important;
+    padding: 3mm !important;
+    border: 2px solid #000 !important;
+    box-shadow: none !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  body.print-parcel .tax-invoice-a4,
+  body.print-parcel .invoice-bill--shop {
+    display: none !important;
+  }
+
+  .tax-invoice-a4 {
+    page: invoice-a4;
+  }
+  .parcel-label {
+    page: parcel-label;
+  }
+  .invoice-bill--shop {
+    page: shop-roll;
   }
 
   .tvs-print-break {
@@ -9676,8 +9985,17 @@ body:has(.pos-screen) .admin-topbar-title {
     height: 0;
   }
 
-  /* Courier / thermal only when body.print-thermal */
-  body.print-thermal .invoice-bill {
+  body.print-a4-invoice:not(.print-parcel) .parcel-label {
+    display: none !important;
+  }
+
+  body.print-parcel:not(.print-a4-invoice) .tax-invoice-a4 {
+    display: none !important;
+  }
+
+  /* Legacy thermal courier fallback */
+  body.print-thermal .invoice-bill,
+  body.print-thermal .tax-invoice-a4 {
     display: none !important;
   }
 
@@ -9686,7 +10004,9 @@ body:has(.pos-screen) .admin-topbar-title {
   }
 
   body.print-thermal .tvs-receipt,
-  body.print-thermal .orders-print-stack .tvs-receipt {
+  body.print-thermal .orders-print-stack .tvs-receipt,
+  body.print-thermal .parcel-label,
+  body.print-thermal .orders-print-stack .parcel-label {
     display: block !important;
     position: static !important;
     width: 100% !important;
