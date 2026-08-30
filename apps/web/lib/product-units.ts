@@ -30,7 +30,9 @@ export function compactBarcodeBase(sku: string) {
   return (compact.slice(0, 12) || "VAS").toUpperCase();
 }
 
-export async function ensureProductUnitsSchema() {
+let productUnitsSchemaReady: Promise<void> | null = null;
+
+async function runEnsureProductUnitsSchema() {
   await query(`
     do $$ begin
       create type public.product_item_status as enum ('to_sell','sold','returned','damaged','reserved');
@@ -58,11 +60,29 @@ export async function ensureProductUnitsSchema() {
   `);
   await query(`
     alter table public.products
+      add column if not exists sku text,
+      add column if not exists barcode text,
+      add column if not exists short_name text not null default '',
+      add column if not exists short_description text not null default '',
+      add column if not exists color text not null default '',
+      add column if not exists is_featured boolean not null default false,
       add column if not exists tag text,
       add column if not exists sku_prefix text not null default 'VAS',
       add column if not exists label_size public.product_label_size not null default 'dress',
       add column if not exists image_upload_token uuid not null default gen_random_uuid(),
       add column if not exists parent_product_id uuid
+  `);
+  await query(`
+    create unique index if not exists products_sku_unique_idx
+      on public.products (sku) where sku is not null
+  `);
+  await query(`
+    create unique index if not exists products_barcode_unique_idx
+      on public.products (barcode) where barcode is not null
+  `);
+  await query(`
+    alter table public.product_variants
+      add column if not exists barcode text
   `);
   await query(`
     do $$ begin
@@ -129,6 +149,16 @@ export async function ensureProductUnitsSchema() {
       recorded_at timestamptz not null default now()
     )
   `);
+}
+
+export async function ensureProductUnitsSchema() {
+  if (!productUnitsSchemaReady) {
+    productUnitsSchemaReady = runEnsureProductUnitsSchema().catch((error) => {
+      productUnitsSchemaReady = null;
+      throw error;
+    });
+  }
+  return productUnitsSchemaReady;
 }
 
 export async function createProductUnits(
