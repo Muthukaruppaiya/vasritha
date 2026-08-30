@@ -7,7 +7,7 @@ type Payload = {
   name: string;
   sku: string | null;
   tag: string | null;
-  kind: "internal";
+  kind: "website";
   remaining: number;
   images: Array<{ id: string; storage_path: string }>;
 };
@@ -54,7 +54,7 @@ export default function PartImageUploadPage() {
       setError(json.error || "Upload failed");
       return;
     }
-    setMessage("Internal reference photo added.");
+    setMessage("Product photo uploaded — it will appear on the website.");
     if (input) input.value = "";
     await load();
   };
@@ -62,11 +62,9 @@ export default function PartImageUploadPage() {
   return (
     <main className="part-upload">
       <div className="part-upload-card">
-        <p className="eyebrow">Vasritha · Staff</p>
-        <h1>Internal reference photos</h1>
-        <p className="muted">
-          These photos are for store staff only. They do not appear on the website.
-        </p>
+        <p className="eyebrow">Vasritha · Product photos</p>
+        <h1>Scan & upload</h1>
+        <p className="muted">Take a photo of this product. It appears on the customer website.</p>
         {data ? (
           <>
             <p>
@@ -75,7 +73,7 @@ export default function PartImageUploadPage() {
               {data.tag ? ` · Tag ${data.tag}` : ""}
             </p>
             <p className="muted">
-              {data.remaining} slot{data.remaining === 1 ? "" : "s"} left (max 5 internal).
+              {data.remaining} slot{data.remaining === 1 ? "" : "s"} left (max 5 photos).
             </p>
             <div className="part-upload-thumbs">
               {data.images.map((image) => (
@@ -93,11 +91,11 @@ export default function PartImageUploadPage() {
                   required
                 />
                 <button className="btn" type="submit" disabled={busy}>
-                  {busy ? "Uploading…" : "Upload reference photo"}
+                  {busy ? "Uploading…" : "Take / choose photo"}
                 </button>
               </form>
             ) : (
-              <p>All 5 internal reference photos are uploaded.</p>
+              <p>All 5 product photos are uploaded.</p>
             )}
           </>
         ) : null}

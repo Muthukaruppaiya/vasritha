@@ -1,8 +1,7 @@
 import { NextRequest } from "next/server";
-import { mkdir, writeFile } from "fs/promises";
-import path from "path";
 import { fail, ok } from "../../../../lib/auth/api";
 import { query, queryOne } from "../../../../lib/db/pool";
+import { extensionFor, resolveMediaUrl, saveProductImage } from "../../../../lib/product-image-storage";
 import { ensureProductUnitsSchema } from "../../../../lib/product-units";
 
 type Params = { params: Promise<{ token: string }> };
@@ -11,8 +10,8 @@ const MAX_IMAGES = 5;
 const MAX_BYTES = 4 * 1024 * 1024;
 const ALLOWED = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
-/** Phone QR uploads are always internal reference photos (not website). */
-const QR_KIND = "internal" as const;
+/** Phone QR uploads go to website photos so they appear on the storefront. */
+const QR_KIND = "website" as const;
 
 export async function GET(_request: NextRequest, { params }: Params) {
   await ensureProductUnitsSchema();
@@ -41,7 +40,10 @@ export async function GET(_request: NextRequest, { params }: Params) {
     sku: product.sku,
     tag: product.tag,
     kind: QR_KIND,
-    images,
+    images: images.map((image) => ({
+      ...image,
+      storage_path: resolveMediaUrl(image.storage_path)
+    })),
     remaining: Math.max(0, MAX_IMAGES - images.length)
   });
 }
@@ -61,7 +63,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     [product.id, QR_KIND]
   );
   const count = Number(existing?.count ?? 0);
-  if (count >= MAX_IMAGES) return fail(`Maximum ${MAX_IMAGES} internal reference photos allowed`, 400);
+  if (count >= MAX_IMAGES) return fail(`Maximum ${MAX_IMAGES} product photos allowed`, 400);
 
   const form = await request.formData().catch(() => null);
   if (!form) return fail("Invalid upload");
@@ -71,26 +73,36 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (file.size > MAX_BYTES) return fail("Each image must be under 4MB");
 
   const buffer = Buffer.from(await file.arrayBuffer());
-  const ext =
-    file.type === "image/png"
-      ? "png"
-      : file.type === "image/webp"
-        ? "webp"
-        : file.type === "image/gif"
-          ? "gif"
-          : "jpg";
-  const dir = path.join(process.cwd(), "public", "uploads", "products", product.id, "internal");
-  await mkdir(dir, { recursive: true });
-  const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-  await writeFile(path.join(dir, filename), buffer);
-  const storagePath = `/uploads/products/${product.id}/internal/${filename}`;
+  const ext = extensionFor(file.type);
+
+  let storagePath: string;
+  try {
+    const saved = await saveProductImage({
+      productId: product.id,
+      kind: QR_KIND,
+      buffer,
+      mime: file.type,
+      ext
+    });
+    storagePath = saved.path;
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "Upload failed", 500);
+  }
 
   const data = await queryOne(
     `insert into product_images (product_id, storage_path, alt_text, sort_order, image_kind)
      values ($1, $2, $3, $4, $5)
      returning id, storage_path, sort_order, image_kind`,
-    [product.id, storagePath, "Internal reference (phone)", count, QR_KIND]
+    [product.id, storagePath, "Product photo (phone)", count, QR_KIND]
   );
 
-  return ok(data, 201);
+  return ok(
+    data
+      ? {
+          ...data,
+          storage_path: resolveMediaUrl((data as { storage_path: string }).storage_path)
+        }
+      : data,
+    201
+  );
 }

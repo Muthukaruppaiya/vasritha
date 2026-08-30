@@ -1,4 +1,5 @@
 import { query, queryOne } from "./db/pool";
+import { resolveMediaUrl } from "./product-image-storage";
 
 export type StoreVariant = {
   id: string;
@@ -142,7 +143,8 @@ function mapProduct(
   const productImages = (imagesByProduct.get(row.id) || [])
     .slice()
     .sort((a, b) => a.sort_order - b.sort_order)
-    .map((img) => img.storage_path);
+    .map((img) => resolveMediaUrl(img.storage_path))
+    .filter(Boolean);
 
   const imageSrc = productImages[0] || categoryImage(row.category_slug);
   const sizes =

@@ -10068,6 +10068,11 @@ body:has(.pos-screen) .admin-topbar-title {
   text-align: center;
 }
 .admin-qr-box img { width: 180px; height: 180px; }
+.admin-qr-link {
+  word-break: break-all;
+  font-size: 0.72rem;
+  color: #6f4230;
+}
 .admin-sticker-actions {
   display: flex;
   flex-wrap: wrap;

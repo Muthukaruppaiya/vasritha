@@ -2,9 +2,11 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import JsBarcode from "jsbarcode";
+import QRCode from "qrcode";
 import { Printer, RefreshCw, Trash2, Upload, X } from "lucide-react";
 import { AdminAlert, slugify } from "./admin-ui";
 import { adminFetch, getAdminToken } from "../../lib/admin-api";
+import { buildProductUploadPageUrl } from "../../lib/product-upload-url";
 import { printProductStickers } from "../../lib/print-stickers";
 
 export type ProductFormCategory = {
@@ -99,6 +101,7 @@ export function ProductFormModal({
     Array<{ id: string; unit_code: string; barcode: string; status?: string; label_printed?: boolean }>
   >([]);
   const [printBusy, setPrintBusy] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState("");
   const barcodeRef = useRef<SVGSVGElement | null>(null);
   const websiteFileRef = useRef<HTMLInputElement | null>(null);
   const internalFileRef = useRef<HTMLInputElement | null>(null);
@@ -111,6 +114,15 @@ export function ProductFormModal({
     setError("");
     setUnits([]);
   }, [open, initial, initialImages, initialInternalImages]);
+
+  useEffect(() => {
+    if (!open || !form.image_upload_token) {
+      setQrDataUrl("");
+      return;
+    }
+    const url = buildProductUploadPageUrl(form.image_upload_token, window.location.origin);
+    void QRCode.toDataURL(url, { margin: 1, width: 220 }).then(setQrDataUrl).catch(() => setQrDataUrl(""));
+  }, [open, form.image_upload_token]);
 
   useEffect(() => {
     if (!open || !form.id) return;
@@ -791,19 +803,24 @@ export function ProductFormModal({
 
           {form.image_upload_token ? (
             <div className="admin-qr-box">
-              <strong>QR · internal reference photos</strong>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                alt="Upload QR for internal photos"
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
-                  `${typeof window !== "undefined" ? window.location.origin : ""}/part/${form.image_upload_token || ""}`
-                )}`}
-              />
+              <strong>QR · upload product photos</strong>
+              {qrDataUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img alt="Scan to upload product photos" src={qrDataUrl} />
+              ) : (
+                <p className="muted">Generating QR…</p>
+              )}
+              <p className="admin-field-hint admin-qr-link">
+                {buildProductUploadPageUrl(form.image_upload_token, typeof window !== "undefined" ? window.location.origin : "")}
+              </p>
               <small className="admin-field-hint">
-                Scan with phone to add internal reference photos only (not shown on the website).
+                Save the product first, then scan with a phone camera. Photos appear on the website
+                (max 5). Set status to Active to show the product on the shop.
               </small>
             </div>
-          ) : null}
+          ) : (
+            <p className="muted admin-field-hint">Save the product once to generate the upload QR code.</p>
+          )}
 
           <div className="admin-image-uploader">
             <div className="admin-barcode-preview-head">

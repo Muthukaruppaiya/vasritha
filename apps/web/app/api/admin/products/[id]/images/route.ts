@@ -1,8 +1,7 @@
-import { mkdir, writeFile } from "fs/promises";
-import path from "path";
 import { NextRequest } from "next/server";
 import { fail, ok, requirePermission, writeAuditLog } from "../../../../../../lib/auth/api";
 import { query, queryOne } from "../../../../../../lib/db/pool";
+import { extensionFor, saveProductImage } from "../../../../../../lib/product-image-storage";
 import { ensureProductUnitsSchema } from "../../../../../../lib/product-units";
 
 type Params = { params: Promise<{ id: string }> };
@@ -140,11 +139,20 @@ export async function POST(request: NextRequest, { params }: Params) {
   const buffer = Buffer.from(await file.arrayBuffer());
   const ext = extensionFor(file.type);
   const sub = kind === "internal" ? "internal" : "website";
-  const dir = path.join(process.cwd(), "public", "uploads", "products", productId, sub);
-  await mkdir(dir, { recursive: true });
-  const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-  await writeFile(path.join(dir, filename), buffer);
-  const storagePath = `/uploads/products/${productId}/${sub}/${filename}`;
+
+  let storagePath: string;
+  try {
+    const saved = await saveProductImage({
+      productId,
+      kind,
+      buffer,
+      mime: file.type,
+      ext
+    });
+    storagePath = saved.path;
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "Upload failed", 500);
+  }
 
   const data = await queryOne(
     `insert into product_images (product_id, storage_path, alt_text, sort_order, image_kind)
@@ -190,13 +198,6 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   return ok({ deleted: imageId });
 }
 
-function extensionFor(mime: string) {
-  if (mime === "image/png") return "png";
-  if (mime === "image/webp") return "webp";
-  if (mime === "image/gif") return "gif";
-  return "jpg";
-}
-
 async function saveDataUrl(
   productId: string,
   dataUrl: string,
@@ -211,10 +212,16 @@ async function saveDataUrl(
   if (buffer.length > MAX_BYTES) return { error: "Each image must be under 4MB" };
 
   const ext = extensionFor(mime);
-  const sub = kind === "internal" ? "internal" : "website";
-  const dir = path.join(process.cwd(), "public", "uploads", "products", productId, sub);
-  await mkdir(dir, { recursive: true });
-  const filename = `${Date.now()}-${sortOrder}.${ext}`;
-  await writeFile(path.join(dir, filename), buffer);
-  return { path: `/uploads/products/${productId}/${sub}/${filename}` };
+  try {
+    const saved = await saveProductImage({
+      productId,
+      kind,
+      buffer,
+      mime,
+      ext
+    });
+    return { path: saved.path };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Upload failed" };
+  }
 }
