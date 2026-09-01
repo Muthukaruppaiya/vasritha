@@ -8,9 +8,10 @@ import {
 } from "../../../../../lib/auth/api";
 import { query, queryOne } from "../../../../../lib/db/pool";
 import { emptyToNull, subcategoryBelongsToCategory } from "../../../../../lib/db/taxonomy";
-import { listProductItems, ensureProductUnitsSchema, recordPriceHistory } from "../../../../../lib/product-units";
+import { listProductItems, ensureProductUnitsSchema, recordPriceHistory, syncSellableStock } from "../../../../../lib/product-units";
 import { ensureGstSchema, normalizeGstRate, normalizeHsn } from "../../../../../lib/gst";
 import { ensureBrandsSchema, resolveBrandId } from "../../../../../lib/brands";
+import { resolveMediaUrl } from "../../../../../lib/product-image-storage";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -47,7 +48,14 @@ export async function GET(request: NextRequest, { params }: Params) {
 
   const { id } = await params;
 
-  const product = await queryOne(`select * from products where id = $1`, [id]);
+  const product = await queryOne(
+    `select p.*, c.name as category_name, sc.name as subcategory_name
+     from products p
+     left join categories c on c.id = p.category_id
+     left join subcategories sc on sc.id = p.subcategory_id
+     where p.id = $1`,
+    [id]
+  );
   if (!product) return fail("Product not found", 404);
 
   const [variants, images, items, children, parent] = await Promise.all([
@@ -80,11 +88,29 @@ export async function GET(request: NextRequest, { params }: Params) {
     (row) => (row as { image_kind?: string }).image_kind === "internal"
   );
 
+  const sellableStock = items.filter((row) => row.status === "to_sell").length;
+  if (sellableStock !== Number((product as { stock_quantity: number }).stock_quantity)) {
+    const variant = variants[0] as { id?: string } | undefined;
+    if (variant?.id) {
+      await syncSellableStock({ query, queryOne }, variant.id);
+    }
+    await query(
+      `update products set stock_quantity = $2 where id = $1`,
+      [id, sellableStock]
+    );
+  }
+
+  const mapImageRow = (row: Record<string, unknown>) => ({
+    ...row,
+    storage_path: resolveMediaUrl(String(row.storage_path || ""))
+  });
+
   return ok({
     ...product,
+    stock_quantity: sellableStock,
     product_variants: variants,
-    product_images: websiteImages,
-    internal_images: internalImages,
+    product_images: websiteImages.map((row) => mapImageRow(row as Record<string, unknown>)),
+    internal_images: internalImages.map((row) => mapImageRow(row as Record<string, unknown>)),
     product_items: items,
     child_products: children,
     parent_product: parent

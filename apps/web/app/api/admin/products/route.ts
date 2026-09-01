@@ -9,6 +9,7 @@ import {
 } from "../../../../lib/product-units";
 import { ensureGstSchema, normalizeGstRate, normalizeHsn } from "../../../../lib/gst";
 import { ensureBrandsSchema, resolveBrandId } from "../../../../lib/brands";
+import { resolveMediaUrl } from "../../../../lib/product-image-storage";
 
 async function upsertDefaultVariant(input: {
   productId: string;
@@ -90,7 +91,12 @@ export async function GET(request: NextRequest) {
      limit ${limit} offset ${offset}`,
     [status]
   );
-  return ok(data);
+  return ok(
+    data.map((row) => ({
+      ...row,
+      primary_image: row.primary_image ? resolveMediaUrl(String(row.primary_image)) : null
+    }))
+  );
 }
 
 export async function POST(request: NextRequest) {

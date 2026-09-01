@@ -2,9 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 import JsBarcode from "jsbarcode";
-import { Printer, X } from "lucide-react";
+import QRCode from "qrcode";
+import { Printer, Upload, X } from "lucide-react";
 import { AdminBadge, AdminLoading, statusTone } from "./admin-ui";
-import { adminFetch, formatDate, formatMoney } from "../../lib/admin-api";
+import { adminFetch, formatDate, formatMoney, getAdminToken } from "../../lib/admin-api";
+import { buildProductUploadPageUrl } from "../../lib/product-upload-url";
 import { printProductStickers } from "../../lib/print-stickers";
 
 type ProductItem = {
@@ -21,9 +23,12 @@ type ProductItem = {
   label_printed: boolean;
 };
 
+type ProductImage = { id: string; storage_path: string; image_kind?: string };
+
 type ProductDetail = {
   id: string;
   name: string;
+  short_name?: string | null;
   slug: string;
   sku: string | null;
   barcode: string | null;
@@ -35,12 +40,17 @@ type ProductDetail = {
   description?: string | null;
   price: string;
   compare_at_price?: string | null;
+  hsn_code?: string | null;
+  gst_rate?: string | number | null;
   status: string;
   stock_quantity: number;
+  is_featured?: boolean;
   category_name?: string | null;
+  subcategory_name?: string | null;
   created_at?: string;
-  product_images?: Array<{ id: string; storage_path: string; image_kind?: string }>;
-  internal_images?: Array<{ id: string; storage_path: string; image_kind?: string }>;
+  image_upload_token?: string;
+  product_images?: ProductImage[];
+  internal_images?: ProductImage[];
   product_items?: ProductItem[];
   parent_product?: { id: string; name: string; sku: string | null } | null;
   child_products?: Array<{
@@ -65,28 +75,46 @@ export function ProductDetailModal({
   const [data, setData] = useState<ProductDetail | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [uploadBusy, setUploadBusy] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [qrDataUrl, setQrDataUrl] = useState("");
   const barcodeRef = useRef<SVGSVGElement | null>(null);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
+
+  const reload = async () => {
+    if (!productId) return;
+    setLoading(true);
+    setError("");
+    const result = await adminFetch<ProductDetail>(`/api/admin/products/${productId}`);
+    setLoading(false);
+    if (result.error || !result.data) {
+      setError(result.error || "Could not load product");
+      setData(null);
+      return;
+    }
+    setData(result.data);
+    setSelectedId((current) => current || result.data!.product_items?.[0]?.id || null);
+  };
 
   useEffect(() => {
     if (!productId) {
       setData(null);
       setSelectedId(null);
+      setQrDataUrl("");
       return;
     }
-    setLoading(true);
-    setError("");
-    void adminFetch<ProductDetail>(`/api/admin/products/${productId}`).then((result) => {
-      setLoading(false);
-      if (result.error || !result.data) {
-        setError(result.error || "Could not load product");
-        setData(null);
-        return;
-      }
-      setData(result.data);
-      setSelectedId(result.data.product_items?.[0]?.id || null);
-    });
+    void reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productId]);
+
+  useEffect(() => {
+    if (!data?.image_upload_token) {
+      setQrDataUrl("");
+      return;
+    }
+    const url = buildProductUploadPageUrl(data.image_upload_token, window.location.origin);
+    void QRCode.toDataURL(url, { margin: 1, width: 140 }).then(setQrDataUrl).catch(() => setQrDataUrl(""));
+  }, [data?.image_upload_token]);
 
   const selected = data?.product_items?.find((item) => item.id === selectedId) || null;
 
@@ -106,12 +134,39 @@ export function ProductDetailModal({
     }
   }, [selected?.barcode]);
 
+  const onUploadWebsitePhoto = async (files: FileList | null) => {
+    if (!data || !files?.length) return;
+    setUploadBusy(true);
+    setError("");
+    try {
+      for (const file of Array.from(files).slice(0, 5 - (data.product_images?.length || 0))) {
+        const body = new FormData();
+        body.append("file", file);
+        body.append("kind", "website");
+        const token = getAdminToken();
+        const res = await fetch(`/api/admin/products/${data.id}/images`, {
+          method: "POST",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          body
+        });
+        const payload = (await res.json()) as { error?: string };
+        if (!res.ok) throw new Error(payload.error || "Upload failed");
+      }
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploadBusy(false);
+      if (photoInputRef.current) photoInputRef.current.value = "";
+    }
+  };
+
   if (!productId) return null;
 
   const items = data?.product_items || [];
-  const image = data?.product_images?.[0]?.storage_path;
   const websiteGallery = data?.product_images || [];
   const internalGallery = data?.internal_images || [];
+  const heroImage = websiteGallery[0]?.storage_path;
 
   return (
     <div className="admin-modal-backdrop" role="presentation" onClick={onClose}>
@@ -125,6 +180,9 @@ export function ProductDetailModal({
           <div>
             <p className="eyebrow">Product details</p>
             <h2>{data?.name || "Product"}</h2>
+            {data?.short_name && data.short_name !== data.name ? (
+              <p className="muted">{data.short_name}</p>
+            ) : null}
           </div>
           <button type="button" className="admin-modal-close" aria-label="Close" onClick={onClose}>
             <X size={18} />
@@ -138,37 +196,74 @@ export function ProductDetailModal({
           {data ? (
             <div className="admin-detail-grid">
               <div className="admin-detail-main">
-                {image ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={image} alt="" className="admin-detail-photo" />
-                ) : null}
-                {websiteGallery.length > 1 || internalGallery.length > 0 ? (
+                <div className="admin-detail-photo-wrap">
+                  {heroImage ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={heroImage} alt={data.name} className="admin-detail-photo" />
+                  ) : (
+                    <div className="admin-detail-photo admin-detail-photo--empty">
+                      <p>No website photo yet</p>
+                      <p className="muted">Upload below or scan QR — required for the shop to show this product image.</p>
+                    </div>
+                  )}
+                  {websiteGallery.length > 1 ? (
+                    <div className="admin-detail-thumbs">
+                      {websiteGallery.map((row) => (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img key={row.id} src={row.storage_path} alt="" />
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="admin-detail-upload-row">
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={uploadBusy || websiteGallery.length >= 5}
+                    onClick={() => photoInputRef.current?.click()}
+                  >
+                    <Upload size={14} />
+                    {uploadBusy ? "Uploading…" : "Upload website photo"}
+                  </button>
+                  <input
+                    ref={photoInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    hidden
+                    onChange={(e) => void onUploadWebsitePhoto(e.target.files)}
+                  />
+                  {data.image_upload_token && qrDataUrl ? (
+                    <div className="admin-detail-qr">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={qrDataUrl} alt="Scan to upload from phone" />
+                      <span>Phone QR</span>
+                    </div>
+                  ) : null}
+                </div>
+
+                {internalGallery.length ? (
                   <div className="admin-detail-galleries">
-                    {websiteGallery.length > 1 ? (
-                      <div>
-                        <h3>Website images</h3>
-                        <div className="admin-detail-thumbs">
-                          {websiteGallery.map((row) => (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img key={row.id} src={row.storage_path} alt="" />
-                          ))}
-                        </div>
+                    <div>
+                      <h3>Internal reference</h3>
+                      <div className="admin-detail-thumbs">
+                        {internalGallery.map((row) => (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img key={row.id} src={row.storage_path} alt="" />
+                        ))}
                       </div>
-                    ) : null}
-                    {internalGallery.length ? (
-                      <div>
-                        <h3>Internal reference</h3>
-                        <div className="admin-detail-thumbs">
-                          {internalGallery.map((row) => (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img key={row.id} src={row.storage_path} alt="" />
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
+                    </div>
                   </div>
                 ) : null}
+
                 <dl className="admin-detail-dl">
+                  <div>
+                    <dt>Category</dt>
+                    <dd>
+                      {data.category_name || "—"}
+                      {data.subcategory_name ? ` · ${data.subcategory_name}` : ""}
+                    </dd>
+                  </div>
                   <div>
                     <dt>SKU / family code</dt>
                     <dd>{data.sku || "—"}</dd>
@@ -179,7 +274,12 @@ export function ProductDetailModal({
                   </div>
                   <div>
                     <dt>Price</dt>
-                    <dd>{formatMoney(data.price)}</dd>
+                    <dd>
+                      {formatMoney(data.price)}
+                      {data.compare_at_price ? (
+                        <span className="muted"> · MRP {formatMoney(data.compare_at_price)}</span>
+                      ) : null}
+                    </dd>
                   </div>
                   <div>
                     <dt>Stock (unique pieces)</dt>
@@ -190,14 +290,25 @@ export function ProductDetailModal({
                     <dd>{data.color || "—"}</dd>
                   </div>
                   <div>
+                    <dt>HSN / GST</dt>
+                    <dd>
+                      {data.hsn_code || "—"} · {data.gst_rate != null ? `${data.gst_rate}%` : "5%"}
+                    </dd>
+                  </div>
+                  <div>
                     <dt>Status</dt>
                     <dd>
                       <AdminBadge tone={statusTone(data.status)}>{data.status}</AdminBadge>
+                      {data.is_featured ? <span className="muted"> · Featured</span> : null}
                     </dd>
                   </div>
                   <div>
                     <dt>Label size</dt>
                     <dd>{data.label_size === "accessory" ? "Accessory (small)" : "Dress / saree"}</dd>
+                  </div>
+                  <div>
+                    <dt>Slug</dt>
+                    <dd>{data.slug}</dd>
                   </div>
                   <div>
                     <dt>Created</dt>
@@ -213,6 +324,12 @@ export function ProductDetailModal({
                     </div>
                   ) : null}
                 </dl>
+
+                {data.short_description ? (
+                  <p className="admin-detail-lead">{data.short_description}</p>
+                ) : null}
+                {data.description ? <p className="admin-detail-desc">{data.description}</p> : null}
+
                 {data.child_products && data.child_products.length > 0 ? (
                   <div className="admin-detail-children">
                     <h3>Design children ({data.child_products.length})</h3>
@@ -229,7 +346,6 @@ export function ProductDetailModal({
                     </ul>
                   </div>
                 ) : null}
-                {data.short_description ? <p>{data.short_description}</p> : null}
               </div>
 
               <div className="admin-detail-units">
@@ -270,23 +386,14 @@ export function ProductDetailModal({
                               seq: item.seq,
                               sizeLabel: data.color
                             }))
-                          }).then(() =>
-                            adminFetch(`/api/admin/products/${data.id}/items`, {
-                              method: "PATCH",
-                              json: { itemIds: ids, label_printed: true }
-                            })
-                          ).then(() => {
-                            setData((current) =>
-                              current
-                                ? {
-                                    ...current,
-                                    product_items: (current.product_items || []).map((item) =>
-                                      ids.includes(item.id) ? { ...item, label_printed: true } : item
-                                    )
-                                  }
-                                : current
-                            );
-                          });
+                          })
+                            .then(() =>
+                              adminFetch(`/api/admin/products/${data.id}/items`, {
+                                method: "PATCH",
+                                json: { itemIds: ids, label_printed: true }
+                              })
+                            )
+                            .then(() => void reload());
                         }}
                       >
                         <Printer size={14} />

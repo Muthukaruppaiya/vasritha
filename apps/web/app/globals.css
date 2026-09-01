@@ -10125,6 +10125,53 @@ body:has(.pos-screen) .admin-topbar-title {
   border-radius: 12px;
   margin-bottom: 12px;
 }
+.admin-detail-photo--empty {
+  display: grid;
+  place-content: center;
+  min-height: 180px;
+  padding: 16px;
+  text-align: center;
+  background: #f7ebe1;
+  border: 1px dashed #c79b6c;
+  color: #6f4230;
+}
+.admin-detail-photo-wrap {
+  margin-bottom: 12px;
+}
+.admin-detail-upload-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.admin-detail-upload-row .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.admin-detail-qr {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  color: #6f4230;
+}
+.admin-detail-qr img {
+  width: 100px;
+  height: 100px;
+  border-radius: 8px;
+  border: 1px solid #eadfd4;
+}
+.admin-detail-lead {
+  font-weight: 600;
+  margin: 12px 0 6px;
+}
+.admin-detail-desc {
+  margin: 0 0 12px;
+  color: #334155;
+  white-space: pre-wrap;
+}
 .admin-detail-galleries {
   display: grid;
   gap: 12px;

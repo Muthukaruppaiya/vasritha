@@ -31,6 +31,7 @@
     "db:patch:cart-reservations": "node --env-file=apps/web/.env.local scripts/patch-cart-reservations.mjs",
     "db:patch:loyalty": "node --env-file=apps/web/.env.local scripts/patch-loyalty.mjs",
     "db:patch:vercel-products": "node --env-file=apps/web/.env.local scripts/patch-vercel-products.mjs",
+    "db:patch:vercel-products:prod": "node scripts/patch-vercel-products.mjs",
     "db:seed:opening-voucher": "node --env-file=apps/web/.env.local scripts/seed-opening-voucher.mjs",
     "db:reset": "docker compose down -v && docker compose up -d postgres && node scripts/init-local-db.mjs"
   }
