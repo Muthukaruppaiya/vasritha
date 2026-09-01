@@ -1,51 +1,52 @@
 # Deploy Vasritha on Vercel
 
-This repo is an npm workspace monorepo. The Next.js app lives in `apps/web`.
+This repo is an npm workspace monorepo. The Next.js app lives in **`apps/web`**.
 
-## Recommended Vercel project settings
+## Required Vercel settings (do this first)
 
-Open **Vercel → Project → Settings → General → Build & Development Settings**:
+Open **Vercel → vasritha → Settings → General → Build & Development Settings**:
 
 | Setting | Value |
 | --- | --- |
 | **Root Directory** | `apps/web` |
 | **Framework Preset** | Next.js |
-| **Build Command** | leave empty (default `next build`) |
-| **Output Directory** | leave empty (do **not** set `.next` manually) |
-| **Install Command** | leave empty (Vercel installs from the monorepo root automatically) |
+| **Build Command** | *(leave empty — default `next build`)* |
+| **Output Directory** | *(leave empty — do not type `.next`)* |
+| **Install Command** | *(leave empty — Vercel installs from the monorepo root)* |
 
-If **Output Directory** is set to `.next` while **Root Directory** is wrong, deploy fails with:
+### Why this matters
 
-`The file ".next/routes-manifest.json" couldn't be found`
+| Wrong setup | Error you see |
+| --- | --- |
+| Root Directory empty + Output Directory empty | `.next/routes-manifest.json` not found at repo root |
+| Copy `.next` to repo root (old workaround) | `_global-error` Lambda / EdgeFunction not found |
+| Output Directory set to `.next` manually | Same manifest / function path errors |
 
-Clear **Output Directory** and set **Root Directory** to `apps/web`.
+**Do not copy `apps/web/.next` to the repo root.** Vercel must build and deploy from `apps/web` directly.
 
-## Alternative (repo root as Vercel root)
+After changing Root Directory, click **Redeploy** (not just retry the failed build).
 
-If you keep **Root Directory** empty, the root `vercel.json` runs `npm run vercel-build`, which:
+## Environment variables
 
-1. Builds `@vasritha/web`
-2. Copies `apps/web/.next` → `.next` for Vercel packaging
+Set on Vercel (Production + Preview):
 
-## Required environment variables
-
-Set these on Vercel (Production + Preview):
-
-- `DATABASE_URL` — Supabase direct Postgres URI (port 5432)
+- `DATABASE_URL` — Supabase Postgres URI (port 5432)
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY` — needed for product image uploads
-- `JWT_SECRET` — auth signing secret
+- `SUPABASE_SERVICE_ROLE_KEY` — product image uploads
+- `JWT_SECRET`
 - `NEXT_PUBLIC_SITE_URL` — e.g. `https://vasritha.vercel.app`
 
-Optional:
+Optional email:
 
-- `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` — outbound email
-- `ADMIN_NOTIFY_EMAIL` or `support_email` in site settings — review alerts
+- `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`
+- `ADMIN_NOTIFY_EMAIL` or support email in site settings
+
+## npm install scripts (monorepo root)
+
+Root `package.json` includes `allowScripts` for `sharp` and `unrs-resolver` so npm 11+ strict mode passes on Vercel.
 
 ## One-time database patches (production)
-
-Run from your machine against Supabase (real URI, not placeholders):
 
 ```powershell
 $env:DATABASE_URL="postgresql://postgres.xxxx:YOUR_PASSWORD@aws-0-ap-south-1.pooler.supabase.com:5432/postgres"
@@ -53,4 +54,4 @@ npm run db:patch:vercel-products:prod
 npm run db:patch:integrations
 ```
 
-Or apply the same SQL in the Supabase SQL editor.
+Or run the SQL from `db/local/` in the Supabase SQL editor.

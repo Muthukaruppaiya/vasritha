@@ -9,7 +9,6 @@
   "scripts": {
     "dev:web": "npm run dev -w @vasritha/web",
     "build": "npm run build -w @vasritha/shared && npm run build -w @vasritha/web",
-    "vercel-build": "npm run build -w @vasritha/web && node scripts/prepare-vercel-output.mjs",
     "lint": "npm run lint -w @vasritha/web",
     "db:up": "docker compose up -d postgres",
     "db:init": "node --env-file=apps/web/.env.local scripts/init-local-db.mjs",
