@@ -18,7 +18,9 @@ function useRemoteStorage() {
   return Boolean(process.env.VERCEL);
 }
 
-export async function ensureProductImagesBucket() {
+let bucketReady: Promise<boolean> | null = null;
+
+async function runEnsureProductImagesBucket() {
   const supabase = createServiceSupabaseClient();
   if (!supabase) return false;
 
@@ -39,6 +41,16 @@ export async function ensureProductImagesBucket() {
     return false;
   }
   return true;
+}
+
+export async function ensureProductImagesBucket() {
+  if (!bucketReady) {
+    bucketReady = runEnsureProductImagesBucket().catch((error) => {
+      bucketReady = null;
+      throw error;
+    });
+  }
+  return bucketReady;
 }
 
 export async function saveProductImage(input: {

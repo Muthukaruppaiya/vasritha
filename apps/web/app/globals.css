@@ -7127,6 +7127,14 @@ body:has(.admin-login) .whatsapp-float {
 .admin-product-thumb--empty {
   display: inline-block;
 }
+.admin-product-thumb--placeholder {
+  opacity: 0.72;
+  border-style: dashed;
+}
+.admin-detail-photo--placeholder {
+  opacity: 0.85;
+  border: 1px dashed #c79b6c;
+}
 
 .admin-check-field {
   gap: 6px;

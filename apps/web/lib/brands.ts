@@ -1,4 +1,5 @@
 import { query, queryOne } from "./db/pool";
+import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
 import { DEFAULT_BRAND_CODE, OPS_PLATFORM_NAME } from "./platform";
 
 export { DEFAULT_BRAND_CODE, OPS_PLATFORM_NAME };
@@ -21,6 +22,7 @@ export type BrandRow = {
 };
 
 export async function ensureBrandsSchema() {
+  if (skipRuntimeSchemaEnsure()) return;
   await query(`
     create table if not exists public.brands (
       id uuid primary key default gen_random_uuid(),

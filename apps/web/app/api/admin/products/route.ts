@@ -45,9 +45,6 @@ export async function GET(request: NextRequest) {
   const { error } = await requirePermission(request, "products:read");
   if (error) return error;
 
-  await ensureProductUnitsSchema();
-  await ensureGstSchema();
-
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status");
   const limitRaw = Number(searchParams.get("limit") || "100");
@@ -59,13 +56,19 @@ export async function GET(request: NextRequest) {
     `select
        p.id, p.name, p.slug, p.sku, p.barcode, p.tag, p.sku_prefix, p.label_size,
        p.short_name, p.short_description, p.color, p.description,
-       p.price, p.compare_at_price, p.hsn_code, p.gst_rate, p.status, p.stock_quantity, p.is_featured,
+       p.price, p.compare_at_price, p.hsn_code, p.gst_rate, p.status, p.is_featured,
        p.category_id, p.subcategory_id, p.parent_product_id, p.created_at, p.updated_at,
        c.name as category_name,
+       c.slug as category_slug,
        sc.name as subcategory_name,
        parent.name as parent_name,
        parent.sku as parent_sku,
        img.storage_path as primary_image,
+       coalesce((
+         select count(*)::int
+         from product_items pi_s
+         where pi_s.product_id = p.id and pi_s.status = 'to_sell'
+       ), 0) as stock_quantity,
        (
          select count(*)::int from product_items pi_count
          where pi_count.product_id = p.id
@@ -92,10 +95,13 @@ export async function GET(request: NextRequest) {
     [status]
   );
   return ok(
-    data.map((row) => ({
-      ...row,
-      primary_image: row.primary_image ? resolveMediaUrl(String(row.primary_image)) : null
-    }))
+    data.map((row) => {
+      const primary = row.primary_image ? resolveMediaUrl(String(row.primary_image)) : null;
+      return {
+        ...row,
+        primary_image: primary
+      };
+    })
   );
 }
 

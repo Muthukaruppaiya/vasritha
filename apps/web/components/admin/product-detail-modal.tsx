@@ -7,6 +7,7 @@ import { Printer, Upload, X } from "lucide-react";
 import { AdminBadge, AdminLoading, statusTone } from "./admin-ui";
 import { adminFetch, formatDate, formatMoney, getAdminToken } from "../../lib/admin-api";
 import { buildProductUploadPageUrl } from "../../lib/product-upload-url";
+import { categoryImage } from "../../lib/category-images";
 import { printProductStickers } from "../../lib/print-stickers";
 
 type ProductItem = {
@@ -47,6 +48,7 @@ type ProductDetail = {
   is_featured?: boolean;
   category_name?: string | null;
   subcategory_name?: string | null;
+  category_slug?: string | null;
   created_at?: string;
   image_upload_token?: string;
   product_images?: ProductImage[];
@@ -166,7 +168,8 @@ export function ProductDetailModal({
   const items = data?.product_items || [];
   const websiteGallery = data?.product_images || [];
   const internalGallery = data?.internal_images || [];
-  const heroImage = websiteGallery[0]?.storage_path;
+  const heroImage = websiteGallery[0]?.storage_path || categoryImage(data?.category_slug || "sarees");
+  const hasUploadedPhoto = Boolean(websiteGallery[0]?.storage_path);
 
   return (
     <div className="admin-modal-backdrop" role="presentation" onClick={onClose}>
@@ -197,15 +200,17 @@ export function ProductDetailModal({
             <div className="admin-detail-grid">
               <div className="admin-detail-main">
                 <div className="admin-detail-photo-wrap">
-                  {heroImage ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={heroImage} alt={data.name} className="admin-detail-photo" />
-                  ) : (
-                    <div className="admin-detail-photo admin-detail-photo--empty">
-                      <p>No website photo yet</p>
-                      <p className="muted">Upload below or scan QR — required for the shop to show this product image.</p>
-                    </div>
-                  )}
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={heroImage}
+                    alt={data.name}
+                    className={`admin-detail-photo${hasUploadedPhoto ? "" : " admin-detail-photo--placeholder"}`}
+                  />
+                  {!hasUploadedPhoto ? (
+                    <p className="muted admin-field-hint">
+                      Category placeholder shown. Upload a real photo below for the website.
+                    </p>
+                  ) : null}
                   {websiteGallery.length > 1 ? (
                     <div className="admin-detail-thumbs">
                       {websiteGallery.map((row) => (

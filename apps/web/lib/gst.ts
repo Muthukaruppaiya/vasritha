@@ -1,4 +1,5 @@
 import { query, queryOne } from "./db/pool";
+import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
 import { ensureShopsSchema } from "./shops";
 import { round2, splitInclusiveGst, type GstMoneySplit } from "./gst-math";
 
@@ -42,6 +43,7 @@ export function stateCodeFromGstin(gstin: string | null | undefined): string | n
 }
 
 export async function ensureGstSchema() {
+  if (skipRuntimeSchemaEnsure()) return;
   await query(`
     alter table public.products
       add column if not exists hsn_code text,

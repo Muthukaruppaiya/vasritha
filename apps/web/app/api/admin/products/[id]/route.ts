@@ -43,13 +43,10 @@ export async function GET(request: NextRequest, { params }: Params) {
   const { error } = await requirePermission(request, "products:read");
   if (error) return error;
 
-  await ensureProductUnitsSchema();
-  await ensureGstSchema();
-
   const { id } = await params;
 
   const product = await queryOne(
-    `select p.*, c.name as category_name, sc.name as subcategory_name
+    `select p.*, c.name as category_name, c.slug as category_slug, sc.name as subcategory_name
      from products p
      left join categories c on c.id = p.category_id
      left join subcategories sc on sc.id = p.subcategory_id

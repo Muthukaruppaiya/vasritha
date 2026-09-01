@@ -39,6 +39,7 @@ import { ProductDetailModal } from "../../../components/admin/product-detail-mod
 import { adminFetch, formatDate, formatMoney, getAdminToken } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
 import { printProductStickers } from "../../../lib/print-stickers";
+import { productListThumb } from "../../../lib/category-images";
 
 type Product = {
   id: string;
@@ -55,6 +56,7 @@ type Product = {
   category_id: string;
   subcategory_id?: string | null;
   category_name?: string | null;
+  category_slug?: string | null;
   subcategory_name?: string | null;
   primary_image?: string | null;
   short_description?: string;
@@ -955,12 +957,12 @@ function AdminProductsPageInner() {
                         onClick={() => setDetailId(product.id)}
                       >
                         <div className="admin-product-cell">
-                          {product.primary_image ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={product.primary_image} alt="" className="admin-product-thumb" />
-                          ) : (
-                            <span className="admin-product-thumb admin-product-thumb--empty" />
-                          )}
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={productListThumb(product.primary_image, product.category_slug)}
+                            alt=""
+                            className={`admin-product-thumb${product.primary_image ? "" : " admin-product-thumb--placeholder"}`}
+                          />
                           <div>
                             <b>{product.name}</b>
                             <div className="muted admin-sub">{product.slug}</div>

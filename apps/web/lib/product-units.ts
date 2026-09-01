@@ -1,5 +1,6 @@
 import type { QueryResultRow } from "pg";
 import { query, queryOne, withTransaction } from "./db/pool";
+import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
 
 export type UnitStatus = "to_sell" | "sold" | "returned" | "damaged" | "reserved";
 export type LabelSize = "accessory" | "dress";
@@ -152,6 +153,7 @@ async function runEnsureProductUnitsSchema() {
 }
 
 export async function ensureProductUnitsSchema() {
+  if (skipRuntimeSchemaEnsure()) return;
   if (!productUnitsSchemaReady) {
     productUnitsSchemaReady = runEnsureProductUnitsSchema().catch((error) => {
       productUnitsSchemaReady = null;

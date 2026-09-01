@@ -1,5 +1,8 @@
 import { query, queryOne } from "./db/pool";
 import { resolveMediaUrl } from "./product-image-storage";
+import { categoryImage } from "./category-images";
+
+export { categoryImage } from "./category-images";
 
 export type StoreVariant = {
   id: string;
@@ -54,18 +57,7 @@ export type ListProductsOptions = {
   mode?: "card" | "detail";
 };
 
-const CATEGORY_IMAGES: Record<string, string> = {
-  sarees: "/hero-silk.png",
-  jewelry: "/hero-jewelry.png",
-  "churidhars-salwars": "/hero-salwar.png",
-  handcrafted: "/catalog-wooden-item.png"
-};
-
 const CATEGORY_TONES = ["brown", "wine", "clay", "umber"] as const;
-
-export function categoryImage(slug: string) {
-  return CATEGORY_IMAGES[slug] || "/hero-silk.png";
-}
 
 export function categoryTone(index: number) {
   return CATEGORY_TONES[index % CATEGORY_TONES.length];
