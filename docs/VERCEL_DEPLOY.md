@@ -2,29 +2,35 @@
 
 This repo is an npm workspace monorepo. The Next.js app lives in **`apps/web`**.
 
-## Required Vercel settings (do this first)
+## How deploy works in this repo
+
+Root **`vercel.json`** tells Vercel to run the Next.js builder on `apps/web/package.json`. That way `.next` is created in the correct app folder even when the Vercel project root is the git repo root.
+
+You do **not** need to copy `.next` to the repo root.
+
+## Vercel dashboard settings (important)
 
 Open **Vercel → vasritha → Settings → General → Build & Development Settings**:
 
 | Setting | Value |
 | --- | --- |
-| **Root Directory** | `apps/web` |
+| **Root Directory** | *(leave empty)* **or** `apps/web` — either works with this repo config |
 | **Framework Preset** | Next.js |
-| **Build Command** | *(leave empty — default `next build`)* |
-| **Output Directory** | *(leave empty — do not type `.next`)* |
-| **Install Command** | *(leave empty — Vercel installs from the monorepo root)* |
+| **Build Command** | *(leave empty — do not override)* |
+| **Output Directory** | *(leave completely empty — never type `.next`)* |
+| **Install Command** | *(leave empty)* |
 
-### Why this matters
+### If you see `routes-manifest.json` could not be found
 
-| Wrong setup | Error you see |
+1. Clear **Output Directory** (most common cause).
+2. Clear any custom **Build Command** override.
+3. Redeploy the latest commit (do not only “Retry” an old failed deploy).
+
+| Wrong setup | Error |
 | --- | --- |
-| Root Directory empty + Output Directory empty | `.next/routes-manifest.json` not found at repo root |
-| Copy `.next` to repo root (old workaround) | `_global-error` Lambda / EdgeFunction not found |
-| Output Directory set to `.next` manually | Same manifest / function path errors |
-
-**Do not copy `apps/web/.next` to the repo root.** Vercel must build and deploy from `apps/web` directly.
-
-After changing Root Directory, click **Redeploy** (not just retry the failed build).
+| Output Directory set to `.next` manually | `routes-manifest.json` not found |
+| Custom build that skips `next build` | Incomplete `.next` folder |
+| Copying `apps/web/.next` to repo root | `_global-error` Lambda not found |
 
 ## Environment variables
 
