@@ -3,6 +3,7 @@
  * Uses admin Email integration when enabled; falls back to SMTP_* env vars.
  * Skips sending when the email integration is disabled.
  */
+import nodemailer from "nodemailer";
 import { getIntegration, type EmailConfig } from "./integrations";
 
 type MailInput = {
@@ -16,7 +17,12 @@ export async function sendMail(input: MailInput): Promise<{ sent: boolean; skipp
   const to = Array.isArray(input.to) ? input.to.filter(Boolean) : [input.to].filter(Boolean);
   if (!to.length) return { sent: false, skipped: "No recipients" };
 
-  const integration = await getIntegration<EmailConfig>("email");
+  let integration: Awaited<ReturnType<typeof getIntegration<EmailConfig>>> = null;
+  try {
+    integration = await getIntegration<EmailConfig>("email");
+  } catch (error) {
+    console.warn("[mail:integration-unavailable]", error);
+  }
   if (integration && !integration.is_enabled) {
     console.info("[mail:skipped]", {
       to,
@@ -49,7 +55,6 @@ export async function sendMail(input: MailInput): Promise<{ sent: boolean; skipp
   // If row exists and is enabled, proceed with merged config above.
 
   try {
-    const nodemailer = await import("nodemailer");
     const transporter = nodemailer.createTransport({
       host,
       port,

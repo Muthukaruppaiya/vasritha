@@ -171,24 +171,31 @@ export async function POST(request: NextRequest) {
   const adminEmail = settings?.support_email || process.env.ADMIN_NOTIFY_EMAIL || null;
   if (adminEmail) {
     const site = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
-    await sendMail({
-      to: adminEmail,
-      subject: `[Vasritha] New review pending — ${product.name}`,
-      text: [
-        `A new product review is waiting for approval.`,
-       ``,
-        `Product: ${product.name}`,
-        `Reviewer: ${customerName}${ctx.email ? ` <${ctx.email}>` : ""}`,
-        `Rating: ${Math.round(rating)} / 5`,
-        title ? `Title: ${title}` : "",
-        ``,
-        bodyText,
-        ``,
-        `Moderate: ${site}/admin/reviews`
-      ]
-        .filter(Boolean)
-        .join("\n")
-    });
+    try {
+      const mailResult = await sendMail({
+        to: adminEmail,
+        subject: `[Vasritha] New review pending — ${product.name}`,
+        text: [
+          `A new product review is waiting for approval.`,
+          ``,
+          `Product: ${product.name}`,
+          `Reviewer: ${customerName}${ctx.email ? ` <${ctx.email}>` : ""}`,
+          `Rating: ${Math.round(rating)} / 5`,
+          title ? `Title: ${title}` : "",
+          ``,
+          bodyText,
+          ``,
+          `Moderate: ${site}/admin/reviews`
+        ]
+          .filter(Boolean)
+          .join("\n")
+      });
+      if (!mailResult.sent && mailResult.skipped) {
+        console.info("[reviews:mail]", mailResult.skipped);
+      }
+    } catch (mailError) {
+      console.error("[reviews:mail]", mailError);
+    }
   }
 
   return ok(data, 201);
