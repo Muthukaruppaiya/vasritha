@@ -146,95 +146,121 @@ export function Header({
       <header className="shell nav">
         <div className="nav-left">
           <NavigationBar categories={categories} />
-          <Link className="search-link search-link--mobile" href="/sarees" aria-label={t("common.search")}>
-            <Search size={21} strokeWidth={1.7} />
+          <Link className="search-link search-link--mobile nav-icon-btn" href="/sarees" aria-label={t("common.search")}>
+            <Search size={20} strokeWidth={1.65} />
           </Link>
         </div>
+
         <Link className="nav-logo-link" href="/" aria-label="Vasritha home">
-          <img className="brand-logo" src={headerLogo} alt="Vasritha — Timeless Elegance" />
+          <span className="nav-logo-mark">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img className="brand-logo" src={headerLogo} alt="Vasritha — Timeless Elegance" />
+          </span>
         </Link>
+
         <div className="actions">
-          <LanguageSwitcher />
-          <Link className="search-link search-link--desktop" href="/sarees" aria-label={t("common.search")}>
-            <Search size={21} strokeWidth={1.7} />
-          </Link>
-
-          <div className="voucher-menu" ref={menuRef}>
-            <button
-              id="header-voucher-dock"
-              type="button"
-              className={`icon-link voucher-dock${availableCount ? " has-voucher" : ""}${voucherPulse ? " is-pulse" : ""}`}
-              aria-label="Gift vouchers"
-              aria-expanded={menuOpen}
-              aria-haspopup="true"
-              onClick={() => setMenuOpen((open) => !open)}
-            >
-              <TicketPercent size={22} strokeWidth={1.7} />
-              {availableCount ? <span className="voucher-dock-dot" aria-hidden="true" /> : null}
-            </button>
-
-            {menuOpen ? (
-              <div className="voucher-menu-panel" role="menu">
-                <p className="voucher-menu-title">Your vouchers</p>
-                {!vouchers.length ? (
-                  <p className="voucher-menu-empty">No vouchers yet. Scratch a gift card when it appears.</p>
-                ) : (
-                  <ul className="voucher-menu-list">
-                    {vouchers.map((row) => (
-                      <li key={row.id}>
-                        <div className="voucher-menu-row">
-                          <div>
-                            <strong>{row.code}</strong>
-                            <span>
-                              {row.headline || "Gift voucher"}
-                              {row.status === "used" ? " · Used" : ""}
-                              {appliedCode === row.code && row.status === "available" ? " · Applied" : ""}
-                            </span>
-                          </div>
-                          {row.status === "available" ? (
-                            <button
-                              type="button"
-                              className="voucher-menu-apply"
-                              disabled={appliedCode === row.code}
-                              onClick={() => {
-                                applySavedVoucher(row.id);
-                                setMenuOpen(false);
-                              }}
-                            >
-                              {appliedCode === row.code ? "Applied" : "Apply"}
-                            </button>
-                          ) : (
-                            <em className="voucher-menu-used">Used</em>
-                          )}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {availableCount ? (
-                  <Link className="voucher-menu-cart" href="/cart" onClick={() => setMenuOpen(false)}>
-                    Go to bag
-                  </Link>
-                ) : null}
-              </div>
-            ) : null}
+          <div className="actions-cluster actions-cluster--utility">
+            <LanguageSwitcher />
+            <Link className="search-link search-link--desktop nav-icon-btn" href="/sarees" aria-label={t("common.search")}>
+              <Search size={20} strokeWidth={1.65} />
+            </Link>
           </div>
 
-          <Link
-            className="icon-link login-link"
-            href={loggedIn ? "/account" : "/login"}
-            aria-label={loggedIn ? t("common.yourAccount") : t("common.login")}
-          >
-            <LoginIcon size={22} />
-          </Link>
-          <Link
-            className="icon-link bag-link"
-            href="/cart"
-            aria-label={`${t("common.bag")}, ${bagCount} ${t("common.bagItems")}`}
-          >
-            <CartBagIcon size={22} />
-            <span>{bagCount}</span>
-          </Link>
+          <div className="actions-cluster actions-cluster--commerce">
+            <div className="voucher-menu" ref={menuRef}>
+              <button
+                id="header-voucher-dock"
+                type="button"
+                className={`icon-link nav-icon-btn voucher-dock${availableCount ? " has-voucher" : ""}${voucherPulse ? " is-pulse" : ""}`}
+                aria-label={
+                  availableCount
+                    ? `Gift vouchers, ${availableCount} available`
+                    : "Gift vouchers"
+                }
+                aria-expanded={menuOpen}
+                aria-haspopup="true"
+                onClick={() => setMenuOpen((open) => !open)}
+              >
+                <TicketPercent size={21} strokeWidth={1.7} />
+                {availableCount ? (
+                  <span className="voucher-dock-count" aria-hidden="true">
+                    {availableCount > 9 ? "9+" : availableCount}
+                  </span>
+                ) : null}
+              </button>
+
+              {menuOpen ? (
+                <div className="voucher-menu-panel" role="menu">
+                  <div className="voucher-menu-head">
+                    <p className="voucher-menu-title">Your vouchers</p>
+                    {availableCount ? (
+                      <span className="voucher-menu-chip">{availableCount} ready</span>
+                    ) : null}
+                  </div>
+                  {!vouchers.length ? (
+                    <p className="voucher-menu-empty">
+                      No vouchers yet. Scratch a gift card when it appears on the storefront.
+                    </p>
+                  ) : (
+                    <ul className="voucher-menu-list">
+                      {vouchers.map((row) => (
+                        <li key={row.id}>
+                          <div className="voucher-menu-row">
+                            <div>
+                              <strong>{row.code}</strong>
+                              <span>
+                                {row.headline || "Gift voucher"}
+                                {row.status === "used" ? " · Used" : ""}
+                                {appliedCode === row.code && row.status === "available"
+                                  ? " · Applied"
+                                  : ""}
+                              </span>
+                            </div>
+                            {row.status === "available" ? (
+                              <button
+                                type="button"
+                                className="voucher-menu-apply"
+                                disabled={appliedCode === row.code}
+                                onClick={() => {
+                                  applySavedVoucher(row.id);
+                                  setMenuOpen(false);
+                                }}
+                              >
+                                {appliedCode === row.code ? "Applied" : "Apply"}
+                              </button>
+                            ) : (
+                              <em className="voucher-menu-used">Used</em>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {availableCount ? (
+                    <Link className="voucher-menu-cart" href="/cart" onClick={() => setMenuOpen(false)}>
+                      Go to bag
+                    </Link>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+
+            <Link
+              className="icon-link nav-icon-btn login-link"
+              href={loggedIn ? "/account" : "/login"}
+              aria-label={loggedIn ? t("common.yourAccount") : t("common.login")}
+            >
+              <LoginIcon size={21} />
+            </Link>
+            <Link
+              className={`icon-link nav-icon-btn bag-link${bagCount ? " has-items" : ""}`}
+              href="/cart"
+              aria-label={`${t("common.bag")}, ${bagCount} ${t("common.bagItems")}`}
+            >
+              <CartBagIcon size={21} />
+              <span>{bagCount}</span>
+            </Link>
+          </div>
         </div>
       </header>
     </div>
