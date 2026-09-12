@@ -1,58 +1,69 @@
-# Deploy Vasritha on Vercel
+# Deploy Vasritha on Vercel (`vasritha-web`)
 
-This repo is an npm workspace monorepo. The Next.js app lives in **`apps/web`**.
+This repo is an npm workspace. The Next.js app is in **`apps/web`**.
 
-## How deploy works in this repo
+Target project example: [vasritha-web on Vercel](https://vercel.com/muthu-karuppaiyas-projects/vasritha-web)
 
-Root **`vercel.json`** tells Vercel to run the Next.js builder on `apps/web/package.json`. That way `.next` is created in the correct app folder even when the Vercel project root is the git repo root.
+## Dashboard setup (one time)
 
-You do **not** need to copy `.next` to the repo root.
+### 1. Connect GitHub
 
-## Vercel dashboard settings (important)
+1. Open [vasritha-web → Settings → Git](https://vercel.com/muthu-karuppaiyas-projects/vasritha-web/settings/git)
+2. **Connect Git Repository** → choose `Muthukaruppaiya/vasritha`
+3. Production branch: `main`
 
-Open **Vercel → vasritha → Settings → General → Build & Development Settings**:
+### 2. Build & Development Settings
+
+Open **Settings → Build and Deployment**:
 
 | Setting | Value |
 | --- | --- |
-| **Root Directory** | *(leave empty)* **or** `apps/web` — either works with this repo config |
+| **Root Directory** | `apps/web` |
 | **Framework Preset** | Next.js |
-| **Build Command** | *(leave empty — do not override)* |
-| **Output Directory** | *(leave completely empty — never type `.next`)* |
-| **Install Command** | *(leave empty)* |
+| **Build Command** | *(empty — default `next build`)* |
+| **Output Directory** | *(empty — never set `.next`)* |
+| **Install Command** | *(empty — or `cd ../.. && npm install`)* |
 
-### If you see `routes-manifest.json` could not be found
+Save, then **Deployments → Redeploy** the latest `main` commit.
 
-1. Clear **Output Directory** (most common cause).
-2. Clear any custom **Build Command** override.
-3. Redeploy the latest commit (do not only “Retry” an old failed deploy).
+### 3. Environment variables
 
-| Wrong setup | Error |
+**Settings → Environment Variables** (add for Production + Preview):
+
+| Name | Purpose |
 | --- | --- |
-| Output Directory set to `.next` manually | `routes-manifest.json` not found |
-| Custom build that skips `next build` | Incomplete `.next` folder |
-| Copying `apps/web/.next` to repo root | `_global-error` Lambda not found |
+| `DATABASE_URL` | Supabase Postgres URI (prefer direct / port 5432) |
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://lnrcglxlnsoetvyntidu.supabase.co` |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase anon / publishable key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Product image uploads (service role) |
+| `JWT_SECRET` | Auth token signing secret |
+| `NEXT_PUBLIC_SITE_URL` | Your Vercel URL, e.g. `https://vasritha-web.vercel.app` |
 
-## Environment variables
+Optional: `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `ADMIN_NOTIFY_EMAIL`
 
-Set on Vercel (Production + Preview):
+Root `package.json` already includes `allowScripts` for `sharp` and `unrs-resolver` (needed for npm 11+ on Vercel).
 
-- `DATABASE_URL` — Supabase Postgres URI (port 5432)
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY` — product image uploads
-- `JWT_SECRET`
-- `NEXT_PUBLIC_SITE_URL` — e.g. `https://vasritha.vercel.app`
+## CLI deploy (optional)
 
-Optional email:
+From the repo root, after logging into the **Muthu Karuppaiya** Vercel team:
 
-- `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`
-- `ADMIN_NOTIFY_EMAIL` or support email in site settings
+```powershell
+npx vercel login
+cd apps/web
+npx vercel link --yes --scope muthu-karuppaiyas-projects --project vasritha-web
+npx vercel --prod
+```
 
-## npm install scripts (monorepo root)
+Prefer Git-connected deploys so every push to `main` updates production automatically.
 
-Root `package.json` includes `allowScripts` for `sharp` and `unrs-resolver` so npm 11+ strict mode passes on Vercel.
+## After first successful deploy
 
-## One-time database patches (production)
+1. Open the production URL shown in the Vercel dashboard.
+2. Confirm `/api/health` returns `{"status":"ok",...}`.
+3. Sign in to `/admin/login` with your admin user.
+4. If product create / images fail, check env vars and run DB patches once (see below).
+
+## One-time database patches
 
 ```powershell
 $env:DATABASE_URL="postgresql://postgres.xxxx:YOUR_PASSWORD@aws-0-ap-south-1.pooler.supabase.com:5432/postgres"
@@ -60,4 +71,4 @@ npm run db:patch:vercel-products:prod
 npm run db:patch:integrations
 ```
 
-Or run the SQL from `db/local/` in the Supabase SQL editor.
+Or run the SQL under `db/local/` in the Supabase SQL editor.
