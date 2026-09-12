@@ -6,12 +6,15 @@ declare global {
 }
 
 export function getDatabaseUrl() {
-  const url = process.env.DATABASE_URL;
+  const url = String(process.env.DATABASE_URL || "").trim();
   if (url) return url;
   // Never fall back to localhost on Vercel / hosted builds
   if (process.env.VERCEL || process.env.NODE_ENV === "production") {
+    const declared = Object.prototype.hasOwnProperty.call(process.env, "DATABASE_URL");
     throw new Error(
-      "DATABASE_URL is required on hosted environments (set Supabase Postgres URI in Vercel env)."
+      declared
+        ? "DATABASE_URL is set but empty on this deployment. Paste your Supabase Postgres URI in Vercel → Settings → Environment Variables, then Redeploy."
+        : "DATABASE_URL is required on hosted environments (set Supabase Postgres URI in Vercel env)."
     );
   }
   return "postgresql://postgres:postgres@127.0.0.1:5433/vasritha";
