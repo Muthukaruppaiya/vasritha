@@ -1,0 +1,10 @@
+.next
+.next-build
+node_modules
+.env*
+!.env.example
+public/uploads/**
+!public/uploads/.gitkeep
+*.log
+*.tsbuildinfo
+coverage
