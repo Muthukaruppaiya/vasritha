@@ -17,11 +17,19 @@ const COLLECTION_IMAGES: Record<string, { image: string; lines: string[] }> = {
 };
 
 export default async function Home() {
-  const [categories, collectionRows, products] = await Promise.all([
-    listCategories(),
-    listCollections(),
-    listActiveProducts({ mode: "card", limit: 16 })
-  ]);
+  let categories: Awaited<ReturnType<typeof listCategories>> = [];
+  let collectionRows: Awaited<ReturnType<typeof listCollections>> = [];
+  let products: Awaited<ReturnType<typeof listActiveProducts>> = [];
+
+  try {
+    [categories, collectionRows, products] = await Promise.all([
+      listCategories(),
+      listCollections(),
+      listActiveProducts({ mode: "card", limit: 16 })
+    ]);
+  } catch (error) {
+    console.error("[home] catalog load failed", error);
+  }
 
   const collections = collectionRows.map((row) => {
     const meta = COLLECTION_IMAGES[row.slug] || {
