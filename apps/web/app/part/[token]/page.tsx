@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { Camera, CheckCircle2, ImagePlus, RefreshCw, Upload } from "lucide-react";
 import { preparePhoneImageForUpload } from "../../../lib/prepare-phone-image";
@@ -21,7 +21,7 @@ type Payload = {
 function PartImageUploadInner() {
   const params = useParams<{ token: string }>();
   const searchParams = useSearchParams();
-  const token = params.token;
+  const token = String(params.token || "");
   const kind = useMemo(
     () => parseProductImageUploadKind(searchParams.get("kind")),
     [searchParams]
@@ -31,10 +31,11 @@ function PartImageUploadInner() {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState("");
   const [previewUrl, setPreviewUrl] = useState("");
   const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const cameraRef = useRef<HTMLInputElement | null>(null);
-  const galleryRef = useRef<HTMLInputElement | null>(null);
+  const [cameraKey, setCameraKey] = useState(0);
+  const [galleryKey, setGalleryKey] = useState(0);
 
   const apiPath = `/api/part-upload/${encodeURIComponent(token)}?kind=${kind}`;
 
@@ -68,31 +69,42 @@ function PartImageUploadInner() {
 
   useEffect(() => {
     void load();
-    return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, kind]);
 
-  const onPick = async (fileList: FileList | null) => {
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  const onPick = async (fileList: FileList | null, source: "camera" | "gallery") => {
     const file = fileList?.[0];
-    if (!file) return;
+    if (!file) {
+      setError("No photo was selected. Tap again and allow camera / photos access.");
+      return;
+    }
+
     setError("");
     setMessage("");
     setBusy(true);
+    setStatus("Preparing photo…");
     try {
-      const prepared = await preparePhoneImageForUpload(file, file.name || "photo.jpg");
+      const prepared = await preparePhoneImageForUpload(file, file.name || `${source}.jpg`);
       clearPreview();
       const url = URL.createObjectURL(prepared);
       setPendingFile(prepared);
       setPreviewUrl(url);
+      setStatus("Photo ready — tap Upload photo.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not read that photo");
       clearPreview();
+      setStatus("");
     } finally {
       setBusy(false);
-      if (cameraRef.current) cameraRef.current.value = "";
-      if (galleryRef.current) galleryRef.current.value = "";
+      // Remount inputs so the same file can be chosen again on iOS.
+      if (source === "camera") setCameraKey((value) => value + 1);
+      else setGalleryKey((value) => value + 1);
     }
   };
 
@@ -104,6 +116,7 @@ function PartImageUploadInner() {
     setBusy(true);
     setMessage("");
     setError("");
+    setStatus("Uploading…");
     try {
       const body = new FormData();
       body.append("file", pendingFile, pendingFile.name || "phone.jpg");
@@ -118,10 +131,12 @@ function PartImageUploadInner() {
           ? "Internal photo uploaded. You can add another or close this page."
           : "Website photo uploaded. It will show on the storefront."
       );
+      setStatus("");
       clearPreview();
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
+      setStatus("");
     } finally {
       setBusy(false);
     }
@@ -174,48 +189,43 @@ function PartImageUploadInner() {
 
               {data.remaining > 0 ? (
                 <div className="part-upload-actions">
-                  <button
-                    type="button"
-                    className="part-upload-pick"
-                    disabled={busy}
-                    onClick={() => cameraRef.current?.click()}
-                  >
-                    <Camera size={22} strokeWidth={2} />
-                    Take photo
-                  </button>
-                  <button
-                    type="button"
-                    className="part-upload-pick part-upload-pick--ghost"
-                    disabled={busy}
-                    onClick={() => galleryRef.current?.click()}
-                  >
-                    <ImagePlus size={22} strokeWidth={2} />
-                    Choose gallery
-                  </button>
+                  {/* Native <label> + file input — required for iOS/Android camera & gallery. */}
+                  <label className={`part-upload-pick${busy ? " is-disabled" : ""}`}>
+                    <input
+                      key={`camera-${cameraKey}`}
+                      className="part-upload-file-input"
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      disabled={busy}
+                      onChange={(e) => void onPick(e.target.files, "camera")}
+                    />
+                    <Camera size={22} strokeWidth={2} aria-hidden />
+                    <span>Take photo</span>
+                  </label>
 
-                  <input
-                    ref={cameraRef}
-                    type="file"
-                    accept="image/*,image/jpeg,image/png,image/webp"
-                    capture="environment"
-                    hidden
-                    onChange={(e) => void onPick(e.target.files)}
-                  />
-                  <input
-                    ref={galleryRef}
-                    type="file"
-                    accept="image/*,image/jpeg,image/png,image/webp"
-                    hidden
-                    onChange={(e) => void onPick(e.target.files)}
-                  />
+                  <label className={`part-upload-pick part-upload-pick--ghost${busy ? " is-disabled" : ""}`}>
+                    <input
+                      key={`gallery-${galleryKey}`}
+                      className="part-upload-file-input"
+                      type="file"
+                      accept="image/*"
+                      disabled={busy}
+                      onChange={(e) => void onPick(e.target.files, "gallery")}
+                    />
+                    <ImagePlus size={22} strokeWidth={2} aria-hidden />
+                    <span>Choose from gallery</span>
+                  </label>
 
                   {previewUrl ? (
                     <div className="part-upload-preview">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={previewUrl} alt="Selected preview" />
-                      <p className="muted">Preview ready — compressed for fast upload.</p>
+                      <p className="muted">Preview ready.</p>
                     </div>
                   ) : null}
+
+                  {status ? <p className="part-upload-status">{status}</p> : null}
 
                   <button
                     type="button"
@@ -223,8 +233,8 @@ function PartImageUploadInner() {
                     disabled={busy || !pendingFile}
                     onClick={() => void onUpload()}
                   >
-                    {busy ? (
-                      "Working…"
+                    {busy && pendingFile ? (
+                      "Uploading…"
                     ) : (
                       <>
                         <Upload size={18} />
@@ -258,8 +268,8 @@ function PartImageUploadInner() {
         </section>
 
         <p className="part-upload-footnote muted">
-          Tip: on iPhone use Camera → Formats → Most Compatible if a photo fails. This page also
-          compresses JPG/PNG automatically.
+          Allow Camera / Photos when the phone asks. On iPhone, use Settings → Camera → Formats →
+          Most Compatible if HEIC photos fail.
         </p>
       </div>
     </main>

@@ -3,49 +3,70 @@
 const MAX_EDGE = 1600;
 const JPEG_QUALITY = 0.82;
 const MAX_OUTPUT_BYTES = 3.5 * 1024 * 1024;
+const MAX_FALLBACK_BYTES = 7.5 * 1024 * 1024;
 
-function loadImageElement(file: Blob): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve(img);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(
-        new Error(
-          "This phone photo format is not supported. Please choose a JPG/PNG photo, or set the camera to Most Compatible."
-        )
-      );
-    };
-    img.src = url;
-  });
+function toFile(blob: Blob, name: string, type: string) {
+  try {
+    return new File([blob], name, { type, lastModified: Date.now() });
+  } catch {
+    const fallback = blob as Blob & { name?: string };
+    Object.defineProperty(fallback, "name", { value: name, configurable: true });
+    return fallback as File;
+  }
 }
 
 async function canvasToJpegBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
-  const blob = await new Promise<Blob | null>((resolve) => {
-    canvas.toBlob((result) => resolve(result), "image/jpeg", quality);
-  });
-  if (!blob) throw new Error("Could not prepare photo for upload");
-  return blob;
+  if (canvas.toBlob) {
+    const blob = await new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((result) => resolve(result), "image/jpeg", quality);
+    });
+    if (blob) return blob;
+  }
+  const dataUrl = canvas.toDataURL("image/jpeg", quality);
+  const res = await fetch(dataUrl);
+  return res.blob();
 }
 
-/**
- * Convert any displayable image (incl. many phone camera captures) to a JPEG under ~3.5MB.
- */
-export async function preparePhoneImageForUpload(file: File | Blob, nameHint = "photo.jpg") {
-  const type = ("type" in file && file.type) || "";
-  if (/heic|heif/i.test(type) || /\.heic$/i.test(nameHint)) {
-    // Try decode anyway — some iOS versions already provide a decodable bitmap.
+async function drawFileToCanvas(file: Blob): Promise<HTMLCanvasElement> {
+  // Prefer createImageBitmap when available (more reliable on modern mobile browsers).
+  if (typeof createImageBitmap === "function") {
+    try {
+      const bitmap = await createImageBitmap(file);
+      const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
+      const width = Math.max(1, Math.round(bitmap.width * scale));
+      const height = Math.max(1, Math.round(bitmap.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Could not prepare photo for upload");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(bitmap, 0, 0, width, height);
+      bitmap.close?.();
+      return canvas;
+    } catch {
+      // fall through to <img>
+    }
   }
 
-  const img = await loadImageElement(file);
+  const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Could not open that photo on this phone."));
+    };
+    image.src = url;
+  });
+
   const scale = Math.min(1, MAX_EDGE / Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height));
   const width = Math.max(1, Math.round((img.naturalWidth || img.width) * scale));
   const height = Math.max(1, Math.round((img.naturalHeight || img.height) * scale));
-
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -54,18 +75,43 @@ export async function preparePhoneImageForUpload(file: File | Blob, nameHint = "
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, width, height);
   ctx.drawImage(img, 0, 0, width, height);
+  return canvas;
+}
 
-  let quality = JPEG_QUALITY;
-  let blob = await canvasToJpegBlob(canvas, quality);
-  while (blob.size > MAX_OUTPUT_BYTES && quality > 0.45) {
-    quality -= 0.1;
-    blob = await canvasToJpegBlob(canvas, quality);
+/**
+ * Convert any displayable image to a JPEG under ~3.5MB.
+ * Falls back to the original file when compression is not possible.
+ */
+export async function preparePhoneImageForUpload(file: File | Blob, nameHint = "photo.jpg") {
+  const originalName =
+    ("name" in file && typeof file.name === "string" && file.name) || nameHint || "photo.jpg";
+  const originalType = ("type" in file && file.type) || "";
+
+  try {
+    const canvas = await drawFileToCanvas(file);
+    let quality = JPEG_QUALITY;
+    let blob = await canvasToJpegBlob(canvas, quality);
+    while (blob.size > MAX_OUTPUT_BYTES && quality > 0.45) {
+      quality -= 0.1;
+      blob = await canvasToJpegBlob(canvas, quality);
+    }
+    if (blob.size <= MAX_OUTPUT_BYTES) {
+      const base = originalName.replace(/\.[^.]+$/, "") || "photo";
+      return toFile(blob, `${base}.jpg`, "image/jpeg");
+    }
+  } catch {
+    // Fall through to original when possible.
   }
 
-  if (blob.size > MAX_OUTPUT_BYTES) {
-    throw new Error("Photo is still too large after compression. Try a different photo.");
+  if (file.size <= MAX_FALLBACK_BYTES) {
+    const type = originalType || "image/jpeg";
+    if (/heic|heif/i.test(type) || /\.heic$/i.test(originalName)) {
+      throw new Error(
+        "This HEIC photo could not be converted. On iPhone: Settings → Camera → Formats → Most Compatible, then retake."
+      );
+    }
+    return toFile(file, originalName.replace(/\.[^.]+$/, "") + ".jpg", type.startsWith("image/") ? type : "image/jpeg");
   }
 
-  const base = nameHint.replace(/\.[^.]+$/, "") || "photo";
-  return new File([blob], `${base}.jpg`, { type: "image/jpeg", lastModified: Date.now() });
+  throw new Error("Photo is too large. Try taking again at a lower resolution.");
 }

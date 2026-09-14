@@ -10823,17 +10823,21 @@ body:has(.pos-screen) .admin-topbar-title {
 }
 
 .part-upload-pick {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  min-height: 52px;
+  min-height: 56px;
   border-radius: 14px;
   border: 1px solid #3d241c;
   background: #3d241c;
   color: #f7e7c5;
   font: 700 0.95rem var(--font-body), sans-serif;
   cursor: pointer;
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
 }
 
 .part-upload-pick--ghost {
@@ -10842,9 +10846,23 @@ body:has(.pos-screen) .admin-topbar-title {
   border-color: #e4d5c4;
 }
 
-.part-upload-pick:disabled {
+.part-upload-pick.is-disabled {
   opacity: 0.55;
-  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Full-hit invisible file input — works on iOS/Android (unlike hidden + .click()). */
+.part-upload-file-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+  font-size: 24px; /* larger hit target quirks on iOS */
 }
 
 .part-upload-preview {
@@ -10871,6 +10889,13 @@ body:has(.pos-screen) .admin-topbar-title {
   justify-content: center;
   border-radius: 14px;
   font-size: 1rem;
+}
+
+.part-upload-status {
+  margin: 0;
+  text-align: center;
+  font: 650 0.86rem var(--font-body), sans-serif;
+  color: #7a4f2a;
 }
 
 .part-upload-full {
