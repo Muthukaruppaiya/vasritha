@@ -7237,6 +7237,130 @@ body:has(.admin-login) .whatsapp-float {
   gap: 14px;
 }
 
+.admin-modal--product .admin-form-grid--fields {
+  gap: 12px;
+}
+
+.admin-modal--product .admin-form-grid--fields > label {
+  gap: 8px;
+  padding: 12px 14px 13px;
+  border: 1px solid #eadfce;
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, #fffefb 0%, #fff9f2 100%);
+  box-shadow:
+    0 1px 0 rgb(255 255 255 / 80%) inset,
+    0 8px 18px rgb(61 36 28 / 4%);
+  transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
+}
+
+.admin-modal--product .admin-form-grid--fields > label:hover {
+  border-color: #dfc7ae;
+}
+
+.admin-modal--product .admin-form-grid--fields > label:focus-within {
+  border-color: #c79b6c;
+  background: #ffffff;
+  box-shadow:
+    0 0 0 3px rgb(199 155 108 / 20%),
+    0 10px 22px rgb(61 36 28 / 8%);
+}
+
+.admin-modal--product .admin-form-grid--fields > label:not(.admin-check-field) > span:first-of-type {
+  color: #7a4f2a;
+  font-size: 0.7rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.admin-modal--product .admin-form-grid--fields input,
+.admin-modal--product .admin-form-grid--fields select,
+.admin-modal--product .admin-form-grid--fields textarea {
+  min-height: 44px;
+  padding: 11px 13px;
+  border: 1px solid #e4d5c4;
+  border-radius: 11px;
+  background: #ffffff;
+  color: #3d241c;
+  box-shadow: inset 0 1px 2px rgb(61 36 28 / 5%);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.admin-modal--product .admin-form-grid--fields textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.admin-modal--product .admin-form-grid--fields input::placeholder,
+.admin-modal--product .admin-form-grid--fields textarea::placeholder {
+  color: #b39a86;
+}
+
+.admin-modal--product .admin-form-grid--fields input:focus,
+.admin-modal--product .admin-form-grid--fields select:focus,
+.admin-modal--product .admin-form-grid--fields textarea:focus {
+  outline: none;
+  border-color: #b8892f;
+  box-shadow:
+    inset 0 1px 2px rgb(61 36 28 / 4%),
+    0 0 0 3px rgb(184 137 47 / 18%);
+}
+
+.admin-modal--product .admin-form-grid--fields select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #7a4f2a 50%),
+    linear-gradient(135deg, #7a4f2a 50%, transparent 50%),
+    linear-gradient(180deg, #ffffff, #fffaf4);
+  background-position:
+    calc(100% - 16px) calc(50% - 2px),
+    calc(100% - 11px) calc(50% - 2px),
+    0 0;
+  background-size: 5px 5px, 5px 5px, 100% 100%;
+  background-repeat: no-repeat;
+  padding-right: 34px;
+}
+
+.admin-modal--product .admin-form-grid--fields .admin-input-with-action {
+  gap: 8px;
+}
+
+.admin-modal--product .admin-form-grid--fields .admin-input-with-action input {
+  flex: 1;
+}
+
+.admin-modal--product .admin-form-grid--fields .admin-input-with-action .admin-icon-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 11px;
+  border-color: #e4d5c4;
+  background: #fffaf5;
+  color: #7a4f2a;
+}
+
+.admin-modal--product .admin-form-grid--fields .admin-input-with-action .admin-icon-btn:hover {
+  background: #3d241c;
+  border-color: #3d241c;
+  color: #f7e7c5;
+}
+
+.admin-modal--product .admin-form-grid--fields .admin-field-hint {
+  margin-top: 2px;
+  color: #9a7b63;
+}
+
+.admin-modal--product .admin-form-grid--fields .admin-check-field {
+  justify-content: center;
+}
+
+.admin-modal--product .admin-form-grid--fields .admin-check-row {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid #eadfce;
+}
+
 .admin-span-2 { grid-column: span 2; }
 
 .admin-error,

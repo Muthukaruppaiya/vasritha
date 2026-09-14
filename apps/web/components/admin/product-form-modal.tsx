@@ -507,7 +507,7 @@ export function ProductFormModal({
               Product created. Scan the website or internal QR below, or upload from this computer.
             </AdminAlert>
           ) : null}
-          <div className="admin-form-grid">
+          <div className="admin-form-grid admin-form-grid--fields">
             <label>
               <span>Name</span>
               <input
