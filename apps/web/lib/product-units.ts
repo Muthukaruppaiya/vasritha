@@ -291,8 +291,9 @@ export async function lookupUnitByCode(code: string) {
        (
          select pi.storage_path from product_images pi
          where pi.product_id = p.id
-           and coalesce(pi.image_kind::text, 'website') = 'website'
-         order by pi.sort_order asc
+         order by
+           case when coalesce(pi.image_kind::text, 'website') = 'internal' then 0 else 1 end,
+           pi.sort_order asc
          limit 1
        ) as image_path
      from product_items i

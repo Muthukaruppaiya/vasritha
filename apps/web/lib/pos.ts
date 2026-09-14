@@ -1,4 +1,5 @@
 import { query, queryOne } from "./db/pool";
+import { resolveMediaUrl } from "./product-image-storage";
 import { lookupUnitByCode } from "./product-units";
 import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
 
@@ -118,7 +119,7 @@ export async function lookupSellable(q: string): Promise<PosSellable[]> {
         variantName: unit.tag,
         price: Number(unit.price),
         stock: 1,
-        imageSrc: unit.image_path
+        imageSrc: unit.image_path ? resolveMediaUrl(unit.image_path) : null
       }
     ];
   }
@@ -155,8 +156,9 @@ export async function lookupSellable(q: string): Promise<PosSellable[]> {
        (
          select pi.storage_path from product_images pi
          where pi.product_id = p.id
-           and coalesce(pi.image_kind::text, 'website') = 'website'
-         order by pi.sort_order asc
+         order by
+           case when coalesce(pi.image_kind::text, 'website') = 'internal' then 0 else 1 end,
+           pi.sort_order asc
          limit 1
        ) as image_path
      from products p
@@ -208,8 +210,9 @@ export async function lookupSellable(q: string): Promise<PosSellable[]> {
        (
          select pi.storage_path from product_images pi
          where pi.product_id = p.id
-           and coalesce(pi.image_kind::text, 'website') = 'website'
-         order by pi.sort_order asc
+         order by
+           case when coalesce(pi.image_kind::text, 'website') = 'internal' then 0 else 1 end,
+           pi.sort_order asc
          limit 1
        ) as image_path
      from products p
@@ -259,6 +262,6 @@ function mapSellable(row: {
     stock: Number(
       hasVariant && row.variant_stock != null ? row.variant_stock : row.product_stock
     ),
-    imageSrc: row.image_path
+    imageSrc: row.image_path ? resolveMediaUrl(row.image_path) : null
   };
 }
