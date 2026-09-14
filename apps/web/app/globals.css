@@ -10715,33 +10715,213 @@ body:has(.pos-screen) .admin-topbar-title {
 
 .part-upload {
   min-height: 100vh;
+  min-height: 100dvh;
   display: grid;
-  place-items: center;
-  padding: 24px;
-  background: #f7efe7;
+  place-items: start center;
+  padding: 20px 16px 36px;
+  background:
+    radial-gradient(120% 80% at 50% -10%, #f3e0c8 0%, transparent 55%),
+    linear-gradient(180deg, #f7efe7, #efe4d8);
+  color: #3d241c;
 }
+
+.part-upload-shell {
+  width: min(460px, 100%);
+  display: grid;
+  gap: 14px;
+}
+
+.part-upload-hero {
+  display: grid;
+  gap: 6px;
+  padding: 8px 4px 2px;
+}
+
+.part-upload-hero h1 {
+  margin: 0;
+  font: 650 1.7rem var(--font-heading), serif;
+  color: #3d241c;
+}
+
+.part-upload-kind {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font: 700 0.72rem var(--font-body), sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  background: #3d241c;
+  color: #f7e7c5;
+}
+
+.part-upload-kind--internal {
+  background: #7a4f2a;
+}
+
 .part-upload-card {
-  width: min(420px, 100%);
-  padding: 24px;
+  width: 100%;
+  padding: 18px;
   background: #fffefb;
   border: 1px solid #eadfd4;
-  border-radius: 16px;
+  border-radius: 18px;
   display: grid;
-  gap: 12px;
+  gap: 14px;
+  box-shadow: 0 18px 40px rgb(61 36 28 / 10%);
 }
+
+.part-upload-product {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #fffaf4, #fff);
+  border: 1px solid #eadfce;
+}
+
+.part-upload-product strong {
+  font-size: 1.05rem;
+}
+
+.part-upload-product span {
+  font-size: 0.84rem;
+  color: #7a6558;
+}
+
+.part-upload-slots {
+  font-weight: 700 !important;
+  color: #7a4f2a !important;
+}
+
 .part-upload-thumbs {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
+
 .part-upload-thumbs img {
   width: 100%;
   aspect-ratio: 1;
   object-fit: cover;
-  border-radius: 8px;
+  border-radius: 12px;
+  border: 1px solid #eadfce;
+  background: #f8f1ea;
 }
-.part-upload-error { color: #9b2c2c; }
-.part-upload-ok { color: #2f5d3a; }
+
+.part-upload-empty {
+  margin: 0;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px dashed #dfcabb;
+  text-align: center;
+}
+
+.part-upload-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.part-upload-pick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 52px;
+  border-radius: 14px;
+  border: 1px solid #3d241c;
+  background: #3d241c;
+  color: #f7e7c5;
+  font: 700 0.95rem var(--font-body), sans-serif;
+  cursor: pointer;
+}
+
+.part-upload-pick--ghost {
+  background: #fffaf5;
+  color: #3d241c;
+  border-color: #e4d5c4;
+}
+
+.part-upload-pick:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.part-upload-preview {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  padding: 12px;
+  border-radius: 14px;
+  background: #f8f1ea;
+  border: 1px solid #eadfce;
+}
+
+.part-upload-preview img {
+  width: min(100%, 280px);
+  max-height: 320px;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.part-upload-submit {
+  width: 100%;
+  min-height: 50px;
+  justify-content: center;
+  border-radius: 14px;
+  font-size: 1rem;
+}
+
+.part-upload-full {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-weight: 700;
+  color: #2f5d3a;
+}
+
+.part-upload-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.part-upload-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: #7a4f2a;
+  font: 650 0.84rem var(--font-body), sans-serif;
+  cursor: pointer;
+}
+
+.part-upload-error {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #fef2f2;
+  color: #9b2c2c;
+  font-weight: 600;
+}
+
+.part-upload-ok {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #ecfdf5;
+  color: #2f5d3a;
+  font-weight: 600;
+}
+
+.part-upload-footnote {
+  margin: 0;
+  padding: 0 4px;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
 .admin-qr-box {
   display: grid;
   justify-items: center;

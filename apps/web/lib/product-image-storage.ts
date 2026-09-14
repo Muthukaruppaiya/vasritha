@@ -33,7 +33,7 @@ async function runEnsureProductImagesBucket() {
 
   const { error } = await supabase.storage.createBucket(BUCKET, {
     public: true,
-    fileSizeLimit: 4 * 1024 * 1024,
+    fileSizeLimit: 8 * 1024 * 1024,
     allowedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"]
   });
   if (error) {
