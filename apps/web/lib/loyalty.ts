@@ -1,6 +1,7 @@
 import { createRequire } from "node:module";
 import { query, queryOne } from "./db/pool";
 import { normalizePosPhone } from "./pos";
+import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
 
 const require = createRequire(import.meta.url);
 const bcrypt = require("bcryptjs") as typeof import("bcryptjs");
@@ -48,6 +49,7 @@ export type LoyaltySnapshot = {
 };
 
 export async function ensureLoyaltySchema() {
+  if (skipRuntimeSchemaEnsure()) return;
   await query(`
     alter table public.customers
       add column if not exists loyalty_points integer not null default 0

@@ -228,7 +228,7 @@ export async function POST(request: NextRequest) {
       after: { ...created, units_created: items.length }
     });
 
-    return ok({ ...created, product_items: items }, 201);
+    return ok({ ...created, product_items: items, default_variant_id: variant?.id ?? null }, 201);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Product create failed";
     console.error("[admin/products POST]", message);

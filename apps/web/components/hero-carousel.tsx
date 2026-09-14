@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useLocale, useT } from "../lib/i18n/provider";
 import { cmsOrT } from "../lib/i18n/cms-local";
+import { fetchPublicJson } from "../lib/public-fetch-cache";
 
 const FALLBACK_SLIDES = [
   { image: "/hero-silk.png", alt: "Model wearing a Kanchipuram silk saree" },
@@ -38,10 +39,9 @@ export function HeroCarousel() {
   const pausedUntil = useRef(0);
 
   useEffect(() => {
-    fetch("/api/homepage-config")
-      .then((res) => res.json())
-      .then((payload) => {
-        const rows = (payload?.data?.heroSlides || []) as Array<{
+    fetchPublicJson<{
+      data?: {
+        heroSlides?: Array<{
           image: string;
           alt: string;
           title?: string | null;
@@ -51,6 +51,10 @@ export function HeroCarousel() {
           cta2Label?: string | null;
           cta2Href?: string | null;
         }>;
+      };
+    }>("/api/homepage-config")
+      .then((payload) => {
+        const rows = payload?.data?.heroSlides || [];
         if (rows.length) {
           setSlides(
             rows.map((row) => ({

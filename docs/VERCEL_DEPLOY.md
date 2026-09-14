@@ -32,7 +32,7 @@ Save, then **Deployments → Redeploy** the latest `main` commit.
 
 | Name | Purpose |
 | --- | --- |
-| `DATABASE_URL` | Supabase Postgres URI (prefer direct / port 5432) |
+| `DATABASE_URL` | Supabase **pooler transaction** URI (host `*.pooler.supabase.com`, port **6543**) |
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://lnrcglxlnsoetvyntidu.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase anon / publishable key |
 | `SUPABASE_SERVICE_ROLE_KEY` | Product image uploads (service role) |
@@ -42,6 +42,8 @@ Save, then **Deployments → Redeploy** the latest `main` commit.
 Optional: `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `ADMIN_NOTIFY_EMAIL`
 
 Root `package.json` already includes `allowScripts` for `sharp` and `unrs-resolver` (needed for npm 11+ on Vercel).
+
+**Speed tip:** Keep the Vercel Function Region as **Mumbai (`bom1`)** — same region as Supabase `ap-south-1`. Washington (`iad1`) adds hundreds of ms per DB query. `apps/web/vercel.json` sets `"regions": ["bom1"]`.
 
 ## CLI deploy (optional)
 
@@ -66,7 +68,7 @@ Prefer Git-connected deploys so every push to `main` updates production automati
 ## One-time database patches
 
 ```powershell
-$env:DATABASE_URL="postgresql://postgres.xxxx:YOUR_PASSWORD@aws-0-ap-south-1.pooler.supabase.com:5432/postgres"
+$env:DATABASE_URL="postgresql://postgres.xxxx:YOUR_PASSWORD@aws-0-ap-south-1.pooler.supabase.com:6543/postgres"
 npm run db:patch:vercel-products:prod
 npm run db:patch:integrations
 ```

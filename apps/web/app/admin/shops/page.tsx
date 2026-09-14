@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { Plus, Store } from "lucide-react";
+import { Ban, Pencil, Plus, Star, Store } from "lucide-react";
 import {
   AdminAlert,
   AdminBadge,
@@ -209,7 +209,8 @@ export default function AdminShopsPage() {
                     <td>
                       <div className="inv-row-actions">
                         <button type="button" className="admin-action-btn" onClick={() => openEdit(shop)}>
-                          Edit
+                          <Pencil size={15} strokeWidth={2} />
+                          <span>Edit</span>
                         </button>
                         {!shop.is_default && shop.is_active ? (
                           <button
@@ -217,12 +218,14 @@ export default function AdminShopsPage() {
                             className="admin-action-btn admin-action-btn--primary"
                             onClick={() => void setAsDefault(shop)}
                           >
-                            Set default
+                            <Star size={15} strokeWidth={2} />
+                            <span>Set default</span>
                           </button>
                         ) : null}
                         {shop.is_active ? (
                           <button type="button" className="admin-action-btn" onClick={() => void deactivate(shop)}>
-                            Deactivate
+                            <Ban size={15} strokeWidth={2} />
+                            <span>Deactivate</span>
                           </button>
                         ) : null}
                       </div>

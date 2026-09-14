@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocale, useT } from "../lib/i18n/provider";
 import { localizeStatusLabel } from "../lib/i18n/cms-local";
+import { fetchPublicJson } from "../lib/public-fetch-cache";
 import type { MessageKey } from "../lib/i18n/translate";
 
 const STORY_MS = 5200;
@@ -38,14 +39,11 @@ export function ArrivalStatusBar() {
   );
 
   useEffect(() => {
-    fetch("/api/homepage-config")
-      .then((res) => res.json())
+    fetchPublicJson<{
+      data?: { statusStories?: Array<{ label: string; image: string; href: string }> };
+    }>("/api/homepage-config")
       .then((payload) => {
-        const rows = (payload?.data?.statusStories || []) as Array<{
-          label: string;
-          image: string;
-          href: string;
-        }>;
+        const rows = payload?.data?.statusStories || [];
         if (rows.length) setConfigured(rows);
       })
       .catch(() => undefined);

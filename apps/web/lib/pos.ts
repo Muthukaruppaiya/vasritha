@@ -1,10 +1,12 @@
 import { query, queryOne } from "./db/pool";
 import { lookupUnitByCode } from "./product-units";
+import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
 
 export const WALK_IN_EMAIL = "pos@vasritha.local";
 export const WALK_IN_NAME = "Walk-in Customer";
 
 export async function ensurePosSchema() {
+  if (skipRuntimeSchemaEnsure()) return;
   await query(`
     alter table public.orders
       add column if not exists discount_amount numeric(12,2) not null default 0

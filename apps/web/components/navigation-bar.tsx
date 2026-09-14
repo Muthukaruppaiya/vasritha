@@ -6,6 +6,7 @@ import { Menu } from "lucide-react";
 import { useEffect, useId, useMemo, useState, type CSSProperties } from "react";
 import { useLocale, useT } from "../lib/i18n/provider";
 import { localizeCategoryName } from "../lib/i18n/catalog-local";
+import { fetchPublicJson } from "../lib/public-fetch-cache";
 
 function isActivePath(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
@@ -76,15 +77,16 @@ export function NavigationBar({
       return;
     }
 
-    fetch("/api/categories")
-      .then((res) => res.json())
+    fetchPublicJson<{
+      data?: Array<{
+        slug: string;
+        name: string;
+        description?: string;
+        name_i18n?: Record<string, string>;
+      }>;
+    }>("/api/categories")
       .then((payload) => {
-        const rows = (payload?.data || []) as Array<{
-          slug: string;
-          name: string;
-          description?: string;
-          name_i18n?: Record<string, string>;
-        }>;
+        const rows = payload?.data || [];
         setShopLinks(
           rows.map((category) => ({
             href: `/${category.slug}`,
@@ -99,10 +101,9 @@ export function NavigationBar({
   }, [categories]);
 
   useEffect(() => {
-    fetch("/api/site-branding")
-      .then((res) => res.json())
+    fetchPublicJson<{ data?: { logoPath?: string } }>("/api/site-branding")
       .then((payload) => {
-        const path = payload?.data?.logoPath as string | undefined;
+        const path = payload?.data?.logoPath;
         if (path) setBrandLogo(path);
       })
       .catch(() => undefined);

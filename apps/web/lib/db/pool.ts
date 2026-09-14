@@ -5,19 +5,53 @@ declare global {
   var __vasrithaPgPool: Pool | undefined;
 }
 
+/**
+ * Supabase pooler port 5432 = session mode (tiny client cap; breaks on Vercel).
+ * Port 6543 = transaction mode (correct for serverless). Rewrite when needed.
+ */
+export function normalizeDatabaseUrl(raw: string) {
+  const url = String(raw || "").trim();
+  if (!url) return url;
+  try {
+    const parsed = new URL(url);
+    const isSupabasePooler = /\.pooler\.supabase\.com$/i.test(parsed.hostname);
+    const isSessionPort = !parsed.port || parsed.port === "5432";
+    if (isSupabasePooler && isSessionPort) {
+      parsed.port = "6543";
+    }
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
 export function getDatabaseUrl() {
   const url = String(process.env.DATABASE_URL || "").trim();
-  if (url) return url;
-  // Never fall back to localhost on Vercel / hosted builds
-  if (process.env.VERCEL || process.env.NODE_ENV === "production") {
+  if (url) return normalizeDatabaseUrl(url);
+  // Never fall back to localhost on hosted builds (Vercel / Netlify / etc.)
+  const hosted = Boolean(
+    process.env.VERCEL ||
+      process.env.NETLIFY ||
+      process.env.AWS_LAMBDA_FUNCTION_NAME ||
+      process.env.NODE_ENV === "production"
+  );
+  if (hosted) {
     const declared = Object.prototype.hasOwnProperty.call(process.env, "DATABASE_URL");
     throw new Error(
       declared
-        ? "DATABASE_URL is set but empty on this deployment. Paste your Supabase Postgres URI in Vercel → Settings → Environment Variables, then Redeploy."
-        : "DATABASE_URL is required on hosted environments (set Supabase Postgres URI in Vercel env)."
+        ? "DATABASE_URL is set but empty on this deployment. Paste your Supabase Postgres URI in the host’s Environment Variables, then Redeploy."
+        : "DATABASE_URL is required on hosted environments (set Supabase Postgres URI in Netlify/Vercel env)."
     );
   }
   return "postgresql://postgres:postgres@127.0.0.1:5433/vasritha";
+}
+
+function isServerlessRuntime() {
+  return Boolean(
+    process.env.VERCEL ||
+      process.env.NETLIFY ||
+      process.env.AWS_LAMBDA_FUNCTION_NAME
+  );
 }
 
 export function getPool() {
@@ -26,11 +60,14 @@ export function getPool() {
     const needsSsl =
       /supabase\.co|sslmode=require/i.test(connectionString) ||
       process.env.PGSSLMODE === "require";
+    // Transaction-mode pooler (6543) supports modest concurrency; max:1 serializes
+    // every Promise.all and makes admin/dashboard feel slow.
+    const max = isServerlessRuntime() ? 5 : 20;
     global.__vasrithaPgPool = new Pool({
       connectionString,
-      max: 20,
-      idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 10_000,
+      max,
+      idleTimeoutMillis: isServerlessRuntime() ? 60_000 : 30_000,
+      connectionTimeoutMillis: 8_000,
       ssl: needsSsl ? { rejectUnauthorized: false } : undefined
     });
   }

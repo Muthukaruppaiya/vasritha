@@ -4,6 +4,7 @@ import { Play } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocale, useT } from "../lib/i18n/provider";
 import { localizeVideoSubtitle, localizeVideoTitle } from "../lib/i18n/cms-local";
+import { fetchPublicJson } from "../lib/public-fetch-cache";
 import type { MessageKey } from "../lib/i18n/translate";
 
 const VIDEO_DEFS: Array<{ titleKey: MessageKey; subtitleKey: MessageKey; source: string }> = [
@@ -34,15 +35,18 @@ export function VideoShowcase() {
   );
 
   useEffect(() => {
-    fetch("/api/homepage-config")
-      .then((res) => res.json())
-      .then((payload) => {
-        const rows = (payload?.data?.showcase || []) as Array<{
+    fetchPublicJson<{
+      data?: {
+        showcase?: Array<{
           title: string;
           subtitle: string | null;
           source: string;
           mediaType: string;
         }>;
+      };
+    }>("/api/homepage-config")
+      .then((payload) => {
+        const rows = payload?.data?.showcase || [];
         if (rows.length) {
           setConfigured(
             rows.map((row) => ({

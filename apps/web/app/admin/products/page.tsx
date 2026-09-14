@@ -11,6 +11,8 @@ import {
   EyeOff,
   FileSpreadsheet,
   GitBranchPlus,
+  MoreHorizontal,
+  Package,
   PackageSearch,
   Pencil,
   Plus,
@@ -36,9 +38,8 @@ import {
   ProductParentOption
 } from "../../../components/admin/product-form-modal";
 import { ProductDetailModal } from "../../../components/admin/product-detail-modal";
-import { adminFetch, formatDate, formatMoney, getAdminToken } from "../../../lib/admin-api";
+import { adminFetch, formatMoney, getAdminToken } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
-import { printProductStickers } from "../../../lib/print-stickers";
 import { productListThumb } from "../../../lib/category-images";
 
 type Product = {
@@ -118,6 +119,7 @@ export default function AdminProductsPage() {
 function AdminProductsPageInner() {
   const searchParams = useSearchParams();
   const focusId = searchParams.get("focus") || "";
+  const fromGrn = searchParams.get("fromGrn") === "1";
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -131,13 +133,11 @@ function AdminProductsPageInner() {
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
-  const [printBusyId, setPrintBusyId] = useState<string | null>(null);
-  const [printMessage, setPrintMessage] = useState("");
-  const [printError, setPrintError] = useState("");
   const [importBusy, setImportBusy] = useState(false);
   const [importMessage, setImportMessage] = useState("");
   const [importError, setImportError] = useState("");
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"create" | "edit">("create");
@@ -262,6 +262,21 @@ function AdminProductsPageInner() {
       sortBy !== "newest"
   );
 
+  const catalogueStats = useMemo(() => {
+    const list = products || [];
+    let active = 0;
+    let low = 0;
+    let out = 0;
+    let barcodes = 0;
+    for (const product of list) {
+      if (product.status === "active") active += 1;
+      if (product.stock_quantity <= 0) out += 1;
+      else if (product.stock_quantity <= LOW_STOCK_THRESHOLD) low += 1;
+      barcodes += Number(product.unit_count || 0);
+    }
+    return { total: list.length, active, low, out, barcodes };
+  }, [products]);
+
   const clearFilters = () => {
     setSearch("");
     setStatusFilter("");
@@ -308,6 +323,24 @@ function AdminProductsPageInner() {
     setFormInternalImages([]);
     setModalOpen(true);
   };
+
+  useEffect(() => {
+    if (!fromGrn || !categories?.length) return;
+    openCreate();
+    // open once when landing from GRN
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fromGrn, categories?.length]);
+
+  useEffect(() => {
+    if (!menuOpenId) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest(".admin-row-more")) return;
+      setMenuOpenId(null);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [menuOpenId]);
 
   const openEdit = async (productId: string) => {
     setLoadingEdit(true);
@@ -399,188 +432,15 @@ function AdminProductsPageInner() {
     await reload();
   };
 
-  const printBarcodesForProduct = async (
-    product: Product,
-    mode: "pending" | "all" = "pending"
-  ) => {
-    setPrintBusyId(product.id);
-    setPrintError("");
-    setPrintMessage("");
-    try {
-      const result = await adminFetch<{
-        items: Array<{
-          id: string;
-          unit_code: string;
-          barcode: string;
-          status?: string;
-          label_printed?: boolean;
-        }>;
-      }>(`/api/admin/products/${product.id}/items`);
+  const barcodeDeskHref = (productId?: string) =>
+    productId ? `/admin/barcodes?product=${encodeURIComponent(productId)}` : "/admin/barcodes";
 
-      if (result.error) throw new Error(result.error);
-
-      const items = result.data?.items || [];
-      const sellable = items.filter((item) => !item.status || item.status === "to_sell");
-      let stickers = mode === "all" ? sellable : sellable.filter((item) => !item.label_printed);
-
-      if (!stickers.length && product.barcode) {
-        stickers = [
-          {
-            id: "",
-            unit_code: product.sku || product.barcode,
-            barcode: product.barcode.replace(/[^A-Za-z0-9]/g, "").toUpperCase()
-          }
-        ];
-      }
-
-      if (!stickers.length) {
-        throw new Error(
-          mode === "pending"
-            ? "No unprinted barcodes. Open the product and use Print all, or receive stock first."
-            : "No barcodes to print. Receive stock (GRN) or set opening stock first."
-        );
-      }
-
-      await printProductStickers({
-        price: product.price,
-        labelSize: product.label_size === "accessory" ? "accessory" : "dress",
-        meta: {
-          productName: product.name,
-          categoryName: product.subcategory_name || product.category_name || undefined,
-          sku: product.sku,
-          color: product.color,
-          tag: product.tag,
-          compareAtPrice: product.compare_at_price
-        },
-        items: stickers.map((item) => ({
-          id: item.id,
-          unit_code: item.unit_code,
-          barcode: item.barcode,
-          tag: product.tag || undefined,
-          sizeLabel: product.color,
-          price: product.price,
-          labelSize: product.label_size === "accessory" ? "accessory" : "dress"
-        }))
-      });
-
-      const markIds = stickers.map((item) => item.id).filter(Boolean);
-      if (markIds.length) {
-        await adminFetch(`/api/admin/products/${product.id}/items`, {
-          method: "PATCH",
-          json: { itemIds: markIds, label_printed: true }
-        });
-      }
-
-      setPrintMessage(
-        `Printed ${stickers.length} barcode sticker${stickers.length === 1 ? "" : "s"} for ${product.name}.`
-      );
-      await reload();
-    } catch (err) {
-      setPrintError(err instanceof Error ? err.message : "Could not print barcodes");
-    } finally {
-      setPrintBusyId(null);
+  const bulkBarcodeHref = useMemo(() => {
+    if (selected.size === 1) {
+      return barcodeDeskHref(Array.from(selected)[0]);
     }
-  };
-
-  const bulkPrintBarcodes = async () => {
-    if (!selected.size) return;
-    setBulkBusy(true);
-    setPrintError("");
-    setPrintMessage("");
-    try {
-      const allStickers: Array<{
-        id: string;
-        unit_code: string;
-        barcode: string;
-        price: string;
-        labelSize: "accessory" | "dress";
-        productId: string;
-      }> = [];
-      const markByProduct = new Map<string, string[]>();
-
-      for (const id of Array.from(selected)) {
-        const product = (products || []).find((row) => row.id === id);
-        if (!product) continue;
-        const result = await adminFetch<{
-          items: Array<{
-            id: string;
-            unit_code: string;
-            barcode: string;
-            status?: string;
-            label_printed?: boolean;
-          }>;
-        }>(`/api/admin/products/${id}/items`);
-        if (result.error) continue;
-
-        const sellable = (result.data?.items || []).filter(
-          (item) => !item.status || item.status === "to_sell"
-        );
-        let stickers = sellable.filter((item) => !item.label_printed);
-        if (!stickers.length && product.barcode) {
-          stickers = [
-            {
-              id: "",
-              unit_code: product.sku || product.barcode,
-              barcode: product.barcode.replace(/[^A-Za-z0-9]/g, "").toUpperCase()
-            }
-          ];
-        }
-
-        const labelSize = product.label_size === "accessory" ? "accessory" : "dress";
-        for (const item of stickers) {
-          allStickers.push({
-            id: item.id,
-            unit_code: item.unit_code,
-            barcode: item.barcode,
-            price: product.price,
-            labelSize,
-            productName: product.name,
-            categoryName: product.subcategory_name || product.category_name || undefined,
-            sku: product.sku,
-            color: product.color,
-            tag: product.tag || undefined,
-            sizeLabel: product.color,
-            compareAtPrice: product.compare_at_price,
-            productId: id
-          });
-          if (item.id) {
-            const list = markByProduct.get(id) || [];
-            list.push(item.id);
-            markByProduct.set(id, list);
-          }
-        }
-      }
-
-      if (!allStickers.length) {
-        throw new Error("No unprinted barcodes on selected products. Receive stock first.");
-      }
-
-      await printProductStickers({
-        price: allStickers[0].price,
-        labelSize: allStickers[0].labelSize,
-        items: allStickers
-      });
-
-      await Promise.all(
-        Array.from(markByProduct.entries()).map(([productId, itemIds]) =>
-          adminFetch(`/api/admin/products/${productId}/items`, {
-            method: "PATCH",
-            json: { itemIds, label_printed: true }
-          })
-        )
-      );
-
-      setPrintMessage(
-        `Printed ${allStickers.length} barcode sticker${allStickers.length === 1 ? "" : "s"} for ${selected.size} product${selected.size === 1 ? "" : "s"}.`
-      );
-      clearSelection();
-      await reload();
-    } catch (err) {
-      setPrintError(err instanceof Error ? err.message : "Could not print barcodes");
-    } finally {
-      setBulkBusy(false);
-    }
-  };
+    return "/admin/barcodes";
+  }, [selected]);
 
   const onImportFile = async (fileList: FileList | null) => {
     const file = fileList?.[0];
@@ -631,7 +491,7 @@ function AdminProductsPageInner() {
       <AdminPageHeader
         eyebrow="Catalogue"
         title="Product Master"
-        description="Define what you sell (name, SKU, price, images). Receive and adjust quantities in Inventory."
+        description="Create and edit what you sell. Receive stock in Inventory, then print labels on the barcode desk."
         actions={
           <>
             <Link
@@ -642,6 +502,15 @@ function AdminProductsPageInner() {
             >
               <Warehouse size={16} strokeWidth={2} />
               <span>Inventory</span>
+            </Link>
+            <Link
+              className="admin-icon-tip"
+              href="/admin/barcodes"
+              data-tooltip="Print barcodes"
+              aria-label="Print barcodes"
+            >
+              <Printer size={16} strokeWidth={2} />
+              <span>Print barcodes</span>
             </Link>
             <a
               className="admin-icon-tip"
@@ -690,37 +559,108 @@ function AdminProductsPageInner() {
           <span className="inv-flow-num">1</span>
           <div>
             <strong>Product Master</strong>
-            <p>Create / edit catalogue items here.</p>
+            <p>Create / edit catalogue items.</p>
           </div>
         </div>
         <div className="inv-flow-arrow" aria-hidden>
           →
         </div>
-        <div className="inv-flow-step">
+        <Link className="inv-flow-step inv-flow-step--link" href="/admin/inventory/grn">
           <span className="inv-flow-num">2</span>
           <div>
-            <strong>Inventory</strong>
-            <p>Receive GRN / adjust on-hand stock.</p>
+            <strong>Receive stock</strong>
+            <p>GRN / inward quantities.</p>
           </div>
+        </Link>
+        <div className="inv-flow-arrow" aria-hidden>
+          →
         </div>
+        <Link className="inv-flow-step inv-flow-step--link" href="/admin/barcodes">
+          <span className="inv-flow-num">3</span>
+          <div>
+            <strong>Print barcodes</strong>
+            <p>Label stickers on the print desk.</p>
+          </div>
+        </Link>
         <div className="inv-flow-arrow" aria-hidden>
           →
         </div>
         <div className="inv-flow-step">
-          <span className="inv-flow-num">3</span>
+          <span className="inv-flow-num">4</span>
           <div>
             <strong>Sell</strong>
-            <p>POS &amp; website sell from available stock.</p>
+            <p>POS &amp; website sell available stock.</p>
           </div>
         </div>
       </section>
 
-      {(importMessage || importError || printMessage || printError) && (
+      <div className="inv-summary catalogue-summary">
+        <button
+          type="button"
+          className="inv-summary-card inv-summary-card--btn"
+          onClick={clearFilters}
+        >
+          <Package size={16} />
+          <div>
+            <span>Products</span>
+            <strong>{catalogueStats.total}</strong>
+          </div>
+        </button>
+        <button
+          type="button"
+          className="inv-summary-card inv-summary-card--btn inv-summary-card--ok"
+          onClick={() => {
+            setStatusFilter("active");
+            setStockFilter("");
+          }}
+        >
+          <CheckCircle2 size={16} />
+          <div>
+            <span>Active</span>
+            <strong>{catalogueStats.active}</strong>
+          </div>
+        </button>
+        <button
+          type="button"
+          className="inv-summary-card inv-summary-card--btn inv-summary-card--warn"
+          onClick={() => {
+            setStockFilter("low");
+            setStatusFilter("");
+          }}
+        >
+          <Warehouse size={16} />
+          <div>
+            <span>Low stock</span>
+            <strong>{catalogueStats.low}</strong>
+          </div>
+        </button>
+        <button
+          type="button"
+          className="inv-summary-card inv-summary-card--btn inv-summary-card--danger"
+          onClick={() => {
+            setStockFilter("out");
+            setStatusFilter("");
+          }}
+        >
+          <PackageSearch size={16} />
+          <div>
+            <span>Out of stock</span>
+            <strong>{catalogueStats.out}</strong>
+          </div>
+        </button>
+        <Link className="inv-summary-card inv-summary-card--btn" href="/admin/barcodes">
+          <Printer size={16} />
+          <div>
+            <span>Barcodes</span>
+            <strong>{catalogueStats.barcodes}</strong>
+          </div>
+        </Link>
+      </div>
+
+      {(importMessage || importError) && (
         <div className="admin-import-feedback">
           {importMessage ? <AdminAlert tone="ok">{importMessage}</AdminAlert> : null}
           {importError ? <AdminAlert>{importError}</AdminAlert> : null}
-          {printMessage ? <AdminAlert tone="ok">{printMessage}</AdminAlert> : null}
-          {printError ? <AdminAlert>{printError}</AdminAlert> : null}
         </div>
       )}
 
@@ -870,17 +810,20 @@ function AdminProductsPageInner() {
             <b>{selected.size}</b> selected
           </span>
           <div className="admin-bulk-actions">
-            <button type="button" disabled={bulkBusy} onClick={() => void bulkPrintBarcodes()}>
+            <Link className="admin-bulk-link" href={bulkBarcodeHref}>
               <Printer size={14} />
               Print barcodes
-            </button>
+            </Link>
             <button type="button" disabled={bulkBusy} onClick={() => void bulkUpdateStatus("active")}>
+              <CheckCircle2 size={14} />
               Publish
             </button>
             <button type="button" disabled={bulkBusy} onClick={() => void bulkUpdateStatus("draft")}>
+              <EyeOff size={14} />
               Unpublish
             </button>
             <button type="button" disabled={bulkBusy} onClick={() => void bulkUpdateStatus("archived")}>
+              <Archive size={14} />
               Archive
             </button>
             <button type="button" className="admin-bulk-clear" onClick={clearSelection}>
@@ -916,7 +859,7 @@ function AdminProductsPageInner() {
         )}
         {filtered.length > 0 && (
           <div className="admin-table-wrap">
-            <table className="admin-table admin-table--zebra">
+            <table className="admin-table admin-table--zebra catalogue-table">
               <thead>
                 <tr>
                   <th className="admin-check-col">
@@ -928,14 +871,12 @@ function AdminProductsPageInner() {
                     />
                   </th>
                   <th>Product</th>
-                  <th>Code</th>
+                  <th>Code / barcodes</th>
                   <th>Colour</th>
                   <th>Category</th>
-                  <th>Subcategory</th>
                   <th>Price</th>
                   <th>Stock</th>
                   <th>Status</th>
-                  <th>Created</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -985,15 +926,20 @@ function AdminProductsPageInner() {
                       </button>
                     </td>
                     <td>
-                      <div>{product.sku || "—"}</div>
-                      <div className="muted admin-sub">{product.barcode || ""}</div>
-                      <button
-                        type="button"
-                        className="admin-text-link"
-                        onClick={() => setDetailId(product.id)}
-                      >
-                        {Number(product.unit_count || 0)} unique barcodes
-                      </button>
+                      <div className="catalogue-code-cell">
+                        <strong>{product.sku || "—"}</strong>
+                        {product.barcode ? (
+                          <div className="muted admin-sub">{product.barcode}</div>
+                        ) : null}
+                        <Link
+                          className="catalogue-barcode-link"
+                          href={barcodeDeskHref(product.id)}
+                          data-tooltip="Open print desk for this product"
+                        >
+                          <Printer size={12} strokeWidth={2} />
+                          {Number(product.unit_count || 0)} barcodes
+                        </Link>
+                      </div>
                     </td>
                     <td>
                       {product.color ? (
@@ -1005,42 +951,38 @@ function AdminProductsPageInner() {
                         "—"
                       )}
                     </td>
-                    <td>{product.category_name || "—"}</td>
-                    <td>{product.subcategory_name || "—"}</td>
                     <td>
-                      {formatMoney(product.price)}
-                      {product.compare_at_price ? (
-                        <div className="muted admin-sub strike">{formatMoney(product.compare_at_price)}</div>
-                      ) : null}
+                      <div className="catalogue-category-cell">
+                        <span>{product.category_name || "—"}</span>
+                        {product.subcategory_name ? (
+                          <div className="muted admin-sub">{product.subcategory_name}</div>
+                        ) : null}
+                      </div>
                     </td>
                     <td>
-                      <div className="inv-stock-cell">
-                        <span
-                          className={
-                            product.stock_quantity <= 0
-                              ? "admin-stock admin-stock--out"
-                              : product.stock_quantity <= LOW_STOCK_THRESHOLD
-                                ? "admin-stock admin-stock--low"
-                                : "admin-stock"
-                          }
-                        >
-                          {product.stock_quantity}
-                        </span>
-                        <Link
-                          className="admin-action-btn admin-action-btn--compact"
-                          href={`/admin/inventory?product=${product.id}`}
-                          data-tooltip="Manage stock"
-                          aria-label={`Manage stock for ${product.name}`}
-                        >
-                          <Warehouse size={13} strokeWidth={2} />
-                          <span>Stock</span>
-                        </Link>
+                      <div className="catalogue-price-cell">
+                        <strong>{formatMoney(product.price)}</strong>
+                        {product.compare_at_price ? (
+                          <div className="muted admin-sub strike">{formatMoney(product.compare_at_price)}</div>
+                        ) : null}
                       </div>
+                    </td>
+                    <td>
+                      <span
+                        className={
+                          product.stock_quantity <= 0
+                            ? "admin-stock admin-stock--out"
+                            : product.stock_quantity <= LOW_STOCK_THRESHOLD
+                              ? "admin-stock admin-stock--low"
+                              : "admin-stock"
+                        }
+                      >
+                        {product.stock_quantity}
+                      </span>
                     </td>
                     <td>
                       <AdminBadge tone={statusTone(product.status)}>{product.status}</AdminBadge>
                     </td>
-                    <td>{formatDate(product.created_at)}</td>
                     <td>
                       <div className="admin-row-actions" role="group" aria-label="Product actions">
                         <button
@@ -1063,18 +1005,15 @@ function AdminProductsPageInner() {
                           <Pencil size={15} strokeWidth={2} />
                           <span>Edit</span>
                         </button>
-                        {!product.parent_product_id ? (
-                          <button
-                            type="button"
-                            className="admin-action-btn"
-                            onClick={() => openCreateChild(product)}
-                            data-tooltip="Add design (child)"
-                            aria-label={`Add design under ${product.name}`}
-                          >
-                            <GitBranchPlus size={15} strokeWidth={2} />
-                            <span>Add design</span>
-                          </button>
-                        ) : null}
+                        <Link
+                          className="admin-action-btn admin-action-btn--primary"
+                          href={barcodeDeskHref(product.id)}
+                          data-tooltip="Print barcodes"
+                          aria-label={`Print barcodes for ${product.name}`}
+                        >
+                          <Printer size={15} strokeWidth={2} />
+                          <span>Barcode</span>
+                        </Link>
                         <Link
                           className="admin-action-btn"
                           href={`/admin/inventory?product=${product.id}`}
@@ -1084,66 +1023,89 @@ function AdminProductsPageInner() {
                           <Warehouse size={15} strokeWidth={2} />
                           <span>Stock</span>
                         </Link>
-                        <button
-                          type="button"
-                          className="admin-action-btn admin-action-btn--primary"
-                          disabled={printBusyId === product.id || bulkBusy}
-                          onClick={() => void printBarcodesForProduct(product, "pending")}
-                          data-tooltip={printBusyId === product.id ? "Printing…" : "Print barcode"}
-                          aria-label={`Print barcodes for ${product.name}`}
-                        >
-                          <Printer size={15} strokeWidth={2} />
-                          <span>{printBusyId === product.id ? "Printing…" : "Barcode"}</span>
-                        </button>
-                        {product.status === "active" && (
-                          <a
-                            className="admin-action-btn"
-                            href={`/products/${product.slug}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            data-tooltip="View on storefront"
-                            aria-label={`View ${product.name} on storefront`}
-                          >
-                            <ExternalLink size={15} strokeWidth={2} />
-                            <span>View</span>
-                          </a>
-                        )}
-                        {product.status !== "active" && (
-                          <button
-                            type="button"
-                            className="admin-action-btn admin-action-btn--primary"
-                            onClick={() => void updateStatus(product.id, "active")}
-                            data-tooltip="Publish"
-                            aria-label={`Publish ${product.name}`}
-                          >
-                            <CheckCircle2 size={15} strokeWidth={2} />
-                            <span>Publish</span>
-                          </button>
-                        )}
-                        {product.status === "active" && (
+                        <div className={`admin-row-more${menuOpenId === product.id ? " is-open" : ""}`}>
                           <button
                             type="button"
                             className="admin-action-btn"
-                            onClick={() => void updateStatus(product.id, "draft")}
-                            data-tooltip="Unpublish"
-                            aria-label={`Unpublish ${product.name}`}
+                            data-tooltip="More actions"
+                            aria-label={`More actions for ${product.name}`}
+                            aria-expanded={menuOpenId === product.id}
+                            onClick={() =>
+                              setMenuOpenId((current) => (current === product.id ? null : product.id))
+                            }
                           >
-                            <EyeOff size={15} strokeWidth={2} />
-                            <span>Unpublish</span>
+                            <MoreHorizontal size={15} strokeWidth={2} />
+                            <span>More</span>
                           </button>
-                        )}
-                        {product.status !== "archived" && (
-                          <button
-                            type="button"
-                            className="admin-action-btn admin-action-btn--danger"
-                            onClick={() => void updateStatus(product.id, "archived")}
-                            data-tooltip="Archive"
-                            aria-label={`Archive ${product.name}`}
-                          >
-                            <Archive size={15} strokeWidth={2} />
-                            <span>Archive</span>
-                          </button>
-                        )}
+                          {menuOpenId === product.id ? (
+                            <div className="admin-row-more-menu" role="menu">
+                              {!product.parent_product_id ? (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setMenuOpenId(null);
+                                    openCreateChild(product);
+                                  }}
+                                >
+                                  <GitBranchPlus size={14} />
+                                  Add design
+                                </button>
+                              ) : null}
+                              {product.status === "active" ? (
+                                <a
+                                  role="menuitem"
+                                  href={`/products/${product.slug}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={() => setMenuOpenId(null)}
+                                >
+                                  <ExternalLink size={14} />
+                                  Storefront
+                                </a>
+                              ) : null}
+                              {product.status !== "active" ? (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setMenuOpenId(null);
+                                    void updateStatus(product.id, "active");
+                                  }}
+                                >
+                                  <CheckCircle2 size={14} />
+                                  Publish
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setMenuOpenId(null);
+                                    void updateStatus(product.id, "draft");
+                                  }}
+                                >
+                                  <EyeOff size={14} />
+                                  Unpublish
+                                </button>
+                              )}
+                              {product.status !== "archived" ? (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className="is-danger"
+                                  onClick={() => {
+                                    setMenuOpenId(null);
+                                    void updateStatus(product.id, "archived");
+                                  }}
+                                >
+                                  <Archive size={14} />
+                                  Archive
+                                </button>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
                     </td>
                   </tr>
@@ -1171,8 +1133,22 @@ function AdminProductsPageInner() {
         initial={formValues}
         initialImages={formImages}
         initialInternalImages={formInternalImages}
-        onClose={() => setModalOpen(false)}
-        onSaved={() => void reload()}
+        onClose={() => {
+          setModalOpen(false);
+          if (fromGrn) {
+            window.location.href = "/admin/inventory/grn?resumeGrn=1";
+          }
+        }}
+        onSaved={(created) => {
+          void reload();
+          if (fromGrn) {
+            const variant = created?.defaultVariantId
+              ? `&newVariant=${encodeURIComponent(created.defaultVariantId)}`
+              : "";
+            window.location.href = `/admin/inventory/grn?resumeGrn=1${variant}`;
+            return;
+          }
+        }}
       />
     </>
   );

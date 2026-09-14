@@ -8,6 +8,9 @@ import { SpotlightCollections } from "../components/spotlight-collections";
 import { VideoShowcase } from "../components/video-showcase";
 import { listActiveProducts, listCategories, listCollections } from "../lib/catalog";
 
+/** Cache homepage RSC for a minute; catalog does not need per-request freshness. */
+export const revalidate = 60;
+
 const COLLECTION_IMAGES: Record<string, { image: string; lines: string[] }> = {
   "kanchipuram-silk": { image: "/hero-silk.png", lines: ["Kanchipuram", "Silk"] },
   "banarasi-silk": { image: "/catalog-synthetic-saree.png", lines: ["Banarasi", "Silk"] },

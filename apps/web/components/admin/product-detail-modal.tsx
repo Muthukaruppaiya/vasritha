@@ -80,6 +80,7 @@ export function ProductDetailModal({
   const [uploadBusy, setUploadBusy] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState("");
+  const [internalQrDataUrl, setInternalQrDataUrl] = useState("");
   const barcodeRef = useRef<SVGSVGElement | null>(null);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -103,6 +104,7 @@ export function ProductDetailModal({
       setData(null);
       setSelectedId(null);
       setQrDataUrl("");
+      setInternalQrDataUrl("");
       return;
     }
     void reload();
@@ -112,10 +114,25 @@ export function ProductDetailModal({
   useEffect(() => {
     if (!data?.image_upload_token) {
       setQrDataUrl("");
+      setInternalQrDataUrl("");
       return;
     }
-    const url = buildProductUploadPageUrl(data.image_upload_token, window.location.origin);
-    void QRCode.toDataURL(url, { margin: 1, width: 140 }).then(setQrDataUrl).catch(() => setQrDataUrl(""));
+    const websiteUrl = buildProductUploadPageUrl(
+      data.image_upload_token,
+      window.location.origin,
+      "website"
+    );
+    const internalUrl = buildProductUploadPageUrl(
+      data.image_upload_token,
+      window.location.origin,
+      "internal"
+    );
+    void QRCode.toDataURL(websiteUrl, { margin: 1, width: 140 })
+      .then(setQrDataUrl)
+      .catch(() => setQrDataUrl(""));
+    void QRCode.toDataURL(internalUrl, { margin: 1, width: 140 })
+      .then(setInternalQrDataUrl)
+      .catch(() => setInternalQrDataUrl(""));
   }, [data?.image_upload_token]);
 
   const selected = data?.product_items?.find((item) => item.id === selectedId) || null;
@@ -241,8 +258,15 @@ export function ProductDetailModal({
                   {data.image_upload_token && qrDataUrl ? (
                     <div className="admin-detail-qr">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={qrDataUrl} alt="Scan to upload from phone" />
-                      <span>Phone QR</span>
+                      <img src={qrDataUrl} alt="Scan to upload website photos" />
+                      <span>Website QR</span>
+                    </div>
+                  ) : null}
+                  {data.image_upload_token && internalQrDataUrl ? (
+                    <div className="admin-detail-qr">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={internalQrDataUrl} alt="Scan to upload internal photos" />
+                      <span>Internal QR</span>
                     </div>
                   ) : null}
                 </div>

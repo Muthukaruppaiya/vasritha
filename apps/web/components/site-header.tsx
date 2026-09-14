@@ -15,6 +15,7 @@ import { CUSTOMER_AUTH_EVENT } from "../lib/customer-auth-event";
 import { isLoggedIn } from "../lib/customer-session";
 import { useLocale, useT } from "../lib/i18n/provider";
 import { localizeOfferMessage } from "../lib/i18n/cms-local";
+import { fetchPublicJson } from "../lib/public-fetch-cache";
 import { CartBagIcon, LoginIcon } from "./icons";
 import { LanguageSwitcher } from "./language-switcher";
 import { NavigationBar } from "./navigation-bar";
@@ -50,18 +51,16 @@ export function Header({
   }, []);
 
   useEffect(() => {
-    fetch("/api/site-branding")
-      .then((res) => res.json())
+    fetchPublicJson<{ data?: { headerLogoPath?: string } }>("/api/site-branding")
       .then((payload) => {
-        const path = payload?.data?.headerLogoPath as string | undefined;
+        const path = payload?.data?.headerLogoPath;
         if (path) setHeaderLogo(path);
       })
       .catch(() => undefined);
 
-    fetch("/api/homepage-config")
-      .then((res) => res.json())
+    fetchPublicJson<{ data?: { offers?: Array<{ message: string }> } }>("/api/homepage-config")
       .then((payload) => {
-        const rows = (payload?.data?.offers || []) as Array<{ message: string }>;
+        const rows = payload?.data?.offers || [];
         if (rows.length) setOfferMessages(rows.map((row) => row.message));
       })
       .catch(() => undefined);

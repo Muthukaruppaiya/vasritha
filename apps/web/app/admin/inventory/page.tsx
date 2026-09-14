@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
+import { FormEvent, Suspense, useMemo, useState } from "react";
 import {
   ArrowDownToLine,
   PackagePlus,
   Pencil,
+  Printer,
   Search,
   SlidersHorizontal,
   Warehouse
@@ -64,20 +65,11 @@ type InventoryData = {
   lowStockThreshold?: number;
 };
 
-type InwardLine = { productVariantId: string; quantity: string };
-
 const blankAdjust = (variantId = "") => ({
   productVariantId: variantId,
   type: "manual_adjustment",
   quantity: "1",
   note: ""
-});
-
-const blankInward = (variantId = "") => ({
-  supplier: "",
-  billNo: "",
-  note: "",
-  lines: [{ productVariantId: variantId, quantity: "1" }] as InwardLine[]
 });
 
 function stockTone(qty: number, low: number): "success" | "warn" | "danger" {
@@ -106,7 +98,7 @@ function movementLabel(type: string) {
 function AdminInventoryPageInner() {
   const searchParams = useSearchParams();
   const focusProduct = searchParams.get("product") || "";
-  const focusVariant = searchParams.get("variant") || "";
+  const grnPosted = searchParams.get("grn") === "posted";
 
   const queryPath = focusProduct
     ? `/api/admin/inventory?product=${encodeURIComponent(focusProduct)}`
@@ -126,11 +118,9 @@ function AdminInventoryPageInner() {
   const [categoryFilter, setCategoryFilter] = useState("");
   const [subcategoryFilter, setSubcategoryFilter] = useState("");
   const [adjustOpen, setAdjustOpen] = useState(false);
-  const [inwardOpen, setInwardOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
   const [adjust, setAdjust] = useState(blankAdjust);
-  const [inward, setInward] = useState(blankInward);
 
   const low = data?.lowStockThreshold ?? 10;
 
@@ -139,7 +129,14 @@ function AdminInventoryPageInner() {
     const q = search.trim().toLowerCase();
     if (q) {
       list = list.filter((row) => {
-        const hay = [row.product_name, row.sku, row.variant_name, row.category_name, row.subcategory_name, row.hsn_code]
+        const hay = [
+          row.product_name,
+          row.sku,
+          row.variant_name,
+          row.category_name,
+          row.subcategory_name,
+          row.hsn_code
+        ]
           .filter(Boolean)
           .join(" ")
           .toLowerCase();
@@ -156,24 +153,10 @@ function AdminInventoryPageInner() {
     return list;
   }, [data?.stock, search, categoryFilter, subcategoryFilter, stockFilter, low]);
 
-  useEffect(() => {
-    if (!focusVariant || !data?.stock?.length) return;
-    const hit = data.stock.find((row) => row.variant_id === focusVariant);
-    if (!hit) return;
-    setInward(blankInward(focusVariant));
-    setInwardOpen(true);
-  }, [focusVariant, data?.stock]);
-
   const openAdjust = (variantId = "") => {
     setAdjust(blankAdjust(variantId));
     setFormError("");
     setAdjustOpen(true);
-  };
-
-  const openInward = (variantId = "") => {
-    setInward(blankInward(variantId));
-    setFormError("");
-    setInwardOpen(true);
   };
 
   const onAdjustSubmit = async (event: FormEvent) => {
@@ -199,32 +182,6 @@ function AdminInventoryPageInner() {
     await reload();
   };
 
-  const onInwardSubmit = async (event: FormEvent) => {
-    event.preventDefault();
-    setSaving(true);
-    setFormError("");
-    const result = await adminFetch("/api/admin/inventory/inward", {
-      method: "POST",
-      json: {
-        supplier: inward.supplier || undefined,
-        billNo: inward.billNo || undefined,
-        note: inward.note || undefined,
-        lines: inward.lines.map((line) => ({
-          productVariantId: line.productVariantId,
-          quantity: Number(line.quantity)
-        }))
-      }
-    });
-    setSaving(false);
-    if (result.error) {
-      setFormError(result.error);
-      return;
-    }
-    setInwardOpen(false);
-    setInward(blankInward());
-    await reload();
-  };
-
   const summary = data?.summary;
 
   return (
@@ -232,7 +189,7 @@ function AdminInventoryPageInner() {
       <AdminPageHeader
         eyebrow="Stock operations"
         title="Inventory"
-        description="Receive and adjust stock here. Create and edit product details in Product Master."
+        description="Review on-hand stock here. Receive supplier goods on the GRN page."
         actions={
           <>
             <Link
@@ -244,17 +201,24 @@ function AdminInventoryPageInner() {
               <PackagePlus size={16} strokeWidth={2} />
               <span>Product Master</span>
             </Link>
-            <button
-              type="button"
+            <Link
               className="admin-icon-tip admin-action-btn--primary"
-              onClick={() => openInward()}
-              disabled={!data?.stock?.length}
+              href="/admin/inventory/grn"
               data-tooltip="Receive stock (GRN)"
               aria-label="Receive stock"
             >
               <ArrowDownToLine size={16} strokeWidth={2} />
               <span>Receive stock</span>
-            </button>
+            </Link>
+            <Link
+              className="admin-icon-tip"
+              href="/admin/barcodes"
+              data-tooltip="Print barcodes"
+              aria-label="Print barcodes"
+            >
+              <Printer size={16} strokeWidth={2} />
+              <span>Print barcodes</span>
+            </Link>
             <button
               type="button"
               className="admin-icon-tip"
@@ -284,8 +248,10 @@ function AdminInventoryPageInner() {
         <div className="inv-flow-step is-current">
           <span className="inv-flow-num">2</span>
           <div>
-            <strong>Inventory</strong>
-            <p>Receive inward stock (GRN) to increase on-hand qty.</p>
+            <strong>GRN / Inventory</strong>
+            <p>
+              Open <Link href="/admin/inventory/grn">Receive stock</Link> to post inward qty.
+            </p>
           </div>
         </div>
         <div className="inv-flow-arrow" aria-hidden>
@@ -299,6 +265,8 @@ function AdminInventoryPageInner() {
           </div>
         </div>
       </section>
+
+      {grnPosted ? <AdminAlert tone="ok">GRN posted successfully. Stock updated.</AdminAlert> : null}
 
       {focusProduct ? (
         <AdminAlert tone="ok">
@@ -408,7 +376,7 @@ function AdminInventoryPageInner() {
             body={
               data?.stock?.length
                 ? "Try clearing filters."
-                : "Create a product in Product Master first, then return here to receive stock."
+                : "Create a product in Product Master first, then receive stock on the GRN page."
             }
           />
         )}
@@ -454,7 +422,9 @@ function AdminInventoryPageInner() {
                     <td>
                       <div>{row.hsn_code || "—"}</div>
                       <div className="muted admin-sub">
-                        {row.gst_rate != null && row.gst_rate !== "" ? `${Number(row.gst_rate)}%` : "—"}
+                        {row.gst_rate != null && row.gst_rate !== ""
+                          ? `${Number(row.gst_rate)}%`
+                          : "—"}
                       </div>
                     </td>
                     <td>
@@ -472,16 +442,15 @@ function AdminInventoryPageInner() {
                     </td>
                     <td>
                       <div className="inv-row-actions" role="group" aria-label="Stock actions">
-                        <button
-                          type="button"
+                        <Link
                           className="admin-action-btn admin-action-btn--primary"
-                          onClick={() => openInward(row.variant_id)}
+                          href={`/admin/inventory/grn?variant=${encodeURIComponent(row.variant_id)}`}
                           data-tooltip="Receive stock"
                           aria-label={`Receive stock for ${row.product_name}`}
                         >
                           <ArrowDownToLine size={15} strokeWidth={2} />
                           <span>Receive</span>
-                        </button>
+                        </Link>
                         <button
                           type="button"
                           className="admin-action-btn"
@@ -555,117 +524,6 @@ function AdminInventoryPageInner() {
           </div>
         )}
       </AdminPanel>
-
-      <AdminFormModal
-        open={inwardOpen}
-        title="Receive stock (GRN)"
-        eyebrow="Step 2 · Inventory"
-        submitLabel="Post inward"
-        savingLabel="Posting…"
-        saving={saving}
-        error={formError}
-        onClose={() => setInwardOpen(false)}
-        onSubmit={onInwardSubmit}
-      >
-        <p className="admin-span-2 muted inv-modal-hint">
-          Use this when goods arrive from a supplier. Product must already exist in Product Master.
-        </p>
-        <label>
-          <span>Supplier</span>
-          <input
-            value={inward.supplier}
-            onChange={(e) => setInward((f) => ({ ...f, supplier: e.target.value }))}
-            placeholder="Optional"
-          />
-        </label>
-        <label>
-          <span>Bill / invoice no.</span>
-          <input
-            value={inward.billNo}
-            onChange={(e) => setInward((f) => ({ ...f, billNo: e.target.value }))}
-            placeholder="Optional"
-          />
-        </label>
-        <label className="admin-span-2">
-          <span>Note</span>
-          <input
-            value={inward.note}
-            onChange={(e) => setInward((f) => ({ ...f, note: e.target.value }))}
-            placeholder="Optional remark"
-          />
-        </label>
-
-        <div className="admin-span-2" style={{ display: "grid", gap: 10 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <strong style={{ fontSize: "0.85rem" }}>Lines</strong>
-            <button
-              type="button"
-              className="btn admin-ghost-btn"
-              onClick={() =>
-                setInward((f) => ({
-                  ...f,
-                  lines: [...f.lines, { productVariantId: "", quantity: "1" }]
-                }))
-              }
-            >
-              + Add line
-            </button>
-          </div>
-          {inward.lines.map((line, index) => (
-            <div
-              key={`line-${index}`}
-              style={{ display: "grid", gridTemplateColumns: "1fr 110px auto", gap: 8 }}
-            >
-              <select
-                required
-                value={line.productVariantId}
-                onChange={(e) =>
-                  setInward((f) => {
-                    const lines = [...f.lines];
-                    lines[index] = { ...lines[index], productVariantId: e.target.value };
-                    return { ...f, lines };
-                  })
-                }
-              >
-                <option value="">Select SKU / variant</option>
-                {(data?.stock || []).map((row) => (
-                  <option key={row.variant_id} value={row.variant_id}>
-                    {row.product_name} · {row.sku || "no-sku"} · on hand {row.stock_quantity}
-                  </option>
-                ))}
-              </select>
-              <input
-                required
-                type="number"
-                min={1}
-                step={1}
-                value={line.quantity}
-                onChange={(e) =>
-                  setInward((f) => {
-                    const lines = [...f.lines];
-                    lines[index] = { ...lines[index], quantity: e.target.value };
-                    return { ...f, lines };
-                  })
-                }
-                aria-label="Inward quantity"
-              />
-              <button
-                type="button"
-                className="btn admin-ghost-btn"
-                disabled={inward.lines.length <= 1}
-                onClick={() =>
-                  setInward((f) => ({
-                    ...f,
-                    lines: f.lines.filter((_, i) => i !== index)
-                  }))
-                }
-              >
-                Remove
-              </button>
-            </div>
-          ))}
-        </div>
-      </AdminFormModal>
 
       <AdminFormModal
         open={adjustOpen}

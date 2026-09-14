@@ -28,6 +28,9 @@ import {
   Plug,
   Store,
   Sparkles,
+  Truck,
+  ArrowDownToLine,
+  Printer,
   type LucideIcon
 } from "lucide-react";
 import {
@@ -93,7 +96,10 @@ const navModules: NavModule[] = [
     children: [
       { label: "Product Master", href: "/admin/products", icon: Package },
       { label: "Categories", href: "/admin/categories", icon: Tags },
-      { label: "Inventory", href: "/admin/inventory", icon: Warehouse }
+      { label: "Inventory", href: "/admin/inventory", icon: Warehouse },
+      { label: "Receive stock (GRN)", href: "/admin/inventory/grn", icon: ArrowDownToLine },
+      { label: "Print barcodes", href: "/admin/barcodes", icon: Printer },
+      { label: "Supplier Master", href: "/admin/suppliers", icon: Truck }
     ]
   },
   {

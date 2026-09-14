@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import JsBarcode from "jsbarcode";
 import QRCode from "qrcode";
-import { Printer, RefreshCw, Trash2, Upload, X } from "lucide-react";
+import { Check, Printer, QrCode, RefreshCw, Save, Trash2, Upload, X } from "lucide-react";
 import { AdminAlert, slugify } from "./admin-ui";
 import { adminFetch, getAdminToken } from "../../lib/admin-api";
 import { buildProductUploadPageUrl } from "../../lib/product-upload-url";
@@ -67,7 +67,7 @@ type Props = {
   initialImages?: ProductFormImage[];
   initialInternalImages?: ProductFormImage[];
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (created?: { id: string; defaultVariantId?: string | null }) => void;
 };
 
 const emptyImages: ProductFormImage[] = [];
@@ -101,10 +101,14 @@ export function ProductFormModal({
     Array<{ id: string; unit_code: string; barcode: string; status?: string; label_printed?: boolean }>
   >([]);
   const [printBusy, setPrintBusy] = useState(false);
-  const [qrDataUrl, setQrDataUrl] = useState("");
+  const [websiteQrDataUrl, setWebsiteQrDataUrl] = useState("");
+  const [internalQrDataUrl, setInternalQrDataUrl] = useState("");
+  const [qrRefreshing, setQrRefreshing] = useState(false);
+  const [justCreated, setJustCreated] = useState(false);
   const barcodeRef = useRef<SVGSVGElement | null>(null);
   const websiteFileRef = useRef<HTMLInputElement | null>(null);
   const internalFileRef = useRef<HTMLInputElement | null>(null);
+  const photosRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -113,15 +117,24 @@ export function ProductFormModal({
     setInternalImages(initialInternalImages);
     setError("");
     setUnits([]);
+    setJustCreated(false);
   }, [open, initial, initialImages, initialInternalImages]);
 
   useEffect(() => {
     if (!open || !form.image_upload_token) {
-      setQrDataUrl("");
+      setWebsiteQrDataUrl("");
+      setInternalQrDataUrl("");
       return;
     }
-    const url = buildProductUploadPageUrl(form.image_upload_token, window.location.origin);
-    void QRCode.toDataURL(url, { margin: 1, width: 220 }).then(setQrDataUrl).catch(() => setQrDataUrl(""));
+    const origin = window.location.origin;
+    const websiteUrl = buildProductUploadPageUrl(form.image_upload_token, origin, "website");
+    const internalUrl = buildProductUploadPageUrl(form.image_upload_token, origin, "internal");
+    void QRCode.toDataURL(websiteUrl, { margin: 1, width: 180 })
+      .then(setWebsiteQrDataUrl)
+      .catch(() => setWebsiteQrDataUrl(""));
+    void QRCode.toDataURL(internalUrl, { margin: 1, width: 180 })
+      .then(setInternalQrDataUrl)
+      .catch(() => setInternalQrDataUrl(""));
   }, [open, form.image_upload_token]);
 
   useEffect(() => {
@@ -212,6 +225,37 @@ export function ProductFormModal({
       });
     }
     setList((current) => current.filter((_, i) => i !== index));
+  };
+
+  const refreshRemoteImages = async () => {
+    if (!form.id) return;
+    setQrRefreshing(true);
+    try {
+      const result = await adminFetch<{
+        product_images?: Array<{ id: string; storage_path: string; image_kind?: string }>;
+        internal_images?: Array<{ id: string; storage_path: string; image_kind?: string }>;
+      }>(`/api/admin/products/${form.id}`);
+      if (result.error || !result.data) return;
+      const keepLocal = (list: ProductFormImage[]) => list.filter((row) => row.isNew && row.file);
+      setWebsiteImages([
+        ...keepLocal(websiteImages),
+        ...(result.data.product_images || []).map((image) => ({
+          id: image.id,
+          storage_path: image.storage_path,
+          kind: "website" as const
+        }))
+      ].slice(0, MAX_KIND_IMAGES));
+      setInternalImages([
+        ...keepLocal(internalImages),
+        ...(result.data.internal_images || []).map((image) => ({
+          id: image.id,
+          storage_path: image.storage_path,
+          kind: "internal" as const
+        }))
+      ].slice(0, MAX_KIND_IMAGES));
+    } finally {
+      setQrRefreshing(false);
+    }
   };
 
   const reloadUnits = async (productId: string) => {
@@ -358,6 +402,7 @@ export function ProductFormModal({
         const created = await adminFetch<{
           id: string;
           image_upload_token?: string;
+          default_variant_id?: string | null;
           product_items?: Array<{ id: string; unit_code: string; barcode: string; status?: string }>;
         }>("/api/admin/products", {
           method: "POST",
@@ -371,7 +416,35 @@ export function ProductFormModal({
           image_upload_token: created.data!.image_upload_token
         }));
         setUnits(created.data.product_items || []);
-        onSaved();
+        setJustCreated(true);
+        // Reload galleries so phone QR + thumbs match the server after create.
+        const fresh = await adminFetch<{
+          product_images?: Array<{ id: string; storage_path: string }>;
+          internal_images?: Array<{ id: string; storage_path: string }>;
+        }>(`/api/admin/products/${created.data.id}`);
+        if (fresh.data) {
+          setWebsiteImages(
+            (fresh.data.product_images || []).map((image) => ({
+              id: image.id,
+              storage_path: image.storage_path,
+              kind: "website" as const
+            }))
+          );
+          setInternalImages(
+            (fresh.data.internal_images || []).map((image) => ({
+              id: image.id,
+              storage_path: image.storage_path,
+              kind: "internal" as const
+            }))
+          );
+        }
+        onSaved({
+          id: created.data.id,
+          defaultVariantId: created.data.default_variant_id
+        });
+        requestAnimationFrame(() => {
+          photosRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
         return;
       } else if (form.id) {
         const updated = await adminFetch(`/api/admin/products/${form.id}`, {
@@ -390,10 +463,24 @@ export function ProductFormModal({
     }
   };
 
+  const isCreatedSession = Boolean(form.id);
+  const heading =
+    mode === "create" && !isCreatedSession
+      ? "Add product"
+      : mode === "create" && isCreatedSession
+        ? "Add product photos"
+        : "Edit product";
+  const eyebrow =
+    mode === "create" && !isCreatedSession
+      ? "New catalogue item"
+      : mode === "create" && isCreatedSession
+        ? "Product created · add photos"
+        : "Update catalogue item";
+
   return (
     <div className="admin-modal-backdrop" role="presentation" onClick={onClose}>
       <div
-        className="admin-modal"
+        className="admin-modal admin-modal--product"
         role="dialog"
         aria-modal="true"
         aria-labelledby="product-modal-title"
@@ -401,15 +488,25 @@ export function ProductFormModal({
       >
         <div className="admin-modal-head">
           <div>
-            <p className="eyebrow">{mode === "create" ? "New catalogue item" : "Update catalogue item"}</p>
-            <h2 id="product-modal-title">{mode === "create" ? "Add product" : "Edit product"}</h2>
+            <p className="eyebrow">{eyebrow}</p>
+            <h2 id="product-modal-title">{heading}</h2>
+            <p className="admin-modal-sub">
+              {isCreatedSession
+                ? "Scan phone QR or upload images for website and internal galleries."
+                : "Fill details, then create. Phone QR unlocks after create — same as Edit."}
+            </p>
           </div>
           <button type="button" className="admin-modal-close" aria-label="Close" onClick={onClose}>
             <X size={18} />
           </button>
         </div>
 
-        <form className="admin-modal-body" onSubmit={onSubmit}>
+        <form className="admin-modal-body admin-modal-body--product" onSubmit={onSubmit}>
+          {justCreated ? (
+            <AdminAlert tone="ok">
+              Product created. Scan the website or internal QR below, or upload from this computer.
+            </AdminAlert>
+          ) : null}
           <div className="admin-form-grid">
             <label>
               <span>Name</span>
@@ -727,6 +824,164 @@ export function ProductFormModal({
             </label>
           </div>
 
+          <div className="admin-product-photos" ref={photosRef}>
+            <div className="admin-product-photos-head">
+              <div>
+                <strong>Product photos</strong>
+                <p className="muted">
+                  Available on Add and Edit. Upload now; phone QR unlocks after the product is created.
+                </p>
+              </div>
+              {isCreatedSession ? (
+                <button
+                  type="button"
+                  className="admin-ghost-btn admin-image-refresh"
+                  disabled={qrRefreshing}
+                  onClick={() => void refreshRemoteImages()}
+                >
+                  <RefreshCw size={14} />
+                  {qrRefreshing ? "Refreshing…" : "Refresh phone uploads"}
+                </button>
+              ) : null}
+            </div>
+
+            <div className="admin-image-uploader">
+              <div className="admin-barcode-preview-head">
+                <strong>Website images (storefront)</strong>
+                <span className="muted">
+                  {websiteImages.length}/{MAX_KIND_IMAGES}
+                </span>
+              </div>
+              <p className="muted admin-field-hint" style={{ marginTop: 0 }}>
+                Scan phone QR or upload here. These photos appear on the customer website.
+              </p>
+              <div className="admin-image-upload-layout">
+                <div className={`admin-image-qr-panel${form.image_upload_token ? "" : " is-locked"}`}>
+                  {form.image_upload_token && websiteQrDataUrl ? (
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img alt="Scan to upload website photos" src={websiteQrDataUrl} />
+                      <span>
+                        <QrCode size={12} /> Website QR
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <QrCode size={28} strokeWidth={1.5} />
+                      <p className="muted admin-field-hint">
+                        Click <b>Create product</b> first — then scan this QR from your phone.
+                      </p>
+                    </>
+                  )}
+                </div>
+                <div className="admin-image-grid">
+                  {websiteImages.map((image, index) => (
+                    <div key={`${image.id || image.preview}-web-${index}`} className="admin-image-thumb">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={image.preview || image.storage_path} alt="" />
+                      <button
+                        type="button"
+                        aria-label="Remove website image"
+                        onClick={() => void removeImage(index, "website")}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  {websiteImages.length < MAX_KIND_IMAGES && (
+                    <button
+                      type="button"
+                      className="admin-image-add"
+                      onClick={() => websiteFileRef.current?.click()}
+                    >
+                      <Upload size={18} />
+                      Upload
+                    </button>
+                  )}
+                </div>
+              </div>
+              <input
+                ref={websiteFileRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                multiple
+                hidden
+                onChange={(e) => {
+                  void onPickFiles(e.target.files, "website");
+                  e.target.value = "";
+                }}
+              />
+            </div>
+
+            <div className="admin-image-uploader">
+              <div className="admin-barcode-preview-head">
+                <strong>Internal reference images</strong>
+                <span className="muted">
+                  {internalImages.length}/{MAX_KIND_IMAGES}
+                </span>
+              </div>
+              <p className="muted admin-field-hint" style={{ marginTop: 0 }}>
+                Staff-only. Scan phone QR or upload here. Not shown on the storefront.
+              </p>
+              <div className="admin-image-upload-layout">
+                <div className={`admin-image-qr-panel${form.image_upload_token ? "" : " is-locked"}`}>
+                  {form.image_upload_token && internalQrDataUrl ? (
+                    <>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img alt="Scan to upload internal photos" src={internalQrDataUrl} />
+                      <span>
+                        <QrCode size={12} /> Internal QR
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <QrCode size={28} strokeWidth={1.5} />
+                      <p className="muted admin-field-hint">
+                        Click <b>Create product</b> first — then scan this QR from your phone.
+                      </p>
+                    </>
+                  )}
+                </div>
+                <div className="admin-image-grid">
+                  {internalImages.map((image, index) => (
+                    <div key={`${image.id || image.preview}-int-${index}`} className="admin-image-thumb">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={image.preview || image.storage_path} alt="" />
+                      <button
+                        type="button"
+                        aria-label="Remove internal image"
+                        onClick={() => void removeImage(index, "internal")}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                  {internalImages.length < MAX_KIND_IMAGES && (
+                    <button
+                      type="button"
+                      className="admin-image-add"
+                      onClick={() => internalFileRef.current?.click()}
+                    >
+                      <Upload size={18} />
+                      Upload
+                    </button>
+                  )}
+                </div>
+              </div>
+              <input
+                ref={internalFileRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                multiple
+                hidden
+                onChange={(e) => {
+                  void onPickFiles(e.target.files, "internal");
+                  e.target.value = "";
+                }}
+              />
+            </div>
+          </div>
+
           <div className="admin-barcode-preview">
             <div className="admin-barcode-preview-head">
               <strong>Barcode stickers</strong>
@@ -744,6 +999,7 @@ export function ProductFormModal({
                 disabled={printBusy}
                 onClick={() => void printStickers("pending")}
               >
+                <Printer size={15} />
                 {printBusy ? "Printing…" : "Print new stickers"}
               </button>
               <button
@@ -752,6 +1008,7 @@ export function ProductFormModal({
                 disabled={printBusy}
                 onClick={() => void printStickers("all")}
               >
+                <Printer size={14} />
                 Print all unique
               </button>
               <button
@@ -760,6 +1017,7 @@ export function ProductFormModal({
                 disabled={printBusy}
                 onClick={() => void printStickers("family")}
               >
+                <Printer size={14} />
                 Print sample size
               </button>
             </div>
@@ -801,134 +1059,35 @@ export function ProductFormModal({
             )}
           </div>
 
-          {form.image_upload_token ? (
-            <div className="admin-qr-box">
-              <strong>QR · upload product photos</strong>
-              {qrDataUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img alt="Scan to upload product photos" src={qrDataUrl} />
-              ) : (
-                <p className="muted">Generating QR…</p>
-              )}
-              <p className="admin-field-hint admin-qr-link">
-                {buildProductUploadPageUrl(form.image_upload_token, typeof window !== "undefined" ? window.location.origin : "")}
-              </p>
-              <small className="admin-field-hint">
-                Save the product first, then scan with a phone camera. Photos appear on the website
-                (max 5). Set status to Active to show the product on the shop.
-              </small>
-            </div>
-          ) : (
-            <p className="muted admin-field-hint">Save the product once to generate the upload QR code.</p>
-          )}
-
-          <div className="admin-image-uploader">
-            <div className="admin-barcode-preview-head">
-              <strong>Website images (storefront)</strong>
-              <span className="muted">
-                {websiteImages.length}/{MAX_KIND_IMAGES}
-              </span>
-            </div>
-            <p className="muted admin-field-hint" style={{ marginTop: 0 }}>
-              Upload only — these photos appear on the customer website.
-            </p>
-            <div className="admin-image-grid">
-              {websiteImages.map((image, index) => (
-                <div key={`${image.id || image.preview}-web-${index}`} className="admin-image-thumb">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={image.preview || image.storage_path} alt="" />
-                  <button
-                    type="button"
-                    aria-label="Remove website image"
-                    onClick={() => void removeImage(index, "website")}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))}
-              {websiteImages.length < MAX_KIND_IMAGES && (
-                <button
-                  type="button"
-                  className="admin-image-add"
-                  onClick={() => websiteFileRef.current?.click()}
-                >
-                  <Upload size={18} />
-                  Upload
-                </button>
-              )}
-            </div>
-            <input
-              ref={websiteFileRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              multiple
-              hidden
-              onChange={(e) => {
-                void onPickFiles(e.target.files, "website");
-                e.target.value = "";
-              }}
-            />
-          </div>
-
-          <div className="admin-image-uploader">
-            <div className="admin-barcode-preview-head">
-              <strong>Internal reference images</strong>
-              <span className="muted">
-                {internalImages.length}/{MAX_KIND_IMAGES}
-              </span>
-            </div>
-            <p className="muted admin-field-hint" style={{ marginTop: 0 }}>
-              Staff-only. Prefer phone QR above; you can also upload here.
-            </p>
-            <div className="admin-image-grid">
-              {internalImages.map((image, index) => (
-                <div key={`${image.id || image.preview}-int-${index}`} className="admin-image-thumb">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={image.preview || image.storage_path} alt="" />
-                  <button
-                    type="button"
-                    aria-label="Remove internal image"
-                    onClick={() => void removeImage(index, "internal")}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))}
-              {internalImages.length < MAX_KIND_IMAGES && (
-                <button
-                  type="button"
-                  className="admin-image-add"
-                  onClick={() => internalFileRef.current?.click()}
-                >
-                  <Upload size={18} />
-                  Upload
-                </button>
-              )}
-            </div>
-            <input
-              ref={internalFileRef}
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              multiple
-              hidden
-              onChange={(e) => {
-                void onPickFiles(e.target.files, "internal");
-                e.target.value = "";
-              }}
-            />
-          </div>
-
           {error ? <AdminAlert>{error}</AdminAlert> : null}
 
-          <div className="admin-modal-actions">
+          <div className="admin-modal-actions admin-modal-actions--product">
             <button type="button" className="admin-ghost-btn" onClick={onClose}>
-              {mode === "create" && form.id ? "Done" : "Cancel"}
+              <X size={15} />
+              {mode === "create" && isCreatedSession ? "Done" : "Cancel"}
             </button>
-            {!(mode === "create" && form.id) ? (
-              <button className="btn" type="submit" disabled={saving}>
-                {saving ? "Saving…" : mode === "create" ? "Create product" : "Save changes"}
+            {!(mode === "create" && isCreatedSession) ? (
+              <button className="btn admin-modal-primary" type="submit" disabled={saving}>
+                {saving ? (
+                  "Saving…"
+                ) : mode === "create" ? (
+                  <>
+                    <Check size={16} />
+                    Create product
+                  </>
+                ) : (
+                  <>
+                    <Save size={16} />
+                    Save changes
+                  </>
+                )}
               </button>
-            ) : null}
+            ) : (
+              <button type="button" className="btn admin-modal-primary" onClick={onClose}>
+                <Check size={16} />
+                Finish
+              </button>
+            )}
           </div>
         </form>
       </div>

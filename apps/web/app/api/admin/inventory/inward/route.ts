@@ -6,10 +6,12 @@ import {
   ensureProductUnitsSchema,
   syncSellableStock
 } from "../../../../../lib/product-units";
+import { ensureSuppliersSchema, getSupplierById, supplierLabel } from "../../../../../lib/suppliers";
 
 type InwardLine = {
   productVariantId?: string;
   quantity?: number;
+  purchasePrice?: number;
 };
 
 /**
@@ -22,15 +24,21 @@ export async function POST(request: NextRequest) {
 
   const body = (await request.json().catch(() => null)) as {
     supplier?: string;
+    supplierId?: string;
     billNo?: string;
     note?: string;
+    invoiceAmount?: number;
     lines?: InwardLine[];
   } | null;
 
   const lines = (body?.lines || [])
     .map((line) => ({
       productVariantId: String(line.productVariantId || "").trim(),
-      quantity: Number(line.quantity)
+      quantity: Number(line.quantity),
+      purchasePrice:
+        line.purchasePrice == null || line.purchasePrice === ("" as unknown)
+          ? NaN
+          : Number(line.purchasePrice)
     }))
     .filter((line) => line.productVariantId && Number.isFinite(line.quantity) && line.quantity > 0);
 
@@ -38,12 +46,55 @@ export async function POST(request: NextRequest) {
     return fail("Add at least one line with variant and quantity > 0");
   }
 
-  const supplier = (body?.supplier || "").trim();
+  for (const line of lines) {
+    if (!Number.isFinite(line.purchasePrice) || line.purchasePrice < 0) {
+      return fail("Enter purchase price (₹) for every line");
+    }
+  }
+
+  const supplierId = String(body?.supplierId || "").trim() || null;
+  let supplierName = (body?.supplier || "").trim();
+  let supplierMeta = "";
+
+  await ensureSuppliersSchema();
+  if (supplierId) {
+    const supplier = await getSupplierById(supplierId);
+    if (!supplier || !supplier.is_active) {
+      return fail("Select an active supplier from Supplier Master", 400);
+    }
+    supplierName = supplierLabel(supplier);
+    supplierMeta = [
+      supplier.gstin ? `GSTIN ${supplier.gstin}` : "",
+      supplier.pan ? `PAN ${supplier.pan}` : "",
+      supplier.state ? `State ${supplier.state}` : "",
+      supplier.state_code ? `State code ${supplier.state_code}` : ""
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  }
+
   const billNo = (body?.billNo || "").trim();
   const extraNote = (body?.note || "").trim();
+  const invoiceAmountRaw = body?.invoiceAmount;
+  const invoiceAmount =
+    invoiceAmountRaw == null || invoiceAmountRaw === ("" as unknown)
+      ? null
+      : Number(invoiceAmountRaw);
+  if (invoiceAmount != null && (!Number.isFinite(invoiceAmount) || invoiceAmount < 0)) {
+    return fail("Invoice amount must be a valid number");
+  }
+
+  const computedTotal = lines.reduce(
+    (sum, line) => sum + Math.round(line.quantity * line.purchasePrice * 100) / 100,
+    0
+  );
+
   const noteParts = [
-    supplier ? `Supplier: ${supplier}` : "",
+    supplierName ? `Supplier: ${supplierName}` : "",
+    supplierMeta,
     billNo ? `Bill: ${billNo}` : "",
+    invoiceAmount != null ? `Invoice amt: ₹${invoiceAmount.toFixed(2)}` : "",
+    `Lines total: ₹${computedTotal.toFixed(2)}`,
     extraNote
   ].filter(Boolean);
   const note = noteParts.join(" · ") || null;
@@ -53,7 +104,13 @@ export async function POST(request: NextRequest) {
   try {
     const result = await withTransaction(async (db) => {
       const movements: Array<Record<string, unknown>> = [];
-      const updated: Array<{ productVariantId: string; stockQuantity: number; unitsCreated: number }> = [];
+      const updated: Array<{
+        productVariantId: string;
+        stockQuantity: number;
+        unitsCreated: number;
+        purchasePrice: number;
+        lineTotal: number;
+      }> = [];
       const createdItems: Array<Record<string, unknown>> = [];
 
       for (const line of lines) {
@@ -101,23 +158,33 @@ export async function POST(request: NextRequest) {
           [variant.product_id]
         );
 
+        const lineNote = [
+          note,
+          `Purchase @ ₹${Number(line.purchasePrice).toFixed(2)}`,
+          `Line total ₹${(Math.round(line.quantity * line.purchasePrice * 100) / 100).toFixed(2)}`
+        ]
+          .filter(Boolean)
+          .join(" · ");
+
         const movement = await db.queryOne(
           `insert into inventory_movements
-             (product_variant_id, type, quantity, reference_type, note, created_by)
-           values ($1, 'purchase', $2, 'grn', $3, $4)
+             (product_variant_id, type, quantity, reference_type, note, created_by, supplier_id)
+           values ($1, 'purchase', $2, 'grn', $3, $4, $5)
            returning *`,
-          [line.productVariantId, qty, note, ctx.userId]
+          [line.productVariantId, qty, lineNote, ctx.userId, supplierId]
         );
 
         if (movement) movements.push(movement as Record<string, unknown>);
         updated.push({
           productVariantId: line.productVariantId,
           stockQuantity: Number(stockRow?.stock_quantity || 0),
-          unitsCreated: items.length
+          unitsCreated: items.length,
+          purchasePrice: line.purchasePrice,
+          lineTotal: Math.round(line.quantity * line.purchasePrice * 100) / 100
         });
       }
 
-      return { movements, updated, createdItems };
+      return { movements, updated, createdItems, computedTotal, invoiceAmount };
     });
 
     await writeAuditLog({
@@ -126,8 +193,11 @@ export async function POST(request: NextRequest) {
       entityType: "inventory_movements",
       entityId: (result.movements[0] as { id?: string } | undefined)?.id,
       after: {
-        supplier: supplier || null,
+        supplierId: supplierId || null,
+        supplier: supplierName || null,
         billNo: billNo || null,
+        invoiceAmount: result.invoiceAmount,
+        linesTotal: result.computedTotal,
         note,
         lines: result.updated,
         units: result.createdItems.length
@@ -139,7 +209,9 @@ export async function POST(request: NextRequest) {
         count: result.movements.length,
         movements: result.movements,
         stock: result.updated,
-        items: result.createdItems
+        items: result.createdItems,
+        invoiceAmount: result.invoiceAmount,
+        linesTotal: result.computedTotal
       },
       201
     );

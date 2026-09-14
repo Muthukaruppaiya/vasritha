@@ -7,8 +7,8 @@ import {
   permissionsForRoles,
   ROLE_META
 } from "./rbac";
-import { getUserById, getUserRoles, verifyAccessToken } from "../db/auth";
-import { query } from "../db/pool";
+import { verifyAccessToken } from "../db/auth";
+import { query, queryOne } from "../db/pool";
 
 export type AuthContext = {
   userId: string;
@@ -26,7 +26,7 @@ export function ok<T>(data: T, status = 200, headers?: HeadersInit) {
   return NextResponse.json({ data }, { status, headers });
 }
 
-export function cachedOk<T>(data: T, maxAgeSeconds = 30) {
+export function cachedOk<T>(data: T, maxAgeSeconds = 120) {
   return ok(data, 200, {
     "Cache-Control": `public, s-maxage=${maxAgeSeconds}, stale-while-revalidate=${maxAgeSeconds * 4}`
   });
@@ -44,18 +44,41 @@ export async function getAuthContext(request: Request): Promise<AuthContext | nu
   const token = await verifyAccessToken(bearer);
   if (!token) return null;
 
-  const user = await getUserById(token.userId);
-  if (!user) return null;
+  // One round-trip instead of user + roles sequential queries (critical with remote DB).
+  const row = await queryOne<{
+    id: string;
+    email: string | null;
+    role_codes: string[] | null;
+    role_templates: string[] | null;
+  }>(
+    `select u.id, u.email,
+            coalesce(array_agg(r.code) filter (where r.code is not null), '{}') as role_codes,
+            coalesce(array_agg(r.permission_template) filter (where r.permission_template is not null), '{}') as role_templates
+     from users u
+     left join user_roles ur on ur.user_id = u.id
+     left join roles r on r.id = ur.role_id
+     where u.id = $1
+     group by u.id`,
+    [token.userId]
+  );
+  if (!row) return null;
 
-  let roles = await getUserRoles(user.id);
-  if (roles.length === 0) roles = ["customer"];
+  const known = new Set(Object.keys(ROLE_META) as AppRole[]);
+  const roles = new Set<AppRole>();
+  for (const code of row.role_codes ?? []) {
+    if (known.has(code as AppRole)) roles.add(code as AppRole);
+  }
+  for (const template of row.role_templates ?? []) {
+    if (known.has(template as AppRole)) roles.add(template as AppRole);
+  }
+  const resolved = roles.size ? [...roles] : (["customer"] as AppRole[]);
 
   return {
-    userId: user.id,
-    email: user.email,
-    roles,
-    primaryRole: highestRole(roles),
-    permissions: [...permissionsForRoles(roles)]
+    userId: row.id,
+    email: row.email,
+    roles: resolved,
+    primaryRole: highestRole(resolved),
+    permissions: [...permissionsForRoles(resolved)]
   };
 }
 

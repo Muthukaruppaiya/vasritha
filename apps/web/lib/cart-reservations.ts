@@ -1,6 +1,7 @@
 import type { QueryResultRow } from "pg";
 import { query, queryOne, withTransaction } from "./db/pool";
 import { ensureProductUnitsSchema, syncSellableStock } from "./product-units";
+import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
 
 export const CART_HOLD_MINUTES = 30;
 
@@ -26,6 +27,7 @@ export type StockReservation = {
 };
 
 export async function ensureCartReservationsSchema() {
+  if (skipRuntimeSchemaEnsure()) return;
   await ensureProductUnitsSchema();
 
   await query(`

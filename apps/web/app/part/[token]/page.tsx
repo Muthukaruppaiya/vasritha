@@ -1,27 +1,35 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
+import { parseProductImageUploadKind, type ProductImageUploadKind } from "../../../lib/product-upload-url";
 
 type Payload = {
   name: string;
   sku: string | null;
   tag: string | null;
-  kind: "website";
+  kind: ProductImageUploadKind;
   remaining: number;
   images: Array<{ id: string; storage_path: string }>;
 };
 
-export default function PartImageUploadPage() {
+function PartImageUploadInner() {
   const params = useParams<{ token: string }>();
+  const searchParams = useSearchParams();
   const token = params.token;
+  const kind = useMemo(
+    () => parseProductImageUploadKind(searchParams.get("kind")),
+    [searchParams]
+  );
   const [data, setData] = useState<Payload | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
 
+  const apiPath = `/api/part-upload/${token}?kind=${kind}`;
+
   const load = async () => {
-    const res = await fetch(`/api/part-upload/${token}`);
+    const res = await fetch(apiPath);
     const json = (await res.json()) as { data?: Payload; error?: string };
     if (!res.ok || !json.data) {
       setError(json.error || "This upload link is not valid.");
@@ -35,7 +43,7 @@ export default function PartImageUploadPage() {
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, kind]);
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -47,24 +55,35 @@ export default function PartImageUploadPage() {
     setError("");
     const body = new FormData();
     body.append("file", file);
-    const res = await fetch(`/api/part-upload/${token}`, { method: "POST", body });
+    body.append("kind", kind);
+    const res = await fetch(apiPath, { method: "POST", body });
     const json = (await res.json()) as { error?: string };
     setBusy(false);
     if (!res.ok) {
       setError(json.error || "Upload failed");
       return;
     }
-    setMessage("Product photo uploaded — it will appear on the website.");
+    setMessage(
+      kind === "internal"
+        ? "Internal reference photo uploaded."
+        : "Website photo uploaded — it will appear on the storefront."
+    );
     if (input) input.value = "";
     await load();
   };
 
+  const title = kind === "internal" ? "Internal photos" : "Website photos";
+  const blurb =
+    kind === "internal"
+      ? "Staff-only reference photos (not shown on the customer website)."
+      : "These photos appear on the customer website.";
+
   return (
     <main className="part-upload">
       <div className="part-upload-card">
-        <p className="eyebrow">Vasritha · Product photos</p>
+        <p className="eyebrow">Vasritha · {title}</p>
         <h1>Scan & upload</h1>
-        <p className="muted">Take a photo of this product. It appears on the customer website.</p>
+        <p className="muted">{blurb}</p>
         {data ? (
           <>
             <p>
@@ -95,7 +114,7 @@ export default function PartImageUploadPage() {
                 </button>
               </form>
             ) : (
-              <p>All 5 product photos are uploaded.</p>
+              <p>All 5 photos for this gallery are uploaded.</p>
             )}
           </>
         ) : null}
@@ -103,5 +122,21 @@ export default function PartImageUploadPage() {
         {message ? <p className="part-upload-ok">{message}</p> : null}
       </div>
     </main>
+  );
+}
+
+export default function PartImageUploadPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="part-upload">
+          <div className="part-upload-card">
+            <p className="muted">Loading upload…</p>
+          </div>
+        </main>
+      }
+    >
+      <PartImageUploadInner />
+    </Suspense>
   );
 }
