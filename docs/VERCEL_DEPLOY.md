@@ -35,7 +35,7 @@ Save, then **Deployments → Redeploy** the latest `main` commit.
 | `DATABASE_URL` | Supabase **pooler transaction** URI (host `*.pooler.supabase.com`, port **6543**) |
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://lnrcglxlnsoetvyntidu.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase anon / publishable key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Product image uploads (service role) |
+| `SUPABASE_SERVICE_ROLE_KEY` | Preferred for product images (Supabase Storage). If missing, uploads fall back to Postgres `/api/media` |
 | `JWT_SECRET` | Auth token signing secret |
 | `NEXT_PUBLIC_SITE_URL` | Your Vercel URL, e.g. `https://vasritha-web.vercel.app` |
 

@@ -88,6 +88,7 @@ export function isOpsPath(pathname: string): boolean {
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/cron") ||
     pathname.startsWith("/api/part-upload") ||
+    pathname.startsWith("/api/media") ||
     pathname.startsWith("/part/")
   );
 }
