@@ -147,6 +147,7 @@ export const hi: Messages = {
     description: "विवरण",
     colour: "रंग",
     related: "आपको यह भी पसंद आ सकता है",
+    productId: "उत्पाद ID",
     inStock: "स्टॉक में",
     outOfStock: "स्टॉक समाप्त",
     moreFromEdit: "इस एडिट से और",

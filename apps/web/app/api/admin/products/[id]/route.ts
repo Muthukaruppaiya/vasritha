@@ -12,6 +12,12 @@ import { listProductItems, ensureProductUnitsSchema, recordPriceHistory, syncSel
 import { ensureGstSchema, normalizeGstRate, normalizeHsn } from "../../../../../lib/gst";
 import { ensureBrandsSchema, resolveBrandId } from "../../../../../lib/brands";
 import { resolveMediaUrl } from "../../../../../lib/product-image-storage";
+import {
+  canApproveProducts,
+  ensureProductStatusEnum,
+  normalizeProductStatus
+} from "../../../../../lib/product-status";
+import type { AppRole } from "../../../../../lib/auth/rbac";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -119,10 +125,26 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (error || !ctx) return error;
 
   await ensureGstSchema();
+  await ensureProductStatusEnum();
 
   const { id } = await params;
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return fail("Invalid body");
+
+  const canApprove = canApproveProducts((ctx.roles || []) as AppRole[]);
+  if ("status" in body) {
+    const nextStatus = normalizeProductStatus(body.status, {
+      canApprove,
+      fallback: "pending_approval"
+    });
+    if (String(body.status).toLowerCase() === "active" && !canApprove) {
+      return fail("Only a manager can approve products to Active", 403);
+    }
+    if (nextStatus === "rejected" && !canApprove) {
+      return fail("Only a manager can reject products", 403);
+    }
+    body.status = nextStatus;
+  }
 
   if ("price" in body || "compare_at_price" in body) {
     const pricingAuth = await requireAnyPermission(request, [

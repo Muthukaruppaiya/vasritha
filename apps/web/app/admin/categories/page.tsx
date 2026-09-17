@@ -33,6 +33,7 @@ type Category = {
   image_path: string | null;
   sort_order: number;
   created_at: string;
+  is_published?: boolean;
   name_i18n?: Record<string, string> | null;
   subcategories?: Subcategory[];
 };
@@ -265,6 +266,20 @@ export default function AdminCategoriesPage() {
     await reload();
   };
 
+  const onTogglePublish = async (category: Category) => {
+    setActionError("");
+    const next = !(category.is_published !== false);
+    const result = await adminFetch(`/api/admin/categories/${category.id}`, {
+      method: "PATCH",
+      json: { is_published: next }
+    });
+    if (result.error) {
+      setActionError(result.error);
+      return;
+    }
+    await reload();
+  };
+
   const openAddSub = (category: Category) => {
     setSubParent(category);
     setSubEditing(null);
@@ -387,6 +402,9 @@ export default function AdminCategoriesPage() {
                 <div className="eyebrow">#{category.sort_order}</div>
                 <h3>{category.name}</h3>
                 <p className="muted">{category.slug}</p>
+                <p className="muted">
+                  {category.is_published === false ? "Unpublished — hidden on website" : "Published on website"}
+                </p>
                 <p>{category.description || "No description yet."}</p>
                 <div className="admin-child-list">
                   <div className="admin-child-list-head">
@@ -439,6 +457,15 @@ export default function AdminCategoriesPage() {
                 </div>
                 <p className="muted admin-sub">Added {formatDate(category.created_at)}</p>
                 <div className="admin-row-actions" role="group" aria-label="Category actions">
+                  <button
+                    type="button"
+                    className="admin-action-btn"
+                    onClick={() => void onTogglePublish(category)}
+                    title={category.is_published === false ? "Publish category" : "Unpublish category"}
+                    aria-label={`${category.is_published === false ? "Publish" : "Unpublish"} ${category.name}`}
+                  >
+                    <span>{category.is_published === false ? "Publish" : "Unpublish"}</span>
+                  </button>
                   <button
                     type="button"
                     className="admin-action-btn"

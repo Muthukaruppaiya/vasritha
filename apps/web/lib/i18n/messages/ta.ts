@@ -147,6 +147,7 @@ export const ta: Messages = {
     description: "விளக்கம்",
     colour: "நிறம்",
     related: "உங்களுக்கு பிடிக்கலாம்",
+    productId: "தயாரிப்பு ID",
     inStock: "கையிருப்பில் உள்ளது",
     outOfStock: "கையிருப்பு இல்லை",
     moreFromEdit: "இந்த தொகுப்பிலிருந்து மேலும்",

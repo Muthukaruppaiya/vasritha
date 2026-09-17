@@ -4,6 +4,19 @@ import { categoryImage } from "./category-images";
 
 export { categoryImage } from "./category-images";
 
+let categoriesSchemaReady: Promise<void> | null = null;
+
+export async function ensureCategoriesSchema() {
+  // Cheap idempotent ALTER — always run so storefront publish filters work on Vercel too.
+  if (!categoriesSchemaReady) {
+    categoriesSchemaReady = query(`
+      alter table categories
+        add column if not exists is_published boolean not null default true
+    `).then(() => undefined);
+  }
+  await categoriesSchemaReady;
+}
+
 export type StoreVariant = {
   id: string;
   name: string;
@@ -18,6 +31,8 @@ export type StoreProduct = {
   name: string;
   shortName: string;
   slug: string;
+  sku: string;
+  tag: string;
   category: string;
   categoryName: string;
   type: string;
@@ -78,6 +93,8 @@ type ProductRow = {
   name: string;
   short_name: string | null;
   slug: string;
+  sku: string | null;
+  tag: string | null;
   description: string;
   short_description: string | null;
   color: string | null;
@@ -152,6 +169,8 @@ function mapProduct(
     name: row.name,
     shortName: curatedShort || shortName(row.name),
     slug: row.slug,
+    sku: (row.sku || "").trim(),
+    tag: (row.tag || row.sku || "").trim(),
     category: row.category_slug,
     categoryName: row.category_name,
     type: row.subcategory_name || row.category_name,
@@ -243,6 +262,7 @@ async function loadVariantsAndImages(productIds: string[], mode: "card" | "detai
 }
 
 export async function listActiveProducts(options?: ListProductsOptions) {
+  await ensureCategoriesSchema();
   const categorySlug = options?.categorySlug ?? null;
   const subcategorySlug = options?.subcategorySlug ?? null;
   const featuredOnly = Boolean(options?.featuredOnly);
@@ -251,7 +271,7 @@ export async function listActiveProducts(options?: ListProductsOptions) {
 
   const rows = await query<ProductRow>(
     `select
-       p.id, p.name, p.short_name, p.slug, p.description, p.short_description, p.color, p.is_featured,
+       p.id, p.name, p.short_name, p.slug, p.sku, p.tag, p.description, p.short_description, p.color, p.is_featured,
        p.price::text, p.compare_at_price::text,
        p.stock_quantity, c.slug as category_slug, c.name as category_name,
        sc.name as subcategory_name,
@@ -260,6 +280,8 @@ export async function listActiveProducts(options?: ListProductsOptions) {
      join categories c on c.id = p.category_id
      left join subcategories sc on sc.id = p.subcategory_id
      where p.status = 'active'
+       and coalesce(c.is_published, true) = true
+       and p.stock_quantity > 0
        and ($1::text is null or c.slug = $1)
        and ($2::text is null or sc.slug = $2)
        and ($3::boolean = false or p.is_featured = true)
@@ -280,10 +302,11 @@ export async function listRelatedProducts(
   excludeSlug: string,
   limit = 4
 ) {
+  await ensureCategoriesSchema();
   const safeLimit = Math.min(Math.max(limit, 1), 24);
   const rows = await query<ProductRow>(
     `select
-       p.id, p.name, p.short_name, p.slug, p.description, p.short_description, p.color, p.is_featured,
+       p.id, p.name, p.short_name, p.slug, p.sku, p.tag, p.description, p.short_description, p.color, p.is_featured,
        p.price::text, p.compare_at_price::text,
        p.stock_quantity, c.slug as category_slug, c.name as category_name,
        sc.name as subcategory_name,
@@ -292,6 +315,8 @@ export async function listRelatedProducts(
      join categories c on c.id = p.category_id
      left join subcategories sc on sc.id = p.subcategory_id
      where p.status = 'active'
+       and coalesce(c.is_published, true) = true
+       and p.stock_quantity > 0
        and c.slug = $1
        and p.slug <> $2
      order by p.is_featured desc, p.created_at desc
@@ -307,9 +332,10 @@ export async function listRelatedProducts(
 }
 
 export async function getProductBySlug(slug: string) {
+  await ensureCategoriesSchema();
   const row = await queryOne<ProductRow>(
     `select
-       p.id, p.name, p.short_name, p.slug, p.description, p.short_description, p.color, p.is_featured,
+       p.id, p.name, p.short_name, p.slug, p.sku, p.tag, p.description, p.short_description, p.color, p.is_featured,
        p.price::text, p.compare_at_price::text,
        p.stock_quantity, c.slug as category_slug, c.name as category_name,
        sc.name as subcategory_name,
@@ -317,7 +343,7 @@ export async function getProductBySlug(slug: string) {
      from products p
      join categories c on c.id = p.category_id
      left join subcategories sc on sc.id = p.subcategory_id
-     where p.slug = $1 and p.status = 'active'`,
+     where p.slug = $1 and p.status = 'active' and coalesce(c.is_published, true) = true`,
     [slug]
   );
   if (!row) return null;
@@ -353,7 +379,9 @@ function mapCategoryRow(
   };
 }
 
-export async function listCategories(): Promise<StoreCategory[]> {
+export async function listCategories(options?: { includeUnpublished?: boolean }): Promise<StoreCategory[]> {
+  await ensureCategoriesSchema();
+  const includeUnpublished = Boolean(options?.includeUnpublished);
   const [rows, subcats] = await Promise.all([
     query<{
       id: string;
@@ -364,7 +392,11 @@ export async function listCategories(): Promise<StoreCategory[]> {
       sort_order: number;
       name_i18n: Record<string, string> | null;
     }>(
-      `select id, name, slug, description, image_path, sort_order, name_i18n from categories order by sort_order asc`
+      `select id, name, slug, description, image_path, sort_order, name_i18n
+       from categories
+       where ($1::boolean = true or coalesce(is_published, true) = true)
+       order by sort_order asc`,
+      [includeUnpublished]
     ),
     query<{ id: string; category_id: string; name: string; slug: string }>(
       `select id, category_id, name, slug from subcategories order by name asc`
@@ -375,6 +407,7 @@ export async function listCategories(): Promise<StoreCategory[]> {
 }
 
 export async function getCategoryBySlug(slug: string) {
+  await ensureCategoriesSchema();
   const row = await queryOne<{
     id: string;
     name: string;
@@ -384,7 +417,9 @@ export async function getCategoryBySlug(slug: string) {
     sort_order: number;
     name_i18n: Record<string, string> | null;
   }>(
-    `select id, name, slug, description, image_path, sort_order, name_i18n from categories where slug = $1`,
+    `select id, name, slug, description, image_path, sort_order, name_i18n
+     from categories
+     where slug = $1 and coalesce(is_published, true) = true`,
     [slug]
   );
   if (!row) return null;
@@ -404,6 +439,7 @@ export async function listCollections() {
 }
 
 export async function getStorefrontBootstrap() {
+  await ensureCategoriesSchema();
   const [settings, menus, banners, sections, categories] = await Promise.all([
     queryOne(`select * from site_settings limit 1`),
     query<{ id: string } & Record<string, unknown>>(`select * from menus where is_active = true`),
@@ -411,7 +447,12 @@ export async function getStorefrontBootstrap() {
     query<{ id: string } & Record<string, unknown>>(
       `select * from page_sections where page_slug = 'home' and is_active = true order by sort_order`
     ),
-    query(`select id, name, slug, description, sort_order from categories order by sort_order`)
+    query(
+      `select id, name, slug, description, sort_order
+       from categories
+       where coalesce(is_published, true) = true
+       order by sort_order`
+    )
   ]);
 
   const menuIds = menus.map((m) => m.id);

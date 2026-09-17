@@ -33,6 +33,25 @@ type Settings = {
   company_gstin: string | null;
   company_state: string | null;
   company_state_code: string | null;
+  staff_login_security_enabled?: boolean;
+  staff_login_require_ip?: boolean;
+  staff_login_require_device?: boolean;
+  staff_login_require_geo?: boolean;
+  staff_login_allowed_ips?: string | null;
+  staff_login_store_lat?: string | number | null;
+  staff_login_store_lng?: string | number | null;
+  staff_login_store_radius_m?: number | null;
+};
+
+type LoginDevice = {
+  id: string;
+  device_key: string;
+  label: string | null;
+  user_agent: string | null;
+  last_ip: string | null;
+  status: string;
+  last_seen_at: string | null;
+  created_at: string;
 };
 
 type RoleRow = {
@@ -51,9 +70,10 @@ const SYSTEM_TEMPLATES = ROLE_ORDER.filter((code) => code !== "customer").map((c
 }));
 
 export default function AdminSettingsPage() {
-  const [tab, setTab] = useState<"site" | "company" | "roles">("site");
+  const [tab, setTab] = useState<"site" | "company" | "roles" | "security">("site");
   const { data, error, loading, reload } = useAdminQuery<Settings>("/api/admin/settings");
   const rolesQuery = useAdminQuery<RoleRow[]>("/api/admin/roles");
+  const devicesQuery = useAdminQuery<LoginDevice[]>("/api/admin/settings/login-devices");
   const [form, setForm] = useState<Settings>({
     site_name: "",
     tagline: "",
@@ -68,7 +88,15 @@ export default function AdminSettingsPage() {
     company_address: "",
     company_gstin: "",
     company_state: "",
-    company_state_code: ""
+    company_state_code: "",
+    staff_login_security_enabled: false,
+    staff_login_require_ip: false,
+    staff_login_require_device: false,
+    staff_login_require_geo: false,
+    staff_login_allowed_ips: "",
+    staff_login_store_lat: "",
+    staff_login_store_lng: "",
+    staff_login_store_radius_m: 300
   });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -103,7 +131,15 @@ export default function AdminSettingsPage() {
       company_address: data.company_address || "",
       company_gstin: data.company_gstin || "",
       company_state: data.company_state || "",
-      company_state_code: data.company_state_code || ""
+      company_state_code: data.company_state_code || "",
+      staff_login_security_enabled: Boolean(data.staff_login_security_enabled),
+      staff_login_require_ip: Boolean(data.staff_login_require_ip),
+      staff_login_require_device: Boolean(data.staff_login_require_device),
+      staff_login_require_geo: Boolean(data.staff_login_require_geo),
+      staff_login_allowed_ips: data.staff_login_allowed_ips || "",
+      staff_login_store_lat: data.staff_login_store_lat ?? "",
+      staff_login_store_lng: data.staff_login_store_lng ?? "",
+      staff_login_store_radius_m: data.staff_login_store_radius_m ?? 300
     });
   }, [data]);
 
@@ -149,13 +185,33 @@ export default function AdminSettingsPage() {
       method: "PATCH",
       json: {
         ...form,
-        free_shipping_min: Number(form.free_shipping_min || 0)
+        free_shipping_min: Number(form.free_shipping_min || 0),
+        staff_login_security_enabled: Boolean(form.staff_login_security_enabled),
+        staff_login_require_ip: Boolean(form.staff_login_require_ip),
+        staff_login_require_device: Boolean(form.staff_login_require_device),
+        staff_login_require_geo: Boolean(form.staff_login_require_geo),
+        staff_login_allowed_ips: form.staff_login_allowed_ips || "",
+        staff_login_store_lat:
+          form.staff_login_store_lat === "" || form.staff_login_store_lat == null
+            ? null
+            : Number(form.staff_login_store_lat),
+        staff_login_store_lng:
+          form.staff_login_store_lng === "" || form.staff_login_store_lng == null
+            ? null
+            : Number(form.staff_login_store_lng),
+        staff_login_store_radius_m: Number(form.staff_login_store_radius_m || 300)
       }
     });
     setSaving(false);
     if (result.error) setSaveError(result.error);
     else {
-      setMessage(tab === "company" ? "Company details saved." : "Settings saved.");
+      setMessage(
+        tab === "company"
+          ? "Company details saved."
+          : tab === "security"
+            ? "Login security saved."
+            : "Settings saved."
+      );
       await reload();
     }
   };
@@ -238,6 +294,18 @@ export default function AdminSettingsPage() {
           onClick={() => setTab("roles")}
         >
           Roles
+        </button>
+        <button
+          type="button"
+          className={tab === "security" ? "is-active" : ""}
+          onClick={() => {
+            setMessage("");
+            setSaveError("");
+            setTab("security");
+            void devicesQuery.reload();
+          }}
+        >
+          Login security
         </button>
       </div>
 
@@ -457,6 +525,185 @@ export default function AdminSettingsPage() {
               </form>
             </>
           )}
+        </AdminPanel>
+      )}
+
+      {tab === "security" && (
+        <AdminPanel title="Staff login security">
+          {loading && <AdminLoading />}
+          {error && <AdminAlert>{error}</AdminAlert>}
+          {!loading && !error && (
+            <form className="admin-form-grid" onSubmit={onSave}>
+              <AdminAlert tone="ok">
+                Applies only to staff / POS login (ops domain, e.g. Sukadhaa). The public website
+                (e.g. Vasritha) is never checked. Keep the master switch OFF while testing.
+              </AdminAlert>
+
+              <label className="admin-check-row">
+                <input
+                  type="checkbox"
+                  checked={Boolean(form.staff_login_security_enabled)}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, staff_login_security_enabled: e.target.checked }))
+                  }
+                />
+                <span>
+                  <strong>Enable staff login security</strong>
+                  <small className="admin-field-hint">Master switch — when off, IP / device / geo checks are ignored.</small>
+                </span>
+              </label>
+
+              <label className="admin-check-row">
+                <input
+                  type="checkbox"
+                  disabled={!form.staff_login_security_enabled}
+                  checked={Boolean(form.staff_login_require_ip)}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, staff_login_require_ip: e.target.checked }))
+                  }
+                />
+                <span>
+                  <strong>Require store IP</strong>
+                  <small className="admin-field-hint">Most reliable if the shop has a fixed internet IP.</small>
+                </span>
+              </label>
+
+              <label>
+                <span>Allowed IPs (one per line)</span>
+                <textarea
+                  rows={4}
+                  disabled={!form.staff_login_security_enabled || !form.staff_login_require_ip}
+                  value={form.staff_login_allowed_ips || ""}
+                  onChange={(e) => setForm((f) => ({ ...f, staff_login_allowed_ips: e.target.value }))}
+                  placeholder={"103.94.27.75\n103.94.27."}
+                />
+              </label>
+
+              <label className="admin-check-row">
+                <input
+                  type="checkbox"
+                  disabled={!form.staff_login_security_enabled}
+                  checked={Boolean(form.staff_login_require_device)}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, staff_login_require_device: e.target.checked }))
+                  }
+                />
+                <span>
+                  <strong>Require approved device</strong>
+                  <small className="admin-field-hint">Good for known store PCs/phones. First device auto-approves.</small>
+                </span>
+              </label>
+
+              <label className="admin-check-row">
+                <input
+                  type="checkbox"
+                  disabled={!form.staff_login_security_enabled}
+                  checked={Boolean(form.staff_login_require_geo)}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, staff_login_require_geo: e.target.checked }))
+                  }
+                />
+                <span>
+                  <strong>Require store location (GPS)</strong>
+                  <small className="admin-field-hint">Least reliable — staff can deny location; use as extra layer only.</small>
+                </span>
+              </label>
+
+              <label>
+                <span>Store latitude</span>
+                <input
+                  type="number"
+                  step="any"
+                  disabled={!form.staff_login_security_enabled || !form.staff_login_require_geo}
+                  value={form.staff_login_store_lat ?? ""}
+                  onChange={(e) => setForm((f) => ({ ...f, staff_login_store_lat: e.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Store longitude</span>
+                <input
+                  type="number"
+                  step="any"
+                  disabled={!form.staff_login_security_enabled || !form.staff_login_require_geo}
+                  value={form.staff_login_store_lng ?? ""}
+                  onChange={(e) => setForm((f) => ({ ...f, staff_login_store_lng: e.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Allowed radius (metres)</span>
+                <input
+                  type="number"
+                  min={50}
+                  disabled={!form.staff_login_security_enabled || !form.staff_login_require_geo}
+                  value={form.staff_login_store_radius_m ?? 300}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, staff_login_store_radius_m: Number(e.target.value || 300) }))
+                  }
+                />
+              </label>
+
+              {message ? <AdminAlert tone="ok">{message}</AdminAlert> : null}
+              {saveError ? <AdminAlert>{saveError}</AdminAlert> : null}
+              <button className="btn" type="submit" disabled={saving}>
+                {saving ? "Saving…" : "Save login security"}
+              </button>
+            </form>
+          )}
+
+          <div className="admin-soft-card" style={{ marginTop: 24 }}>
+            <h3>Registered devices</h3>
+            <p className="muted">Approve or block browsers/PCs used for staff login.</p>
+            {devicesQuery.loading && <AdminLoading />}
+            {devicesQuery.error && <AdminAlert>{devicesQuery.error}</AdminAlert>}
+            {!devicesQuery.loading && !(devicesQuery.data || []).length ? (
+              <AdminEmpty title="No devices yet" body="Devices appear here after a staff login attempt." />
+            ) : null}
+            <ul className="admin-child-list">
+              {(devicesQuery.data || []).map((device) => (
+                <li key={device.id}>
+                  <div>
+                    <strong>{device.label || "Store device"}</strong>
+                    <p className="muted">
+                      {device.status} · {device.last_ip || "no IP"} · {device.device_key.slice(0, 8)}…
+                    </p>
+                  </div>
+                  <span className="admin-row-actions">
+                    <AdminBadge tone={device.status === "approved" ? "success" : device.status === "blocked" ? "danger" : "warn"}>
+                      {device.status}
+                    </AdminBadge>
+                    {device.status !== "approved" ? (
+                      <button
+                        type="button"
+                        className="admin-action-btn admin-action-btn--compact"
+                        onClick={() =>
+                          void adminFetch("/api/admin/settings/login-devices", {
+                            method: "PATCH",
+                            json: { id: device.id, status: "approved" }
+                          }).then(() => devicesQuery.reload())
+                        }
+                      >
+                        Approve
+                      </button>
+                    ) : null}
+                    {device.status !== "blocked" ? (
+                      <button
+                        type="button"
+                        className="admin-action-btn admin-action-btn--danger admin-action-btn--compact"
+                        onClick={() =>
+                          void adminFetch("/api/admin/settings/login-devices", {
+                            method: "PATCH",
+                            json: { id: device.id, status: "blocked" }
+                          }).then(() => devicesQuery.reload())
+                        }
+                      >
+                        Block
+                      </button>
+                    ) : null}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
         </AdminPanel>
       )}
 

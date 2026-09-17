@@ -147,6 +147,7 @@ export const kn: Messages = {
     description: "ವಿವರಣೆ",
     colour: "ಬಣ್ಣ",
     related: "ನಿಮಗೆ ಇಷ್ಟವಾಗಬಹುದು",
+    productId: "ಉತ್ಪನ್ನ ID",
     inStock: "ಸ್ಟಾಕ್‌ನಲ್ಲಿದೆ",
     outOfStock: "ಸ್ಟಾಕ್ ಇಲ್ಲ",
     moreFromEdit: "ಈ ಎಡಿಟ್‌ನಿಂದ ಇನ್ನಷ್ಟು",

@@ -13,11 +13,13 @@ type SortKey = "featured" | "price-asc" | "price-desc" | "name";
 export function CategoryListing({
   category,
   products,
-  activeSubcategorySlug = null
+  activeSubcategorySlug = null,
+  searchQuery = ""
 }: {
   category: StoreCategory;
   products: StoreProduct[];
   activeSubcategorySlug?: string | null;
+  searchQuery?: string;
 }) {
   const t = useT();
   const { locale } = useLocale();
@@ -98,7 +100,11 @@ export function CategoryListing({
           </nav>
           <div className="eyebrow">{t("listing.boutiqueEdit")}</div>
           <h1>{heading}</h1>
-          <p>{category.description}</p>
+          {searchQuery.trim() ? (
+            <p>Showing matches for “{searchQuery.trim()}”</p>
+          ) : (
+            <p>{category.description}</p>
+          )}
         </div>
       </section>
 

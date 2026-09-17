@@ -147,6 +147,7 @@ export const ml: Messages = {
     description: "വിവരണം",
     colour: "നിറം",
     related: "നിങ്ങൾക്ക് ഇഷ്ടപ്പെട്ടേക്കാം",
+    productId: "ഉൽപ്പന്ന ID",
     inStock: "സ്റ്റോക്കിലുണ്ട്",
     outOfStock: "സ്റ്റോക്കില്ല",
     moreFromEdit: "ഈ എഡിറ്റിൽ നിന്ന് കൂടുതൽ",

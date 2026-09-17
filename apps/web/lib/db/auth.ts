@@ -138,11 +138,14 @@ export async function assignRole(userId: string, roleCode: string) {
   );
 }
 
-export async function signAccessToken(user: { id: string; email: string }) {
+export async function signAccessToken(
+  user: { id: string; email: string },
+  expiresIn: string | number = "7d"
+) {
   return new SignJWT({ sub: user.id, email: user.email })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime("7d")
+    .setExpirationTime(expiresIn)
     .sign(JWT_SECRET());
 }
 

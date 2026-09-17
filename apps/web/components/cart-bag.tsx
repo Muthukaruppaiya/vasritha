@@ -12,8 +12,7 @@ import {
   getCartItems,
   pruneExpiredCartItems,
   removeFromCart,
-  syncCartHoldTimers,
-  updateCartQuantity
+  syncCartHoldTimers
 } from "../lib/cart";
 import { resolveCartCheckoutPath } from "../lib/customer-session";
 import { useLocale, useT } from "../lib/i18n/provider";
@@ -99,17 +98,6 @@ export function CartBag() {
       .map((line) => formatHoldRemaining(line.reservedUntil))
       .find((text) => text && !text.startsWith("Hold expired"));
   }, [lines, tick]);
-
-  const onQty = async (
-    productId: string,
-    variantId: string | null | undefined,
-    quantity: number
-  ) => {
-    setActionError("");
-    const result = await updateCartQuantity(productId, variantId, quantity);
-    if (!result.ok) setActionError(result.error);
-    setItems(getCartItems());
-  };
 
   const onRemove = async (productId: string, variantId?: string | null) => {
     setActionError("");
@@ -252,22 +240,8 @@ export function CartBag() {
                     </div>
                   </div>
                   <div className="bag-line-controls">
-                    <div className="bag-qty" aria-label={t("bag.qty")}>
-                      <button
-                        type="button"
-                        aria-label={t("bag.decrease")}
-                        onClick={() => void onQty(line.productId, line.variantId, line.quantity - 1)}
-                      >
-                        −
-                      </button>
-                      <span>{line.quantity}</span>
-                      <button
-                        type="button"
-                        aria-label={t("bag.increase")}
-                        onClick={() => void onQty(line.productId, line.variantId, line.quantity + 1)}
-                      >
-                        +
-                      </button>
+                    <div className="bag-qty bag-qty--fixed" aria-label={t("bag.qty")}>
+                      <span>1</span>
                     </div>
                     <button
                       type="button"

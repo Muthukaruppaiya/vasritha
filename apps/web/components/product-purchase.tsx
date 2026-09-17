@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { addToCart } from "../lib/cart";
-import { BuyButton } from "./buy-button";
 import type { StoreProduct } from "../lib/catalog";
 import { useLocale, useT } from "../lib/i18n/provider";
 import { localizeSize } from "../lib/i18n/catalog-local";
@@ -28,7 +27,7 @@ export function ProductPurchase({
   const selectedVariant =
     product.variants.find((variant) => variant.name === size) || product.variants[0] || null;
 
-  const onAddToBag = async () => {
+  const reserveAndGoToCart = async () => {
     setBusy(true);
     setError("");
     const result = await addToCart({
@@ -47,10 +46,22 @@ export function ProductPurchase({
     setBusy(false);
     if (!result.ok) {
       setError(result.error);
-      return;
+      return false;
     }
+    return true;
+  };
+
+  const onAddToBag = async () => {
+    const ok = await reserveAndGoToCart();
+    if (!ok) return;
     setAdded(true);
     window.setTimeout(() => setAdded(false), 1800);
+  };
+
+  const onBuyNow = async () => {
+    const ok = await reserveAndGoToCart();
+    if (!ok) return;
+    router.push("/cart");
   };
 
   return (
@@ -84,9 +95,14 @@ export function ProductPurchase({
       )}
 
       <div className="product-detail-actions">
-        <BuyButton productSlug={product.slug} size={size} className="btn product-detail-buy">
-          {t("common.buyNow")}
-        </BuyButton>
+        <button
+          type="button"
+          className="btn product-detail-buy"
+          onClick={() => void onBuyNow()}
+          disabled={busy}
+        >
+          {busy ? "Reserving…" : t("common.buyNow")}
+        </button>
         <button
           type="button"
           className="btn product-detail-cta"

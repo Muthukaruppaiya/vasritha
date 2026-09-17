@@ -100,25 +100,29 @@ async function reserveOnServer(input: {
 export async function addToCart(
   item: Omit<CartItem, "quantity"> & { quantity?: number }
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const quantity = Math.max(1, item.quantity ?? 1);
+  // Unique pieces: bag holds at most 1 of each product/variant
+  const quantity = 1;
   const items = getCartItems();
   const existing = items.find(
     (entry) =>
       entry.productId === item.productId &&
       (entry.variantId ?? null) === (item.variantId ?? null)
   );
-  const nextQty = (existing?.quantity || 0) + quantity;
 
   try {
     const hold = await reserveOnServer({
       productId: item.productId,
       variantId: item.variantId,
-      quantity: nextQty
+      quantity
     });
 
     if (existing) {
-      existing.quantity = nextQty;
+      existing.quantity = quantity;
       existing.reservedUntil = hold.reservedUntil || existing.reservedUntil;
+      existing.size = item.size;
+      existing.price = item.price;
+      existing.compareAtPrice = item.compareAtPrice;
+      existing.imageSrc = item.imageSrc;
     } else {
       items.push({
         productId: item.productId,
@@ -127,7 +131,7 @@ export async function addToCart(
         name: item.name,
         shortName: item.shortName,
         size: item.size,
-        quantity: nextQty,
+        quantity,
         price: item.price,
         compareAtPrice: item.compareAtPrice,
         imageSrc: item.imageSrc,
@@ -159,7 +163,8 @@ export async function updateCartQuantity(
   variantId: string | null | undefined,
   quantity: number
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const nextQty = Math.max(0, Math.trunc(quantity));
+  // Qty increase disabled for unique catalogue pieces — 0 removes, anything else stays at 1
+  const nextQty = quantity <= 0 ? 0 : 1;
   try {
     const hold = await reserveOnServer({
       productId,

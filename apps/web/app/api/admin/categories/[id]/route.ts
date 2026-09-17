@@ -1,15 +1,25 @@
 import { NextRequest } from "next/server";
 import { fail, ok, requirePermission, writeAuditLog } from "../../../../../lib/auth/api";
+import { ensureCategoriesSchema } from "../../../../../lib/catalog";
 import { queryOne } from "../../../../../lib/db/pool";
 import { mergeCategoryNameI18n } from "../../../../../lib/i18n/category-names";
 
 type Params = { params: Promise<{ id: string }> };
 
-const ALLOWED_FIELDS = ["name", "slug", "description", "image_path", "sort_order", "name_i18n"] as const;
+const ALLOWED_FIELDS = [
+  "name",
+  "slug",
+  "description",
+  "image_path",
+  "sort_order",
+  "name_i18n",
+  "is_published"
+] as const;
 
 export async function PATCH(request: NextRequest, { params }: Params) {
   const { error, ctx } = await requirePermission(request, "categories:manage");
   if (error || !ctx) return error;
+  await ensureCategoriesSchema();
   const { id } = await params;
 
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
@@ -32,6 +42,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         updates.push(`${key} = $${values.length + 1}::jsonb`);
         values.push(JSON.stringify(nameI18n));
         continue;
+      }
+      if (key === "is_published") {
+        value = Boolean(value);
       }
       values.push(value);
       updates.push(`${key} = $${values.length}`);

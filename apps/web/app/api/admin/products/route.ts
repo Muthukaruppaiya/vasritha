@@ -10,6 +10,12 @@ import {
 import { ensureGstSchema, normalizeGstRate, normalizeHsn } from "../../../../lib/gst";
 import { ensureBrandsSchema, resolveBrandId } from "../../../../lib/brands";
 import { resolveMediaUrl } from "../../../../lib/product-image-storage";
+import {
+  canApproveProducts,
+  ensureProductStatusEnum,
+  normalizeProductStatus
+} from "../../../../lib/product-status";
+import type { AppRole } from "../../../../lib/auth/rbac";
 
 async function upsertDefaultVariant(input: {
   productId: string;
@@ -44,6 +50,8 @@ async function upsertDefaultVariant(input: {
 export async function GET(request: NextRequest) {
   const { error } = await requirePermission(request, "products:read");
   if (error) return error;
+
+  await ensureProductStatusEnum();
 
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status");
@@ -113,11 +121,18 @@ export async function POST(request: NextRequest) {
     await ensureProductUnitsSchema();
     await ensureGstSchema();
     await ensureBrandsSchema();
+    await ensureProductStatusEnum();
 
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
     if (!body?.name || !body?.slug || !body?.category_id || body.price == null) {
       return fail("name, slug, category_id and price are required");
     }
+
+    const canApprove = canApproveProducts((ctx.roles || []) as AppRole[]);
+    const status = normalizeProductStatus(body.status, {
+      canApprove,
+      fallback: canApprove ? "draft" : "pending_approval"
+    });
 
     const hsnCode = normalizeHsn(body.hsn_code);
     if (body.hsn_code != null && String(body.hsn_code).trim() && !hsnCode) {
@@ -187,7 +202,7 @@ export async function POST(request: NextRequest) {
         body.compare_at_price != null ? Number(body.compare_at_price) : null,
         hsnCode,
         gstRate,
-        body.status ? String(body.status) : "draft",
+        status,
         0,
         Boolean(body.is_featured ?? body.fast_selling),
         parentProductId,

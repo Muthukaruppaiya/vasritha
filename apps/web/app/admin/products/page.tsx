@@ -20,7 +20,8 @@ import {
   RotateCcw,
   Search,
   Upload,
-  Warehouse
+  Warehouse,
+  XCircle
 } from "lucide-react";
 import {
   AdminAlert,
@@ -38,7 +39,7 @@ import {
   ProductParentOption
 } from "../../../components/admin/product-form-modal";
 import { ProductDetailModal } from "../../../components/admin/product-detail-modal";
-import { adminFetch, formatMoney, getAdminToken } from "../../../lib/admin-api";
+import { adminFetch, formatMoney, getAdminToken, getAdminUser } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
 import { productListThumb } from "../../../lib/category-images";
 
@@ -150,6 +151,14 @@ function AdminProductsPageInner() {
 
   const { data: products, error, loading, reload } = useAdminQuery<Product[]>("/api/admin/products");
   const { data: categories } = useAdminQuery<Category[]>("/api/admin/categories");
+  const canApproveProducts = Boolean(
+    getAdminUser()?.permissions?.includes("products:approve") ||
+      ["super_admin", "business_owner", "manager"].includes(getAdminUser()?.primaryRole || "")
+  );
+  const pendingCount = useMemo(
+    () => (products || []).filter((row) => row.status === "pending_approval").length,
+    [products]
+  );
 
   const colourOptions = useMemo(() => {
     const set = new Set<string>();
@@ -416,18 +425,25 @@ function AdminProductsPageInner() {
       method: "PATCH",
       json: { status: nextStatus }
     });
-    if (!result.error) await reload();
+    if (result.error) {
+      window.alert(result.error);
+      return;
+    }
+    await reload();
   };
 
   const bulkUpdateStatus = async (nextStatus: string) => {
     if (!selected.size) return;
     setBulkBusy(true);
-    await Promise.all(
-      Array.from(selected).map((id) =>
-        adminFetch(`/api/admin/products/${id}`, { method: "PATCH", json: { status: nextStatus } })
-      )
-    );
+    const result = await adminFetch<{ updatedCount: number }>("/api/admin/products/bulk-status", {
+      method: "POST",
+      json: { ids: Array.from(selected), status: nextStatus }
+    });
     setBulkBusy(false);
+    if (result.error) {
+      window.alert(result.error);
+      return;
+    }
     clearSelection();
     await reload();
   };
@@ -491,9 +507,21 @@ function AdminProductsPageInner() {
       <AdminPageHeader
         eyebrow="Catalogue"
         title="Product Master"
-        description="Create and edit what you sell. Receive stock in Inventory, then print labels on the barcode desk."
+        description="Create and edit what you sell. New products wait for manager approval before they appear on the website or POS."
         actions={
           <>
+            {pendingCount > 0 ? (
+              <button
+                type="button"
+                className="admin-icon-tip"
+                onClick={() => setStatusFilter("pending_approval")}
+                data-tooltip="Pending approval"
+                aria-label={`${pendingCount} products pending approval`}
+              >
+                <Package size={16} strokeWidth={2} />
+                <span>Pending {pendingCount}</span>
+              </button>
+            ) : null}
             <Link
               className="admin-icon-tip"
               href="/admin/inventory"
@@ -695,6 +723,8 @@ function AdminProductsPageInner() {
             <span>Status</span>
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
               <option value="">All statuses</option>
+              <option value="pending_approval">Pending approval</option>
+              <option value="rejected">Rejected</option>
               <option value="draft">Draft</option>
               <option value="active">Active</option>
               <option value="archived">Archived</option>
@@ -814,13 +844,38 @@ function AdminProductsPageInner() {
               <Printer size={14} />
               Print barcodes
             </Link>
-            <button type="button" disabled={bulkBusy} onClick={() => void bulkUpdateStatus("active")}>
-              <CheckCircle2 size={14} />
-              Publish
-            </button>
+            {canApproveProducts ? (
+              <>
+                <button
+                  type="button"
+                  disabled={bulkBusy}
+                  onClick={() => void bulkUpdateStatus("active")}
+                >
+                  <CheckCircle2 size={14} />
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkBusy}
+                  onClick={() => void bulkUpdateStatus("rejected")}
+                >
+                  <XCircle size={14} />
+                  Reject
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                disabled={bulkBusy}
+                onClick={() => void bulkUpdateStatus("pending_approval")}
+              >
+                <CheckCircle2 size={14} />
+                Submit for approval
+              </button>
+            )}
             <button type="button" disabled={bulkBusy} onClick={() => void bulkUpdateStatus("draft")}>
               <EyeOff size={14} />
-              Unpublish
+              Move to draft
             </button>
             <button type="button" disabled={bulkBusy} onClick={() => void bulkUpdateStatus("archived")}>
               <Archive size={14} />
@@ -1064,7 +1119,50 @@ function AdminProductsPageInner() {
                                   Storefront
                                 </a>
                               ) : null}
-                              {product.status !== "active" ? (
+                              {product.status === "pending_approval" && canApproveProducts ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => {
+                                      setMenuOpenId(null);
+                                      void updateStatus(product.id, "active");
+                                    }}
+                                  >
+                                    <CheckCircle2 size={14} />
+                                    Approve
+                                  </button>
+                                  <button
+                                    type="button"
+                                    role="menuitem"
+                                    className="is-danger"
+                                    onClick={() => {
+                                      setMenuOpenId(null);
+                                      void updateStatus(product.id, "rejected");
+                                    }}
+                                  >
+                                    <XCircle size={14} />
+                                    Reject
+                                  </button>
+                                </>
+                              ) : null}
+                              {(product.status === "rejected" || product.status === "draft") &&
+                              !canApproveProducts ? (
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setMenuOpenId(null);
+                                    void updateStatus(product.id, "pending_approval");
+                                  }}
+                                >
+                                  <CheckCircle2 size={14} />
+                                  Resubmit for approval
+                                </button>
+                              ) : null}
+                              {product.status !== "active" &&
+                              product.status !== "pending_approval" &&
+                              canApproveProducts ? (
                                 <button
                                   type="button"
                                   role="menuitem"
@@ -1074,9 +1172,10 @@ function AdminProductsPageInner() {
                                   }}
                                 >
                                   <CheckCircle2 size={14} />
-                                  Publish
+                                  Approve / Publish
                                 </button>
-                              ) : (
+                              ) : null}
+                              {product.status === "active" ? (
                                 <button
                                   type="button"
                                   role="menuitem"
@@ -1088,7 +1187,7 @@ function AdminProductsPageInner() {
                                   <EyeOff size={14} />
                                   Unpublish
                                 </button>
-                              )}
+                              ) : null}
                               {product.status !== "archived" ? (
                                 <button
                                   type="button"

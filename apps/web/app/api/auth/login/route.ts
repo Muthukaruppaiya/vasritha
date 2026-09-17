@@ -2,11 +2,26 @@ import { NextRequest } from "next/server";
 import { fail, ok } from "../../../../lib/auth/api";
 import { getUserRoles, signAccessToken, verifyUser } from "../../../../lib/db/auth";
 import { AppRole, highestRole, permissionsForRoles, ROLE_META } from "../../../../lib/auth/rbac";
+import { assertStaffLoginSecurity } from "../../../../lib/login-security";
+
+/** In-store staff sessions expire after 5 minutes of idle time (JWT matches). */
+const STAFF_SESSION_SECONDS = 5 * 60;
+const CUSTOMER_SESSION_SECONDS = 60 * 60 * 24 * 7;
+
+function isStaffRole(roles: AppRole[]) {
+  return roles.some((role) => role !== "customer");
+}
 
 export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as {
     email?: string;
     password?: string;
+    /** staff | pos → apply login security. website/omitted → never. */
+    client?: string;
+    deviceKey?: string;
+    deviceLabel?: string;
+    latitude?: number | null;
+    longitude?: number | null;
   } | null;
 
   if (!body?.email || !body?.password) return fail("email and password are required");
@@ -18,7 +33,31 @@ export async function POST(request: NextRequest) {
   if (!roles.length) roles = ["customer"];
   const typedRoles = roles as AppRole[];
   const primary = highestRole(typedRoles);
-  const accessToken = await signAccessToken({ id: user.id, email: user.email });
+  const staff = isStaffRole(typedRoles);
+  const loginClient = String(body.client || "website").toLowerCase();
+  const isOpsLogin = loginClient === "staff" || loginClient === "pos";
+
+  // Login security is only for POS / staff ops domain — never for public website shoppers.
+  if (staff && isOpsLogin) {
+    const security = await assertStaffLoginSecurity({
+      request,
+      client: loginClient,
+      deviceKey: body.deviceKey,
+      deviceLabel: body.deviceLabel,
+      userAgent: request.headers.get("user-agent"),
+      latitude: body.latitude ?? null,
+      longitude: body.longitude ?? null
+    });
+    if (!security.ok) {
+      return fail(security.error, 403, { code: security.code });
+    }
+  }
+
+  const expiresInSeconds = staff ? STAFF_SESSION_SECONDS : CUSTOMER_SESSION_SECONDS;
+  const accessToken = await signAccessToken(
+    { id: user.id, email: user.email },
+    staff ? `${STAFF_SESSION_SECONDS}s` : `${CUSTOMER_SESSION_SECONDS}s`
+  );
 
   return ok({
     user: {
@@ -33,7 +72,8 @@ export async function POST(request: NextRequest) {
     session: {
       access_token: accessToken,
       token_type: "bearer",
-      expires_in: 60 * 60 * 24 * 7
+      expires_in: expiresInSeconds,
+      idle_timeout_seconds: staff ? STAFF_SESSION_SECONDS : null
     }
   });
 }

@@ -5,7 +5,7 @@ import JsBarcode from "jsbarcode";
 import QRCode from "qrcode";
 import { Check, Printer, QrCode, RefreshCw, Save, Trash2, Upload, X } from "lucide-react";
 import { AdminAlert, slugify } from "./admin-ui";
-import { adminFetch, getAdminToken } from "../../lib/admin-api";
+import { adminFetch, getAdminToken, getAdminUser } from "../../lib/admin-api";
 import { buildProductUploadPageUrl } from "../../lib/product-upload-url";
 import { printProductStickers } from "../../lib/print-stickers";
 
@@ -109,6 +109,10 @@ export function ProductFormModal({
   const websiteFileRef = useRef<HTMLInputElement | null>(null);
   const internalFileRef = useRef<HTMLInputElement | null>(null);
   const photosRef = useRef<HTMLDivElement | null>(null);
+  const canApproveProducts = Boolean(
+    getAdminUser()?.permissions?.includes("products:approve") ||
+      ["super_admin", "business_owner", "manager"].includes(getAdminUser()?.primaryRole || "")
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -390,7 +394,10 @@ export function ProductFormModal({
       hsn_code: form.hsn_code.trim() || null,
       gst_rate: Number(form.gst_rate || 5),
       stock_quantity: Number(form.stock_quantity || 0),
-      status: form.status,
+      status:
+        !canApproveProducts && (form.status === "rejected" || form.status === "active")
+          ? "pending_approval"
+          : form.status,
       color: form.color.trim(),
       short_description: form.short_description.trim(),
       description: form.description.trim(),
@@ -617,10 +624,10 @@ export function ProductFormModal({
                 onChange={(e) => setForm((f) => ({ ...f, gst_rate: e.target.value }))}
               >
                 <option value="0">0%</option>
+                <option value="3">3%</option>
                 <option value="5">5%</option>
-                <option value="12">12%</option>
+                <option value="9">9%</option>
                 <option value="18">18%</option>
-                <option value="28">28%</option>
               </select>
               <small className="admin-field-hint">Retail price is treated as GST-inclusive.</small>
             </label>
@@ -741,10 +748,17 @@ export function ProductFormModal({
             <label>
               <span>Status</span>
               <select value={form.status} onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}>
-                <option value="draft">Draft</option>
-                <option value="active">Active</option>
-                <option value="archived">Archived</option>
+                <option value="draft">Draft (not submitted)</option>
+                <option value="pending_approval">Pending approval</option>
+                {form.status === "rejected" ? <option value="rejected">Rejected</option> : null}
+                {canApproveProducts ? <option value="active">Active (approved)</option> : null}
+                {canApproveProducts ? <option value="archived">Archived</option> : null}
               </select>
+              <small className="admin-field-hint">
+                {canApproveProducts
+                  ? "Managers can approve to Active. Pending products stay hidden on website and POS."
+                  : "Save as Pending approval for a manager to review. Rejected products can be edited and resubmitted."}
+              </small>
             </label>
 
             <label>
@@ -1123,7 +1137,7 @@ export function blankProductForm(categoryId = ""): ProductFormValues {
     hsn_code: "5407",
     gst_rate: "5",
     stock_quantity: "0",
-    status: "draft",
+    status: "pending_approval",
     short_description: "",
     color: "",
     description: "",

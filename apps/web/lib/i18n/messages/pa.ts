@@ -146,6 +146,7 @@ export const pa: Messages = {
     description: "ਵੇਰਵਾ",
     colour: "ਰੰਗ",
     related: "ਤੁਹਾਨੂੰ ਇਹ ਵੀ ਪਸੰਦ ਆ ਸਕਦਾ ਹੈ",
+    productId: "ਉਤਪਾਦ ID",
     inStock: "ਸਟਾਕ ਵਿੱਚ",
     outOfStock: "ਸਟਾਕ ਖਤਮ",
     moreFromEdit: "ਇਸ ਐਡਿਟ ਤੋਂ ਹੋਰ",

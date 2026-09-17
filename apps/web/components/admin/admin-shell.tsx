@@ -34,12 +34,16 @@ import {
   type LucideIcon
 } from "lucide-react";
 import {
+  ADMIN_IDLE_TIMEOUT_MS,
   adminFetch,
   clearAdminSession,
   formatDate,
   formatMoney,
   getAdminToken,
   getAdminUser,
+  isAdminSessionIdleExpired,
+  refreshAdminSession,
+  touchAdminActivity,
   type AdminSessionUser
 } from "@/lib/admin-api";
 import {
@@ -263,10 +267,62 @@ export function AdminShell({ children }: { children: ReactNode }) {
       return;
     }
 
+    if (isAdminSessionIdleExpired()) {
+      clearAdminSession();
+      router.replace("/admin/login");
+      return;
+    }
+
+    touchAdminActivity();
     setUser(sessionUser);
     setSeenAt(readSeenAt());
     setReady(true);
   }, [isLogin, pathname, router]);
+
+  useEffect(() => {
+    if (isLogin || !ready) return;
+
+    const forceLogout = () => {
+      clearAdminSession();
+      router.replace("/admin/login");
+    };
+
+    const onActivity = () => {
+      touchAdminActivity();
+    };
+
+    const events: Array<keyof WindowEventMap> = [
+      "mousemove",
+      "mousedown",
+      "keydown",
+      "touchstart",
+      "scroll",
+      "click"
+    ];
+    for (const event of events) {
+      window.addEventListener(event, onActivity, { passive: true });
+    }
+
+    const idleTimer = window.setInterval(() => {
+      if (isAdminSessionIdleExpired()) forceLogout();
+    }, 5000);
+
+    // Keep JWT alive while staff stay active (sliding 5-minute window).
+    const refreshTimer = window.setInterval(() => {
+      if (isAdminSessionIdleExpired()) return;
+      void refreshAdminSession().then((ok) => {
+        if (!ok && isAdminSessionIdleExpired()) forceLogout();
+      });
+    }, Math.max(60_000, Math.floor(ADMIN_IDLE_TIMEOUT_MS / 2)));
+
+    return () => {
+      for (const event of events) {
+        window.removeEventListener(event, onActivity);
+      }
+      window.clearInterval(idleTimer);
+      window.clearInterval(refreshTimer);
+    };
+  }, [isLogin, ready, router]);
 
   useEffect(() => {
     setMobileOpen(false);

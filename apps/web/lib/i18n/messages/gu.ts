@@ -146,6 +146,7 @@ export const gu: Messages = {
     description: "વર્ણન",
     colour: "રંગ",
     related: "તમને આ પણ ગમી શકે",
+    productId: "પ્રોડક્ટ ID",
     inStock: "સ્ટોકમાં",
     outOfStock: "સ્ટોક પૂરો",
     moreFromEdit: "આ એડિટમાંથી વધુ",

@@ -2,93 +2,79 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import dynamic from "next/dynamic";
-import { X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Footer, Header } from "../../components/storefront";
-import type { CatalogProduct } from "../../components/product-globe";
 import { useT } from "../../lib/i18n/provider";
 
-const ProductGlobe = dynamic(
-  () => import("../../components/product-globe").then((mod) => mod.ProductGlobe),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="shell section">
-        <p className="muted">Loading collections…</p>
-      </div>
-    )
-  }
-);
+type CollectionProduct = {
+  slug: string;
+  name: string;
+  shortName?: string;
+  type: string;
+  price: string;
+  compareAtPrice?: string;
+  imageSrc: string;
+  category?: string;
+};
 
 export default function CollectionsPage() {
   const t = useT();
-  const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | null>(null);
-  const [products, setProducts] = useState<CatalogProduct[]>([]);
+  const [products, setProducts] = useState<CollectionProduct[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/products?mode=card&limit=24")
+    fetch("/api/products?mode=card&limit=48")
       .then((res) => res.json())
       .then((payload) => {
-        const rows = (payload?.data || []) as CatalogProduct[];
-        setProducts(rows.slice(0, 24));
+        const rows = (payload?.data || []) as CollectionProduct[];
+        setProducts(rows);
       })
-      .catch(() => setProducts([]));
+      .catch(() => setProducts([]))
+      .finally(() => setLoading(false));
   }, []);
 
   return (
     <>
       <Header />
-      <main className="collections-page">
-        <section className="collections-layout">
-          <div className="collections-title shell" data-reveal>
+      <main className="collections-page collections-page--grid">
+        <section className="shell section collections-grid-section" data-reveal>
+          <div className="collections-title">
             <div className="eyebrow">{t("common.allCollections")}</div>
             <h1>{t("home.everyRoom")}</h1>
+            <p className="muted">Browse every piece currently in stock — tap a card to open details.</p>
           </div>
-          {products.length > 0 ? (
-            <ProductGlobe
-              products={products}
-              onProductChange={() => undefined}
-              onProductSelect={setSelectedProduct}
-            />
+
+          {loading ? (
+            <p className="muted">Loading collections…</p>
+          ) : products.length === 0 ? (
+            <p className="muted">No products available right now.</p>
           ) : (
-            <div className="shell section">
-              <p className="muted">Loading collections…</p>
+            <div className="collections-box-grid">
+              {products.map((product) => (
+                <Link
+                  key={product.slug}
+                  href={`/products/${product.slug}`}
+                  className="collections-box-card"
+                >
+                  <div className="collections-box-media">
+                    <Image
+                      src={product.imageSrc}
+                      alt={product.name}
+                      fill
+                      sizes="(max-width:800px) 45vw, 220px"
+                    />
+                  </div>
+                  <div className="collections-box-copy">
+                    <span>{product.type}</span>
+                    <strong>{product.shortName || product.name}</strong>
+                    <em>{product.price}</em>
+                    {product.compareAtPrice ? <s>{product.compareAtPrice}</s> : null}
+                  </div>
+                </Link>
+              ))}
             </div>
           )}
         </section>
-        {selectedProduct && (
-          <div className="status-modal" role="dialog" aria-modal="true" aria-label={selectedProduct.name}>
-            <button
-              className="status-modal-backdrop"
-              aria-label="Close product preview"
-              onClick={() => setSelectedProduct(null)}
-            />
-            <div className="status-modal-card">
-              <button
-                className="status-modal-close"
-                aria-label="Close product preview"
-                onClick={() => setSelectedProduct(null)}
-              >
-                <X size={20} />
-              </button>
-              <Image src={selectedProduct.imageSrc} alt={selectedProduct.name} width={546} height={819} />
-              <div>
-                <div className="eyebrow">{selectedProduct.type}</div>
-                <h3>{selectedProduct.name}</h3>
-                <p className="muted">{selectedProduct.description}</p>
-                <div className="price">{selectedProduct.price}</div>
-                <Link
-                  className="btn"
-                  href={`/products/${selectedProduct.slug}`}
-                  onClick={() => setSelectedProduct(null)}
-                >
-                  Explore now
-                </Link>
-              </div>
-            </div>
-          </div>
-        )}
       </main>
       <Footer />
     </>

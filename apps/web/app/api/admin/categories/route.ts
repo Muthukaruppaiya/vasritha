@@ -1,12 +1,15 @@
 import { NextRequest } from "next/server";
 import { fail, ok, requirePermission, writeAuditLog } from "../../../../lib/auth/api";
+import { ensureCategoriesSchema } from "../../../../lib/catalog";
 import { query, queryOne } from "../../../../lib/db/pool";
 import { mergeCategoryNameI18n } from "../../../../lib/i18n/category-names";
 
 export async function GET() {
+  await ensureCategoriesSchema();
   const data = await query(
     `select
        c.id, c.name, c.slug, c.description, c.image_path, c.sort_order, c.name_i18n, c.created_at,
+       coalesce(c.is_published, true) as is_published,
        coalesce(
          (
            select json_agg(
@@ -32,6 +35,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   const { error, ctx } = await requirePermission(request, "categories:manage");
   if (error || !ctx) return error;
+  await ensureCategoriesSchema();
 
   const body = (await request.json().catch(() => null)) as {
     name?: string;
@@ -40,6 +44,7 @@ export async function POST(request: NextRequest) {
     sort_order?: number;
     image_path?: string | null;
     name_i18n?: unknown;
+    is_published?: boolean;
   } | null;
 
   if (!body?.name || !body?.slug) return fail("name and slug are required");
@@ -51,8 +56,8 @@ export async function POST(request: NextRequest) {
   });
 
   const data = await queryOne(
-    `insert into categories (name, slug, description, image_path, sort_order, name_i18n)
-     values ($1, $2, $3, $4, $5, $6::jsonb)
+    `insert into categories (name, slug, description, image_path, sort_order, name_i18n, is_published)
+     values ($1, $2, $3, $4, $5, $6::jsonb, $7)
      returning *`,
     [
       body.name,
@@ -60,7 +65,8 @@ export async function POST(request: NextRequest) {
       body.description ?? null,
       body.image_path ?? null,
       body.sort_order ?? 0,
-      JSON.stringify(nameI18n)
+      JSON.stringify(nameI18n),
+      body.is_published !== false
     ]
   );
 

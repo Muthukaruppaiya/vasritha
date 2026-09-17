@@ -26,6 +26,7 @@ export type Permission =
   | "refunds:initiate"
   | "products:manage"
   | "products:read"
+  | "products:approve"
   | "categories:manage"
   | "stock:approve"
   | "stock:operate"
@@ -99,7 +100,7 @@ export const ROLE_META: Record<
     name: "Manager",
     purpose: "Day-to-day supervision",
     typicalPermissions:
-      "Products, pricing within limits, purchases, stock approvals, orders, shipping, reports",
+      "Products, product approval, pricing within limits, purchases, stock approvals, orders, shipping, reports",
     mvp: true,
     restrictedFrom: "Ownership-level credentials and system secrets"
   },
@@ -115,9 +116,9 @@ export const ROLE_META: Record<
     name: "Inventory Staff",
     purpose: "Stock operations",
     typicalPermissions:
-      "Products, purchase receipt, counts, transfers, damage, approved adjustments",
+      "Create/edit products (pending approval), purchase receipt, counts, transfers, damage",
     mvp: true,
-    restrictedFrom: "Refund approval and sensitive financial settings"
+    restrictedFrom: "Publishing products, refund approval and sensitive financial settings"
   },
   packing_shipping_staff: {
     name: "Packing & Shipping Staff",
@@ -170,6 +171,7 @@ const ALL_STAFF_PERMISSIONS: Permission[] = [
   "refunds:initiate",
   "products:manage",
   "products:read",
+  "products:approve",
   "categories:manage",
   "stock:approve",
   "stock:operate",
@@ -211,6 +213,7 @@ export const ROLE_PERMISSIONS: Record<AppRole, Permission[]> = {
     "refunds:initiate",
     "products:manage",
     "products:read",
+    "products:approve",
     "categories:manage",
     "stock:approve",
     "stock:operate",
@@ -243,6 +246,7 @@ export const ROLE_PERMISSIONS: Record<AppRole, Permission[]> = {
     "dashboard:ops",
     "products:manage",
     "products:read",
+    "products:approve",
     "categories:manage",
     "pricing:limited",
     "purchases:operate",

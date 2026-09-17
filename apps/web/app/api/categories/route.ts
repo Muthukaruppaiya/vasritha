@@ -1,15 +1,19 @@
 import { NextRequest } from "next/server";
 import { cachedOk, fail } from "../../../lib/auth/api";
+import { ensureCategoriesSchema } from "../../../lib/catalog";
 import { query, queryOne } from "../../../lib/db/pool";
 
 export async function GET(request: NextRequest) {
+  await ensureCategoriesSchema();
   const { searchParams } = new URL(request.url);
   const slug = searchParams.get("slug");
   const category = searchParams.get("category");
 
   if (slug) {
     const data = await queryOne(
-      `select id, name, slug, description, image_path, sort_order, name_i18n from categories where slug = $1`,
+      `select id, name, slug, description, image_path, sort_order, name_i18n
+       from categories
+       where slug = $1 and coalesce(is_published, true) = true`,
       [slug]
     );
     if (!data) return fail("Category not found", 404);
@@ -32,7 +36,8 @@ export async function GET(request: NextRequest) {
          '[]'::json
        ) as subcategories
      from categories c
-     where ($1::text is null or c.slug = $1)
+     where coalesce(c.is_published, true) = true
+       and ($1::text is null or c.slug = $1)
      order by c.sort_order asc`,
     [filterSlug]
   );

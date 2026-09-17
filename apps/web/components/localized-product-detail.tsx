@@ -49,6 +49,13 @@ export function LocalizedProductDetail({
           <p className="product-detail-short">{localized.shortName}</p>
           <h1 className="product-detail-title">{localized.name}</h1>
 
+          {(product.tag || product.sku) ? (
+            <p className="product-detail-meta">
+              <span>{t("product.productId")}</span>
+              <strong>{product.tag || product.sku}</strong>
+            </p>
+          ) : null}
+
           <div className="product-detail-pricing">
             <span className="product-detail-price">{product.price}</span>
             {product.compareAtPrice && (

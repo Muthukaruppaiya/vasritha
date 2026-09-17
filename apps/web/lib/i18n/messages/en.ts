@@ -142,6 +142,7 @@ export type Messages = {
   product: {
     description: string;
     colour: string;
+    productId: string;
     related: string;
     inStock: string;
     outOfStock: string;
@@ -396,6 +397,7 @@ export const en: Messages = {
     description: "Description",
     colour: "Colour",
     related: "You may also like",
+    productId: "Product ID",
     inStock: "In stock",
     outOfStock: "Out of stock",
     moreFromEdit: "More from this edit",

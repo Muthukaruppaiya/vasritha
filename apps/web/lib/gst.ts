@@ -13,10 +13,25 @@ export function normalizeHsn(value: unknown): string | null {
   return digits;
 }
 
+/** Allowed GST % for catalogue / POS (matches product form). */
+export const ALLOWED_GST_RATES = [0, 3, 5, 9, 18] as const;
+
 export function normalizeGstRate(value: unknown, fallback = 5): number {
   const n = Number(value);
   if (!Number.isFinite(n) || n < 0 || n > 100) return fallback;
-  return round2(n);
+  const rounded = round2(n);
+  if ((ALLOWED_GST_RATES as readonly number[]).includes(rounded)) return rounded;
+  // Map legacy 12/28 (and other) rates to nearest allowed option
+  let best = fallback;
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (const rate of ALLOWED_GST_RATES) {
+    const dist = Math.abs(rate - rounded);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = rate;
+    }
+  }
+  return best;
 }
 
 export type SellerGstProfile = {

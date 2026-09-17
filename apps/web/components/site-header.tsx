@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Search, TicketPercent } from "lucide-react";
+import { TicketPercent } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { CART_EVENT, getCartCount } from "../lib/cart";
 import {
@@ -19,6 +19,7 @@ import { fetchPublicJson } from "../lib/public-fetch-cache";
 import { CartBagIcon, LoginIcon } from "./icons";
 import { LanguageSwitcher } from "./language-switcher";
 import { NavigationBar } from "./navigation-bar";
+import { SiteSearch } from "./site-search";
 
 export function Header({
   categories
@@ -145,9 +146,7 @@ export function Header({
       <header className="shell nav">
         <div className="nav-left">
           <NavigationBar categories={categories} />
-          <Link className="search-link search-link--mobile nav-icon-btn" href="/sarees" aria-label={t("common.search")}>
-            <Search size={20} strokeWidth={1.65} />
-          </Link>
+          <SiteSearch className="search-link--mobile" />
         </div>
 
         <Link className="nav-logo-link" href="/" aria-label="Vasritha home">
@@ -160,9 +159,7 @@ export function Header({
         <div className="actions">
           <div className="actions-cluster actions-cluster--utility">
             <LanguageSwitcher />
-            <Link className="search-link search-link--desktop nav-icon-btn" href="/sarees" aria-label={t("common.search")}>
-              <Search size={20} strokeWidth={1.65} />
-            </Link>
+            <SiteSearch className="search-link--desktop" />
           </div>
 
           <div className="actions-cluster actions-cluster--commerce">
