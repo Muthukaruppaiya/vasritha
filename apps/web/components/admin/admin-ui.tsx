@@ -62,7 +62,7 @@ export function AdminBadge({
 
 export function statusTone(status?: string | null): "neutral" | "success" | "warn" | "danger" | "info" {
   const value = (status || "").toLowerCase();
-  if (["paid", "active", "delivered", "approved", "published", "confirmed"].includes(value)) {
+  if (["paid", "active", "delivered", "approved", "published", "confirmed", "exchanged"].includes(value)) {
     return "success";
   }
   if (["pending", "pending_approval", "processing", "draft", "requested", "shipped"].includes(value)) return "warn";

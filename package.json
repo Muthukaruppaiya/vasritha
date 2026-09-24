@@ -34,6 +34,8 @@
     "db:patch:brands": "node --env-file=apps/web/.env.local scripts/patch-brands.mjs",
     "db:patch:cart-reservations": "node --env-file=apps/web/.env.local scripts/patch-cart-reservations.mjs",
     "db:patch:loyalty": "node --env-file=apps/web/.env.local scripts/patch-loyalty.mjs",
+    "db:patch:finance": "node --env-file=apps/web/.env.local scripts/patch-finance.mjs",
+    "db:patch:login-events": "node --env-file=apps/web/.env.local scripts/patch-login-events.mjs",
     "db:patch:vercel-products": "node --env-file=apps/web/.env.local scripts/patch-vercel-products.mjs",
     "db:patch:vercel-products:prod": "node scripts/patch-vercel-products.mjs",
     "db:seed:opening-voucher": "node --env-file=apps/web/.env.local scripts/seed-opening-voucher.mjs",

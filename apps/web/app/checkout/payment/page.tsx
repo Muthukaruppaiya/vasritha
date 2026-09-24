@@ -7,6 +7,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { CreditCard, Landmark, Smartphone } from "lucide-react";
 import { Footer, Header } from "../../../components/storefront";
 import { getAppliedCoupon, markVoucherUsed } from "../../../lib/applied-coupon";
+import { DeliveryConditions } from "../../../components/delivery-conditions";
+import type { ShippingQuote } from "../../../lib/shipping";
 import {
   buildOrderLines,
   finalizeLocalOrder,
@@ -70,17 +72,22 @@ function PaymentContent() {
   const [method, setMethod] = useState<(typeof methods)[number]["id"]>("upi");
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState("");
+  const [shippingQuote, setShippingQuote] = useState<ShippingQuote | null>(null);
 
   const pending = useMemo(() => (ready ? getPendingOrder() : null), [ready]);
   const lines = useMemo(() => (pending ? buildOrderLines(pending) : []), [pending]);
-  const total = lines.reduce((sum, item) => sum + item.lineTotal, 0);
+  const subtotal = lines.reduce((sum, item) => sum + item.lineTotal, 0);
+  const shippingAmount =
+    shippingQuote?.delivery_available ? Number(shippingQuote.shipping_amount || 0) : 0;
+  const total = subtotal + shippingAmount;
+  const deliveryBlocked = Boolean(shippingQuote && !shippingQuote.delivery_available);
   const compareTotal = pending
     ? pending.items.reduce(
         (sum, item) => sum + (item.compareAtPrice || item.price) * item.quantity,
         0
       )
     : 0;
-  const savings = Math.max(0, compareTotal - total);
+  const savings = Math.max(0, compareTotal - subtotal);
   const pieceCount = lines.reduce((sum, item) => sum + item.quantity, 0);
   const backHref = searchParams.get("from") || "/checkout";
   const selected = methods.find((entry) => entry.id === method) ?? methods[0];
@@ -109,6 +116,27 @@ function PaymentContent() {
     }
     setReady(true);
   }, [router]);
+
+  useEffect(() => {
+    if (!ready || subtotal <= 0) return;
+    const session = getCustomerSession();
+    const pin = session?.address?.pincode || "";
+    const params = new URLSearchParams({ subtotal: String(subtotal) });
+    if (pin) params.set("postal_code", pin);
+    const productIds = Array.from(
+      new Set((pending?.items || []).map((item) => item.productId).filter(Boolean))
+    );
+    if (productIds.length) params.set("product_ids", productIds.join(","));
+    const ac = new AbortController();
+    fetch(`/api/shipping/quote?${params.toString()}`, { signal: ac.signal })
+      .then((res) => res.json())
+      .then((payload) => {
+        const data = payload?.data as ShippingQuote | undefined;
+        if (data) setShippingQuote(data);
+      })
+      .catch(() => undefined);
+    return () => ac.abort();
+  }, [ready, subtotal, pending?.items]);
 
   const completePaidOrder = (
     pendingOrder: NonNullable<ReturnType<typeof getPendingOrder>>,
@@ -146,6 +174,10 @@ function PaymentContent() {
 
   const onPay = async () => {
     setError("");
+    if (deliveryBlocked) {
+      setError(shippingQuote?.delivery_message || "Delivery is not available for this address");
+      return;
+    }
     setProcessing(true);
 
     const pendingOrder = getPendingOrder();
@@ -356,8 +388,17 @@ function PaymentContent() {
             {error && <p className="pay-error">{error}</p>}
 
             <div className="pay-actions">
-              <button type="button" className="btn pay-confirm" onClick={onPay} disabled={processing}>
-                {processing ? "Processing…" : `Pay ${formatPrice(total)}`}
+              <button
+                type="button"
+                className="btn pay-confirm"
+                onClick={onPay}
+                disabled={processing || deliveryBlocked}
+              >
+                {processing
+                  ? "Processing…"
+                  : deliveryBlocked
+                    ? "Delivery unavailable"
+                    : `Pay ${formatPrice(total)}`}
               </button>
               <Link className="pay-back" href={backHref}>
                 Back to order summary
@@ -407,10 +448,32 @@ function PaymentContent() {
               })}
             </ul>
 
+            {shippingQuote ? <DeliveryConditions quote={shippingQuote} compact /> : null}
+
+            <div className="pay-receipt-lines">
+              <div className="pay-receipt-line">
+                <span>Subtotal</span>
+                <span>{formatPrice(subtotal)}</span>
+              </div>
+              <div className="pay-receipt-line">
+                <span>Delivery</span>
+                <span>
+                  {!shippingQuote
+                    ? "—"
+                    : !shippingQuote.delivery_available
+                      ? "N/A"
+                      : shippingQuote.free_shipping || shippingAmount <= 0
+                        ? "FREE"
+                        : formatPrice(shippingAmount)}
+                </span>
+              </div>
+            </div>
+
             <div className="pay-receipt-total">
               <span>Total payable</span>
               <strong>{formatPrice(total)}</strong>
             </div>
+            <p className="muted pay-receipt-note">Final amount is confirmed by the server at payment.</p>
           </aside>
         </div>
       </div>

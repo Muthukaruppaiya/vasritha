@@ -96,7 +96,8 @@ export function Footer({
         <div>
           <h4>{t("footer.customerCare")}</h4>
           <Link href="/account">{t("common.myAccount")}</Link>
-          <a href="#">{t("footer.shippingReturns")}</a>
+          <Link href="/shipping-policy">{t("footer.shippingReturns")}</Link>
+          <Link href="/exchange-policy">Exchange policy</Link>
           <a href="#">{t("footer.sizeGuide")}</a>
           <a href="/account#orders">{t("footer.orderTracking")}</a>
           <a href="#">{t("footer.faqs")}</a>

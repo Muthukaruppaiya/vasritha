@@ -3,17 +3,21 @@
 import Link from "next/link";
 import { ProductGallery } from "./product-gallery";
 import { ProductPurchase } from "./product-purchase";
+import { PurchasePolicyNotice } from "./purchase-policy-notice";
 import { ProductCard } from "./storefront";
 import type { StoreProduct } from "../lib/catalog";
+import type { PurchasePolicySummary } from "../lib/purchase-policy-display";
 import { useLocale, useT } from "../lib/i18n/provider";
 import { localizeProductFields } from "../lib/i18n/catalog-local";
 
 export function LocalizedProductDetail({
   product,
-  related
+  related,
+  purchasePolicy
 }: {
   product: StoreProduct;
   related: StoreProduct[];
+  purchasePolicy?: PurchasePolicySummary | null;
 }) {
   const t = useT();
   const { locale } = useLocale();
@@ -80,6 +84,8 @@ export function LocalizedProductDetail({
             <li>{t("product.perkShipping")}</li>
             <li>{t("product.perkPacking")}</li>
           </ul>
+
+          <PurchasePolicyNotice summary={purchasePolicy} variant="detail" />
 
           <ProductPurchase product={localizedProduct} categoryLabel={localized.categoryName} />
         </div>

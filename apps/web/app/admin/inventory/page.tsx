@@ -189,7 +189,7 @@ function AdminInventoryPageInner() {
       <AdminPageHeader
         eyebrow="Stock operations"
         title="Inventory"
-        description="Review on-hand stock here. Receive supplier goods on the GRN page."
+        description="Review on-hand stock here. Receive supplier goods on the GRN page — stock updates after approval."
         actions={
           <>
             <Link

@@ -17,6 +17,14 @@ import type { StoreProduct } from "../../lib/catalog";
 import { useLocale } from "../../lib/i18n/provider";
 import { localizeProductFields, localizeSize } from "../../lib/i18n/catalog-local";
 import { getAppliedCoupon, COUPON_EVENT, type AppliedCoupon } from "../../lib/applied-coupon";
+import {
+  OfferUnlockNudge,
+  buildOfferLockedMessage,
+  type OfferProgressView
+} from "../../components/offer-unlock-nudge";
+import { DeliveryConditions } from "../../components/delivery-conditions";
+import { PurchasePolicyNotice } from "../../components/purchase-policy-notice";
+import type { ShippingQuote } from "../../lib/shipping";
 
 type CheckoutLine = {
   productId: string;
@@ -43,6 +51,8 @@ function CheckoutContent() {
   const [ready, setReady] = useState(false);
   const [lineItems, setLineItems] = useState<CheckoutLine[]>([]);
   const [appliedVoucher, setAppliedVoucher] = useState<AppliedCoupon | null>(null);
+  const [offerProgress, setOfferProgress] = useState<OfferProgressView | null>(null);
+  const [shippingQuote, setShippingQuote] = useState<ShippingQuote | null>(null);
   const [loyaltyNote, setLoyaltyNote] = useState<string | null>(null);
   const [loyaltyPoints, setLoyaltyPoints] = useState<number | null>(null);
 
@@ -57,6 +67,10 @@ function CheckoutContent() {
   );
   const savings = Math.max(0, compareTotal - orderTotal);
   const itemCount = lineItems.reduce((sum, item) => sum + item.quantity, 0);
+  const shippingAmount =
+    shippingQuote?.delivery_available ? Number(shippingQuote.shipping_amount || 0) : 0;
+  const payableTotal = orderTotal + shippingAmount;
+  const deliveryBlocked = Boolean(shippingQuote && !shippingQuote.delivery_available);
 
   useEffect(() => {
     const syncCoupon = () => setAppliedVoucher(getAppliedCoupon());
@@ -101,6 +115,58 @@ function CheckoutContent() {
       cancelled = true;
     };
   }, [ready, orderTotal]);
+
+  useEffect(() => {
+    if (!ready || orderTotal <= 0) {
+      setOfferProgress(null);
+      return;
+    }
+    const params = new URLSearchParams({ subtotal: String(orderTotal) });
+    if (appliedVoucher?.code) params.set("code", appliedVoucher.code);
+    const ac = new AbortController();
+    fetch(`/api/coupons/offer-progress?${params.toString()}`, { signal: ac.signal })
+      .then((res) => res.json())
+      .then((payload) => {
+        const data = payload?.data as
+          | {
+              applicable?: boolean;
+              coupon?: { code?: string } | null;
+              progress?: OfferProgressView | null;
+            }
+          | undefined;
+        if (!data?.applicable || !data.progress || data.progress.minOrderAmount <= 0) {
+          setOfferProgress(null);
+          return;
+        }
+        setOfferProgress({
+          ...data.progress,
+          code: data.coupon?.code || appliedVoucher?.code
+        });
+      })
+      .catch(() => setOfferProgress(null));
+    return () => ac.abort();
+  }, [ready, orderTotal, appliedVoucher?.code]);
+
+  useEffect(() => {
+    if (!ready || orderTotal <= 0) {
+      setShippingQuote(null);
+      return;
+    }
+    const pin = session?.address?.pincode || "";
+    const params = new URLSearchParams({ subtotal: String(orderTotal) });
+    if (pin) params.set("postal_code", pin);
+    const productIds = Array.from(new Set(lineItems.map((l) => l.productId).filter(Boolean)));
+    if (productIds.length) params.set("product_ids", productIds.join(","));
+    const ac = new AbortController();
+    fetch(`/api/shipping/quote?${params.toString()}`, { signal: ac.signal })
+      .then((res) => res.json())
+      .then((payload) => {
+        const data = payload?.data as ShippingQuote | undefined;
+        if (data) setShippingQuote(data);
+      })
+      .catch(() => undefined);
+    return () => ac.abort();
+  }, [ready, orderTotal, session?.address?.pincode, lineItems]);
 
   useEffect(() => {
     if (!isLoggedIn()) {
@@ -179,6 +245,7 @@ function CheckoutContent() {
 
   const onPay = (event: FormEvent) => {
     event.preventDefault();
+    if (deliveryBlocked) return;
     const address = getCachedAddress();
     if (!address?.id || !lineItems.length) return;
 
@@ -315,6 +382,19 @@ function CheckoutContent() {
                 Gift voucher <strong>{appliedVoucher.code}</strong> will apply at payment.
               </p>
             ) : null}
+            {offerProgress ? (
+              <OfferUnlockNudge
+                progress={offerProgress}
+                lockedMessage={buildOfferLockedMessage(
+                  offerProgress.remainingAmount,
+                  offerProgress.benefitLabel
+                )}
+                unlockedMessage={`Offer unlocked · ${offerProgress.benefitLabel} 🎉`}
+                appliesAtPayNote="Applies at payment"
+              />
+            ) : null}
+            {shippingQuote ? <DeliveryConditions quote={shippingQuote} /> : null}
+            <PurchasePolicyNotice variant="compact" />
             <div className="checkout-total-line">
               <span>Subtotal</span>
               <span>{formatPrice(orderTotal)}</span>
@@ -325,10 +405,25 @@ function CheckoutContent() {
                 <strong>{formatPrice(savings)}</strong>
               </div>
             )}
-            <div className="checkout-total-line checkout-total-row">
-              <span>Total</span>
-              <strong>{formatPrice(orderTotal)}</strong>
+            <div className="checkout-total-line">
+              <span>Delivery</span>
+              <span>
+                {!shippingQuote
+                  ? "—"
+                  : !shippingQuote.delivery_available
+                    ? "N/A"
+                    : shippingQuote.free_shipping || shippingAmount <= 0
+                      ? "FREE"
+                      : formatPrice(shippingAmount)}
+              </span>
             </div>
+            <div className="checkout-total-line checkout-total-row">
+              <span>Order total</span>
+              <strong>{formatPrice(payableTotal)}</strong>
+            </div>
+            <p className="muted checkout-tax-note">
+              Prices include applicable GST. Gift vouchers apply at payment.
+            </p>
             {loyaltyPoints != null && loyaltyPoints > 0 ? (
               <p className="checkout-loyalty-earn muted">
                 You will earn <strong>{loyaltyPoints}</strong> loyalty points on this order.
@@ -338,9 +433,12 @@ function CheckoutContent() {
           </div>
 
           <form className="checkout-pay-form" onSubmit={onPay}>
-            <button className="btn checkout-pay" type="submit">
-              Continue to payment
+            <button className="btn checkout-pay" type="submit" disabled={deliveryBlocked}>
+              {deliveryBlocked ? "Delivery unavailable" : "Continue to payment"}
             </button>
+            {deliveryBlocked && shippingQuote ? (
+              <p className="checkout-delivery-block">{shippingQuote.delivery_message}</p>
+            ) : null}
             <p className="muted checkout-secure-note">
               Razorpay · Cards, UPI & netbanking · Test mode
             </p>

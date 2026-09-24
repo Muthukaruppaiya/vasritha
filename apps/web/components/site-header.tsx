@@ -20,6 +20,7 @@ import { CartBagIcon, LoginIcon } from "./icons";
 import { LanguageSwitcher } from "./language-switcher";
 import { NavigationBar } from "./navigation-bar";
 import { SiteSearch } from "./site-search";
+import { ShippingPromoBanner } from "./shipping-promo-banner";
 
 export function Header({
   categories
@@ -143,6 +144,7 @@ export function Header({
           ))}
         </div>
       </div>
+      <ShippingPromoBanner />
       <header className="shell nav">
         <div className="nav-left">
           <NavigationBar categories={categories} />

@@ -232,7 +232,10 @@ export function InvoiceBill({ data, id = "vasritha-invoice-bill" }: Props) {
           </p>
         ) : null}
         <p>Thank you for shopping at Vasritha</p>
-        <p>Goods once sold are exchangeable with this bill as per store policy</p>
+        <p>
+          Goods once sold are exchangeable with this bill as per store policy. NO CASH REFUNDS.
+          In-store purchases: exchange/refund only at the physical store.
+        </p>
         <p className="invoice-bill-shop-code">{data.order_number}</p>
       </footer>
     </article>

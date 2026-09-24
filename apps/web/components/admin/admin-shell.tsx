@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
+  History,
   LayoutDashboard,
   Package,
   Tags,
@@ -30,7 +31,12 @@ import {
   Sparkles,
   Truck,
   ArrowDownToLine,
+  ArrowUpRight,
+  BookOpen,
+  Landmark,
   Printer,
+  Wallet,
+  ChartColumn,
   type LucideIcon
 } from "lucide-react";
 import {
@@ -113,7 +119,7 @@ const navModules: NavModule[] = [
     children: [
       { label: "Online Orders", href: "/admin/orders", icon: ShoppingBag },
       { label: "Store POS", href: "/admin/billing", icon: Receipt },
-      { label: "Returns", href: "/admin/returns", icon: RotateCcw },
+      { label: "Exchanges", href: "/admin/returns", icon: RotateCcw },
       { label: "Gift vouchers", href: "/admin/coupons", icon: TicketPercent },
       { label: "Loyalty", href: "/admin/loyalty", icon: Sparkles }
     ]
@@ -128,12 +134,42 @@ const navModules: NavModule[] = [
     ]
   },
   {
+    id: "finance",
+    label: "Finance",
+    icon: Wallet,
+    children: [
+      { label: "Dashboard", href: "/admin/finance", icon: Wallet },
+      { label: "Sales", href: "/admin/finance/incoming", icon: ArrowDownToLine },
+      { label: "Receivables", href: "/admin/finance/receivables", icon: ArrowDownToLine },
+      { label: "Payables", href: "/admin/finance/payables", icon: ArrowUpRight },
+      { label: "Expenses", href: "/admin/finance/expenses", icon: ArrowUpRight },
+      { label: "Cash & Bank", href: "/admin/finance/cash-bank", icon: Landmark },
+      { label: "Profit & Loss", href: "/admin/finance/pnl", icon: FileText },
+      { label: "Finance reports", href: "/admin/finance/reports", icon: BookOpen }
+    ]
+  },
+  {
+    id: "reports",
+    label: "Reports",
+    icon: ChartColumn,
+    href: "/admin/reports",
+    children: [
+      { label: "All reports", href: "/admin/reports", icon: ChartColumn },
+      { label: "Sales", href: "/admin/reports/sales", icon: ShoppingBag },
+      { label: "Purchases", href: "/admin/reports/purchases", icon: Truck },
+      { label: "Inventory", href: "/admin/reports/inventory", icon: Warehouse },
+      { label: "Profit", href: "/admin/reports/profit", icon: FileText },
+      { label: "Customer outstanding", href: "/admin/reports/customer_outstanding", icon: Users }
+    ]
+  },
+  {
     id: "people",
     label: "People",
     icon: Users,
     children: [
       { label: "Customers", href: "/admin/customers", icon: UserRound },
-      { label: "Users", href: "/admin/users", icon: Users }
+      { label: "Users", href: "/admin/users", icon: Users },
+      { label: "Login log", href: "/admin/login-log", icon: History }
     ]
   },
   {

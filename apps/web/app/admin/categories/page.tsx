@@ -35,6 +35,9 @@ type Category = {
   created_at: string;
   is_published?: boolean;
   name_i18n?: Record<string, string> | null;
+  shipping_charge?: string | number | null;
+  shipping_is_free?: boolean | null;
+  shipping_rate_active?: boolean | null;
   subcategories?: Subcategory[];
 };
 
@@ -53,6 +56,9 @@ const blankForm = () => ({
   slug: "",
   description: "",
   sort_order: "0",
+  shipping_charge: "0",
+  shipping_is_free: false,
+  shipping_rate_active: false,
   names: {
     ta: "",
     ml: "",
@@ -103,6 +109,9 @@ export default function AdminCategoriesPage() {
       slug: category.slug,
       description: category.description || "",
       sort_order: String(category.sort_order ?? 0),
+      shipping_charge: String(category.shipping_charge ?? 0),
+      shipping_is_free: Boolean(category.shipping_is_free),
+      shipping_rate_active: Boolean(category.shipping_rate_active),
       names: {
         ta: category.name_i18n?.ta || "",
         ml: category.name_i18n?.ml || "",
@@ -184,6 +193,9 @@ export default function AdminCategoriesPage() {
       slug: preset?.slug || form.slug || slugify(form.name),
       description: form.description || preset?.description || null,
       sort_order: Number(form.sort_order || 0),
+      shipping_charge: form.shipping_is_free ? 0 : Math.max(0, Number(form.shipping_charge || 0)),
+      shipping_is_free: Boolean(form.shipping_is_free),
+      shipping_rate_active: Boolean(form.shipping_rate_active),
       name_i18n: preset?.names || {
         en: form.name,
         ...form.names
@@ -405,6 +417,14 @@ export default function AdminCategoriesPage() {
                 <p className="muted">
                   {category.is_published === false ? "Unpublished — hidden on website" : "Published on website"}
                 </p>
+                <p className="muted">
+                  Shipping:{" "}
+                  {!category.shipping_rate_active
+                    ? "Uses default delivery charge"
+                    : category.shipping_is_free
+                      ? "Free for this category"
+                      : `₹${Number(category.shipping_charge || 0).toLocaleString("en-IN")}`}
+                </p>
                 <p>{category.description || "No description yet."}</p>
                 <div className="admin-child-list">
                   <div className="admin-child-list-head">
@@ -573,6 +593,42 @@ export default function AdminCategoriesPage() {
             type="number"
             value={form.sort_order}
             onChange={(e) => setForm((f) => ({ ...f, sort_order: e.target.value }))}
+          />
+        </label>
+        <label className="admin-span-2">
+          <span>Category shipping rate</span>
+          <select
+            value={form.shipping_rate_active ? "1" : "0"}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, shipping_rate_active: e.target.value === "1" }))
+            }
+          >
+            <option value="0">Inactive (use default delivery charge)</option>
+            <option value="1">Active (category rate applies)</option>
+          </select>
+        </label>
+        <label>
+          <span>Free shipping for category</span>
+          <select
+            value={form.shipping_is_free ? "1" : "0"}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, shipping_is_free: e.target.value === "1" }))
+            }
+            disabled={!form.shipping_rate_active}
+          >
+            <option value="0">No — use charge below</option>
+            <option value="1">Yes — ₹0 for this category</option>
+          </select>
+        </label>
+        <label>
+          <span>Shipping charge (₹)</span>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.shipping_charge}
+            disabled={!form.shipping_rate_active || form.shipping_is_free}
+            onChange={(e) => setForm((f) => ({ ...f, shipping_charge: e.target.value }))}
           />
         </label>
         {(!form.template || form.template === "custom") &&

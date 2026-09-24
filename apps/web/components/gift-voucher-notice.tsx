@@ -12,6 +12,7 @@ type OpeningVoucher = {
   discountType: string;
   discountValue: number;
   minOrderAmount: number;
+  maxDiscountAmount?: number | null;
 };
 
 function LaurelWreath() {
@@ -208,7 +209,11 @@ export function GiftVoucherNotice() {
         claimOpeningVoucher({
           id: current.id,
           code: current.code,
-          headline: current.headline
+          headline: current.headline,
+          minOrderAmount: current.minOrderAmount,
+          discountType: current.discountType,
+          discountValue: current.discountValue,
+          maxDiscountAmount: current.maxDiscountAmount
         });
       }, 180);
       window.setTimeout(() => {

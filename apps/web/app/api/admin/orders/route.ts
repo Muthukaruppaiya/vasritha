@@ -1,8 +1,14 @@
 import { NextRequest } from "next/server";
 import { fail, ok, requireAnyPermission, requirePermission, writeAuditLog } from "../../../../lib/auth/api";
 import { query, queryOne } from "../../../../lib/db/pool";
+import {
+  isAllowedOrderTransition,
+  isOrderStatus,
+  ORDER_FULFILLMENT_STATUSES,
+  orderStatusLabel
+} from "../../../../lib/order-status";
 
-const FULFILLMENT_STATUSES = new Set(["confirmed", "processing", "shipped", "delivered"]);
+const FULFILLMENT_STATUSES = new Set<string>(ORDER_FULFILLMENT_STATUSES);
 
 export async function GET(request: NextRequest) {
   const { error } = await requireAnyPermission(request, [
@@ -46,19 +52,35 @@ export async function PATCH(request: NextRequest) {
 
   if (!body?.orderId || !body?.status) return fail("orderId and status are required");
 
-  const wantsFulfillment = FULFILLMENT_STATUSES.has(body.status);
+  const nextStatus = String(body.status).toLowerCase().trim();
+  if (!isOrderStatus(nextStatus)) {
+    return fail(`Invalid order status: ${body.status}`, 400);
+  }
+
+  const wantsFulfillment = FULFILLMENT_STATUSES.has(nextStatus);
   const { error, ctx } = wantsFulfillment
     ? await requireAnyPermission(request, ["orders:fulfill", "orders:manage"])
     : await requirePermission(request, "orders:manage");
 
   if (error || !ctx) return error;
 
-  const before = await queryOne(`select * from orders where id = $1`, [body.orderId]);
+  const before = await queryOne<{ id: string; status: string }>(
+    `select id, status from orders where id = $1`,
+    [body.orderId]
+  );
   if (!before) return fail("Order not found", 404);
+
+  const fromStatus = String(before.status || "").toLowerCase();
+  if (!isAllowedOrderTransition(fromStatus, nextStatus)) {
+    return fail(
+      `Invalid status transition: ${orderStatusLabel(fromStatus)} → ${orderStatusLabel(nextStatus)}`,
+      400
+    );
+  }
 
   const data = await queryOne(
     `update orders set status = $2 where id = $1 returning *`,
-    [body.orderId, body.status]
+    [body.orderId, nextStatus]
   );
 
   await writeAuditLog({

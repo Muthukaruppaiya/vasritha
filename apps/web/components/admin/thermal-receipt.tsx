@@ -265,7 +265,7 @@ export function ThermalReceipt({ data, id = "tvs-l46-receipt" }: Props) {
           </p>
         ) : null}
         <p>Thank you for shopping at Vasritha</p>
-        <p>Please retain this bill for exchange</p>
+        <p>Please retain this bill for exchange · NO CASH REFUNDS · Store purchases: exchange/refund at store only</p>
         <p className="tvs-receipt-code">{data.order_number}</p>
       </footer>
     </article>

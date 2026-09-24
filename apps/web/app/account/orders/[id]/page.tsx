@@ -4,8 +4,15 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Footer, Header } from "../../../../components/storefront";
+import { PurchasePolicyNotice } from "../../../../components/purchase-policy-notice";
 import { isLoggedIn } from "../../../../lib/customer-session";
 import { storeFetch } from "../../../../lib/store-api";
+import {
+  buildPurchasePolicySummary,
+  type ExchangePolicySettings,
+  type PurchasePolicySummary
+} from "../../../../lib/purchase-policy-display";
+import { ORDER_STATUS_RANK, ORDER_TRACK_STEPS, orderStatusLabel } from "../../../../lib/order-status";
 
 type OrderDetail = {
   id: string;
@@ -44,22 +51,23 @@ type OrderDetail = {
   } | null;
 };
 
-const TRACK_STEPS = [
-  { key: "pending", label: "Order placed", hint: "We received your order" },
-  { key: "confirmed", label: "Confirmed", hint: "Payment verified" },
-  { key: "processing", label: "Preparing", hint: "Boutique packing in progress" },
-  { key: "shipped", label: "Shipped", hint: "On the way to you" },
-  { key: "delivered", label: "Delivered", hint: "Enjoy your Vasritha piece" }
-] as const;
-
-const STATUS_RANK: Record<string, number> = {
-  pending: 0,
-  confirmed: 1,
-  processing: 2,
-  shipped: 3,
-  delivered: 4,
-  cancelled: -1
+type ExchangeRow = {
+  id: string;
+  return_number: string;
+  status: string;
+  reason: string | null;
+  request_type?: string | null;
+  created_at: string;
 };
+
+const TRACK_STEPS = ORDER_TRACK_STEPS;
+const STATUS_RANK = ORDER_STATUS_RANK;
+
+function exchangeStatusLabel(status: string) {
+  if (status === "exchanged") return "Completed";
+  if (status === "received") return "Received at boutique";
+  return orderStatusLabel(status);
+}
 
 function formatMoney(value: string | number) {
   return `₹${Number(value || 0).toLocaleString("en-IN")}`;
@@ -81,6 +89,18 @@ export default function AccountOrderDetailPage() {
   const [order, setOrder] = useState<OrderDetail | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [eligibility, setEligibility] = useState<{
+    eligible: boolean;
+    reason: string;
+    days_remaining: number | null;
+  } | null>(null);
+  const [policySummary, setPolicySummary] = useState<PurchasePolicySummary | null>(null);
+  const [exchanges, setExchanges] = useState<ExchangeRow[]>([]);
+  const [exchangeReason, setExchangeReason] = useState("");
+  const [selectedItems, setSelectedItems] = useState<Record<string, number>>({});
+  const [exchangeBusy, setExchangeBusy] = useState(false);
+  const [exchangeMsg, setExchangeMsg] = useState("");
+  const [exchangeErr, setExchangeErr] = useState("");
 
   useEffect(() => {
     if (!isLoggedIn()) {
@@ -96,6 +116,19 @@ export default function AccountOrderDetailPage() {
         return;
       }
       setOrder(result.data);
+      const elig = await storeFetch<{
+        eligibility: { eligible: boolean; reason: string; days_remaining: number | null };
+        settings?: ExchangePolicySettings;
+        summary?: PurchasePolicySummary;
+        exchanges?: ExchangeRow[];
+      }>(`/api/customer/exchanges?orderId=${encodeURIComponent(result.data.id)}`);
+      if (elig.data?.eligibility) setEligibility(elig.data.eligibility);
+      if (elig.data?.summary) {
+        setPolicySummary(elig.data.summary);
+      } else if (elig.data?.settings) {
+        setPolicySummary(buildPurchasePolicySummary(elig.data.settings));
+      }
+      if (elig.data?.exchanges) setExchanges(elig.data.exchanges);
       setLoading(false);
     })();
   }, [params.id, router]);
@@ -104,6 +137,46 @@ export default function AccountOrderDetailPage() {
     if (!order) return 0;
     return STATUS_RANK[order.status] ?? 0;
   }, [order]);
+
+  const submitExchange = async () => {
+    if (!order) return;
+    setExchangeErr("");
+    setExchangeMsg("");
+    const items = Object.entries(selectedItems)
+      .filter(([, qty]) => qty > 0)
+      .map(([orderItemId, quantity]) => ({ orderItemId, quantity }));
+    if (!items.length) {
+      setExchangeErr("Select at least one item to exchange.");
+      return;
+    }
+    if (!exchangeReason.trim()) {
+      setExchangeErr("Please share a reason for the exchange.");
+      return;
+    }
+    setExchangeBusy(true);
+    const result = await storeFetch<{ return_number?: string }>("/api/customer/exchanges", {
+      method: "POST",
+      json: {
+        orderId: order.id,
+        reason: exchangeReason.trim(),
+        items
+      }
+    });
+    setExchangeBusy(false);
+    if (result.error) {
+      setExchangeErr(result.error);
+      return;
+    }
+    setExchangeMsg(
+      `Exchange request ${(result.data as { return_number?: string } | null)?.return_number || ""} submitted. We follow a NO REFUND policy — approved exchanges only.`
+    );
+    setSelectedItems({});
+    setExchangeReason("");
+    const refresh = await storeFetch<{ exchanges?: ExchangeRow[] }>(
+      `/api/customer/exchanges?orderId=${encodeURIComponent(order.id)}`
+    );
+    if (refresh.data?.exchanges) setExchanges(refresh.data.exchanges);
+  };
 
   if (loading) {
     return (
@@ -267,6 +340,98 @@ export default function AccountOrderDetailPage() {
                   "Payment details will appear once processed."
                 )}
               </p>
+            </section>
+
+            <section className="account-panel">
+              <div className="account-panel-head">
+                <h2>Exchange</h2>
+              </div>
+              <PurchasePolicyNotice summary={policySummary} variant="compact" />
+              {exchanges.length > 0 ? (
+                <ul className="account-exchange-history">
+                  {exchanges.map((row) => (
+                    <li key={row.id}>
+                      <strong>{row.return_number}</strong>
+                      <span className={`account-status account-status--${row.status}`}>
+                        {exchangeStatusLabel(row.status)}
+                      </span>
+                      <em className="muted">{formatDate(row.created_at)}</em>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {eligibility ? (
+                <p className={eligibility.eligible ? "muted" : "account-exchange-warn"}>
+                  {eligibility.reason}
+                </p>
+              ) : null}
+              {eligibility?.eligible ? (
+                <div className="account-exchange-form">
+                  <ul className="account-exchange-items">
+                    {order.order_items.map((item) => (
+                      <li key={item.id}>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={(selectedItems[item.id] || 0) > 0}
+                            onChange={(e) =>
+                              setSelectedItems((prev) => ({
+                                ...prev,
+                                [item.id]: e.target.checked ? 1 : 0
+                              }))
+                            }
+                          />
+                          <span>
+                            {item.product_name}
+                            <em className="muted">
+                              {" "}
+                              · Qty {item.quantity}
+                              {item.variant_name ? ` · ${item.variant_name}` : ""}
+                            </em>
+                          </span>
+                        </label>
+                        {(selectedItems[item.id] || 0) > 0 && item.quantity > 1 ? (
+                          <select
+                            value={selectedItems[item.id]}
+                            onChange={(e) =>
+                              setSelectedItems((prev) => ({
+                                ...prev,
+                                [item.id]: Number(e.target.value)
+                              }))
+                            }
+                            aria-label={`Quantity for ${item.product_name}`}
+                          >
+                            {Array.from({ length: item.quantity }, (_, i) => i + 1).map((n) => (
+                              <option key={n} value={n}>
+                                {n}
+                              </option>
+                            ))}
+                          </select>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                  <label className="account-exchange-reason">
+                    <span>Reason</span>
+                    <textarea
+                      rows={3}
+                      value={exchangeReason}
+                      onChange={(e) => setExchangeReason(e.target.value)}
+                      placeholder="Size / colour / preference…"
+                    />
+                  </label>
+                  {exchangeErr ? <p className="account-exchange-warn">{exchangeErr}</p> : null}
+                  {exchangeMsg ? <p className="account-exchange-ok">{exchangeMsg}</p> : null}
+                  <button
+                    type="button"
+                    className="account-btn"
+                    disabled={exchangeBusy}
+                    onClick={() => void submitExchange()}
+                  >
+                    {exchangeBusy ? "Submitting…" : "Request exchange"}
+                  </button>
+                </div>
+              ) : null}
             </section>
           </aside>
         </div>

@@ -3,6 +3,10 @@ import { LocalizedProductDetail } from "../../../components/localized-product-de
 import { ProductReviews } from "../../../components/product-reviews";
 import { Footer, Header } from "../../../components/storefront";
 import { getProductBySlug, listRelatedProducts } from "../../../lib/catalog";
+import {
+  buildPurchasePolicySummary,
+  getExchangePolicySettings
+} from "../../../lib/exchange-policy";
 
 export default async function ProductPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -10,12 +14,18 @@ export default async function ProductPage({ params }: { params: Promise<{ slug: 
   if (!product) notFound();
 
   const related = await listRelatedProducts(product.category, product.slug, 4);
+  const exchangeSettings = await getExchangePolicySettings();
+  const purchasePolicy = buildPurchasePolicySummary(exchangeSettings);
 
   return (
     <>
       <Header />
       <main className="product-page">
-        <LocalizedProductDetail product={product} related={related} />
+        <LocalizedProductDetail
+          product={product}
+          related={related}
+          purchasePolicy={purchasePolicy}
+        />
         <section className="shell" data-reveal>
           <ProductReviews
             productId={product.id}

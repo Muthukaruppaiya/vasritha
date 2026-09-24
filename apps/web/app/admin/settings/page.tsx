@@ -26,6 +26,24 @@ type Settings = {
   whatsapp_number: string | null;
   currency: string | null;
   free_shipping_min: string | null;
+  default_shipping_fee?: string | null;
+  delivery_enabled?: boolean | null;
+  estimated_delivery_text?: string | null;
+  order_processing_text?: string | null;
+  shipping_policy_notes?: string | null;
+  delivery_pincode_mode?: string | null;
+  delivery_pincodes?: string | null;
+  category_shipping_combine_mode?: string | null;
+  no_refund_policy?: boolean | null;
+  exchange_enabled?: boolean | null;
+  exchange_window_days?: string | number | null;
+  exchange_charge?: string | null;
+  exchange_condition_text?: string | null;
+  exchange_non_eligible_text?: string | null;
+  exchange_process_text?: string | null;
+  exchange_policy_notes?: string | null;
+  in_store_exchange_refund_only?: boolean | null;
+  in_store_policy_text?: string | null;
   seo_title: string | null;
   seo_description: string | null;
   company_legal_name: string | null;
@@ -82,6 +100,25 @@ export default function AdminSettingsPage() {
     whatsapp_number: "",
     currency: "INR",
     free_shipping_min: "0",
+    default_shipping_fee: "0",
+    delivery_enabled: true,
+    estimated_delivery_text: "3–7 business days across India",
+    order_processing_text: "Orders are packed within 1–2 business days after payment confirmation",
+    shipping_policy_notes: "",
+    delivery_pincode_mode: "all",
+    delivery_pincodes: "",
+    category_shipping_combine_mode: "max",
+    no_refund_policy: true,
+    exchange_enabled: true,
+    exchange_window_days: "7",
+    exchange_charge: "0",
+    exchange_condition_text: "",
+    exchange_non_eligible_text: "",
+    exchange_process_text: "",
+    exchange_policy_notes: "",
+    in_store_exchange_refund_only: true,
+    in_store_policy_text:
+      "In-store purchases can be exchanged or refunded only at the physical store. Online orders follow the exchange-only (no refund) policy.",
     seo_title: "",
     seo_description: "",
     company_legal_name: "",
@@ -125,6 +162,28 @@ export default function AdminSettingsPage() {
       whatsapp_number: data.whatsapp_number || "",
       currency: data.currency || "INR",
       free_shipping_min: data.free_shipping_min ?? "0",
+      default_shipping_fee: data.default_shipping_fee ?? "0",
+      delivery_enabled: data.delivery_enabled !== false,
+      estimated_delivery_text: data.estimated_delivery_text ?? "3–7 business days across India",
+      order_processing_text:
+        data.order_processing_text ??
+        "Orders are packed within 1–2 business days after payment confirmation",
+      shipping_policy_notes: data.shipping_policy_notes ?? "",
+      delivery_pincode_mode: data.delivery_pincode_mode ?? "all",
+      delivery_pincodes: data.delivery_pincodes ?? "",
+      category_shipping_combine_mode: data.category_shipping_combine_mode ?? "max",
+      no_refund_policy: data.no_refund_policy !== false,
+      exchange_enabled: data.exchange_enabled !== false,
+      exchange_window_days: String(data.exchange_window_days ?? 7),
+      exchange_charge: data.exchange_charge ?? "0",
+      exchange_condition_text: data.exchange_condition_text ?? "",
+      exchange_non_eligible_text: data.exchange_non_eligible_text ?? "",
+      exchange_process_text: data.exchange_process_text ?? "",
+      exchange_policy_notes: data.exchange_policy_notes ?? "",
+      in_store_exchange_refund_only: data.in_store_exchange_refund_only !== false,
+      in_store_policy_text:
+        data.in_store_policy_text ??
+        "In-store purchases can be exchanged or refunded only at the physical store. Online orders follow the exchange-only (no refund) policy.",
       seo_title: data.seo_title || "",
       seo_description: data.seo_description || "",
       company_legal_name: data.company_legal_name || data.site_name || "",
@@ -186,6 +245,25 @@ export default function AdminSettingsPage() {
       json: {
         ...form,
         free_shipping_min: Number(form.free_shipping_min || 0),
+        default_shipping_fee: Number(form.default_shipping_fee || 0),
+        delivery_enabled: Boolean(form.delivery_enabled),
+        estimated_delivery_text: form.estimated_delivery_text || null,
+        order_processing_text: form.order_processing_text || null,
+        shipping_policy_notes: form.shipping_policy_notes || null,
+        delivery_pincode_mode: form.delivery_pincode_mode || "all",
+        delivery_pincodes: form.delivery_pincodes || "",
+        category_shipping_combine_mode:
+          form.category_shipping_combine_mode === "sum" ? "sum" : "max",
+        no_refund_policy: Boolean(form.no_refund_policy),
+        exchange_enabled: Boolean(form.exchange_enabled),
+        exchange_window_days: Number(form.exchange_window_days || 7),
+        exchange_charge: Number(form.exchange_charge || 0),
+        exchange_condition_text: form.exchange_condition_text || null,
+        exchange_non_eligible_text: form.exchange_non_eligible_text || null,
+        exchange_process_text: form.exchange_process_text || null,
+        exchange_policy_notes: form.exchange_policy_notes || null,
+        in_store_exchange_refund_only: Boolean(form.in_store_exchange_refund_only),
+        in_store_policy_text: form.in_store_policy_text || null,
         staff_login_security_enabled: Boolean(form.staff_login_security_enabled),
         staff_login_require_ip: Boolean(form.staff_login_require_ip),
         staff_login_require_device: Boolean(form.staff_login_require_device),
@@ -337,12 +415,222 @@ export default function AdminSettingsPage() {
                 />
               </label>
               <label>
-                <span>Free shipping min</span>
+                <span>Free delivery minimum (₹)</span>
                 <input
                   type="number"
                   min="0"
                   value={form.free_shipping_min || ""}
                   onChange={(e) => setForm((f) => ({ ...f, free_shipping_min: e.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Delivery charge (₹)</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.default_shipping_fee || ""}
+                  onChange={(e) => setForm((f) => ({ ...f, default_shipping_fee: e.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Multi-category shipping rule</span>
+                <select
+                  value={form.category_shipping_combine_mode || "max"}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, category_shipping_combine_mode: e.target.value }))
+                  }
+                >
+                  <option value="max">Highest category rate (one shipment)</option>
+                  <option value="sum">Sum all category rates</option>
+                </select>
+                <span className="muted admin-sub">
+                  Set per-category rates under Categories. Free-shipping minimum still zeros delivery
+                  when the cart qualifies.
+                </span>
+              </label>
+              <label>
+                <span>Online delivery</span>
+                <select
+                  value={form.delivery_enabled === false ? "0" : "1"}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, delivery_enabled: e.target.value === "1" }))
+                  }
+                >
+                  <option value="1">Enabled</option>
+                  <option value="0">Disabled</option>
+                </select>
+              </label>
+              <label>
+                <span>PIN code rules</span>
+                <select
+                  value={form.delivery_pincode_mode || "all"}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, delivery_pincode_mode: e.target.value }))
+                  }
+                >
+                  <option value="all">Deliver all India</option>
+                  <option value="allowlist">Only listed PINs</option>
+                  <option value="blocklist">Block listed PINs</option>
+                </select>
+              </label>
+              <label className="admin-span-2">
+                <span>Estimated delivery text</span>
+                <input
+                  value={form.estimated_delivery_text || ""}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, estimated_delivery_text: e.target.value }))
+                  }
+                  placeholder="e.g. 3–7 business days across India"
+                />
+              </label>
+              <label className="admin-span-2">
+                <span>Order processing time</span>
+                <input
+                  value={form.order_processing_text || ""}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, order_processing_text: e.target.value }))
+                  }
+                  placeholder="e.g. Packed within 1–2 business days after payment"
+                />
+              </label>
+              <label className="admin-span-2">
+                <span>Shipping policy notes</span>
+                <textarea
+                  rows={3}
+                  value={form.shipping_policy_notes || ""}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, shipping_policy_notes: e.target.value }))
+                  }
+                  placeholder="Extra conditions shown on the Shipping Policy page"
+                />
+              </label>
+
+              <div className="admin-span-2">
+                <h3 style={{ margin: "8px 0 4px" }}>Exchange &amp; refund policy</h3>
+                <p className="muted" style={{ marginTop: 0 }}>
+                  Boutique rule: NO cash refunds. Customers may request exchanges only.
+                </p>
+              </div>
+              <label>
+                <span>No refund policy</span>
+                <select
+                  value={form.no_refund_policy === false ? "0" : "1"}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, no_refund_policy: e.target.value === "1" }))
+                  }
+                >
+                  <option value="1">Enabled (block refunds)</option>
+                  <option value="0">Disabled</option>
+                </select>
+              </label>
+              <label>
+                <span>Exchanges</span>
+                <select
+                  value={form.exchange_enabled === false ? "0" : "1"}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, exchange_enabled: e.target.value === "1" }))
+                  }
+                >
+                  <option value="1">Enabled</option>
+                  <option value="0">Disabled</option>
+                </select>
+              </label>
+              <label>
+                <span>Exchange window (days after delivery)</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={form.exchange_window_days || ""}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, exchange_window_days: e.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                <span>Exchange charge (₹)</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.exchange_charge || ""}
+                  onChange={(e) => setForm((f) => ({ ...f, exchange_charge: e.target.value }))}
+                />
+              </label>
+              <label className="admin-span-2">
+                <span>Condition requirements</span>
+                <textarea
+                  rows={2}
+                  value={form.exchange_condition_text || ""}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, exchange_condition_text: e.target.value }))
+                  }
+                />
+              </label>
+              <label className="admin-span-2">
+                <span>Non-exchangeable products</span>
+                <textarea
+                  rows={2}
+                  value={form.exchange_non_eligible_text || ""}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, exchange_non_eligible_text: e.target.value }))
+                  }
+                />
+              </label>
+              <label className="admin-span-2">
+                <span>Exchange process</span>
+                <textarea
+                  rows={2}
+                  value={form.exchange_process_text || ""}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, exchange_process_text: e.target.value }))
+                  }
+                />
+              </label>
+              <label className="admin-span-2">
+                <span>Extra exchange notes</span>
+                <textarea
+                  rows={2}
+                  value={form.exchange_policy_notes || ""}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, exchange_policy_notes: e.target.value }))
+                  }
+                />
+              </label>
+              <label>
+                <span>In-store exchange/refund only at store</span>
+                <select
+                  value={form.in_store_exchange_refund_only === false ? "0" : "1"}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      in_store_exchange_refund_only: e.target.value === "1"
+                    }))
+                  }
+                >
+                  <option value="1">Enabled (show store-only rule)</option>
+                  <option value="0">Disabled</option>
+                </select>
+              </label>
+              <label className="admin-span-2">
+                <span>In-store purchase condition text</span>
+                <textarea
+                  rows={2}
+                  value={form.in_store_policy_text || ""}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, in_store_policy_text: e.target.value }))
+                  }
+                  placeholder="In-store purchases can be exchanged or refunded only at the physical store…"
+                />
+              </label>
+
+              <label className="admin-span-2">
+                <span>PIN list (comma or newline)</span>
+                <textarea
+                  rows={3}
+                  value={form.delivery_pincodes || ""}
+                  onChange={(e) => setForm((f) => ({ ...f, delivery_pincodes: e.target.value }))}
+                  placeholder="600001, 560001…"
                 />
               </label>
               <label>

@@ -19,21 +19,26 @@ type SearchHit = {
   tag?: string;
 };
 
-const CATEGORY_SLUGS = new Set([
-  "sarees",
-  "jewelry",
-  "jewellery",
-  "churidhars-salwars",
-  "handcrafted",
-  "collections"
+/** App routes that are not product category slugs. */
+const RESERVED_SEGMENTS = new Set([
+  "products",
+  "search",
+  "cart",
+  "checkout",
+  "account",
+  "login",
+  "admin",
+  "api",
+  "collections",
+  "part",
+  "wishlist"
 ]);
 
 function categoryFromPath(pathname: string | null) {
   if (!pathname) return null;
-  const segment = pathname.split("/").filter(Boolean)[0] || "";
-  if (!segment || segment === "products" || segment === "search") return null;
-  if (segment === "collections") return null;
-  return CATEGORY_SLUGS.has(segment) ? segment : null;
+  const segment = (pathname.split("/").filter(Boolean)[0] || "").toLowerCase();
+  if (!segment || RESERVED_SEGMENTS.has(segment)) return null;
+  return segment;
 }
 
 export function SiteSearch({ className = "" }: { className?: string }) {
@@ -78,7 +83,7 @@ export function SiteSearch({ className = "" }: { className?: string }) {
     const timer = window.setTimeout(() => {
       const params = new URLSearchParams({
         mode: "card",
-        limit: "48",
+        limit: "12",
         q
       });
       if (pageCategory) params.set("category", pageCategory);
@@ -86,28 +91,14 @@ export function SiteSearch({ className = "" }: { className?: string }) {
         .then((res) => res.json())
         .then((payload) => {
           const rows = (payload?.data || []) as SearchHit[];
-          const needle = q.toLowerCase();
-          setHits(
-            rows
-              .filter((row) => {
-                const hay = [
-                  row.name,
-                  row.shortName,
-                  row.type,
-                  row.sku,
-                  row.tag,
-                  row.slug
-                ]
-                  .filter(Boolean)
-                  .join(" ")
-                  .toLowerCase();
-                return hay.includes(needle);
-              })
-              .slice(0, 8)
-          );
+          setHits(rows.slice(0, 8));
         })
-        .catch(() => setHits([]))
-        .finally(() => setLoading(false));
+        .catch(() => {
+          if (!controller.signal.aborted) setHits([]);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setLoading(false);
+        });
     }, 220);
 
     return () => {
@@ -152,9 +143,10 @@ export function SiteSearch({ className = "" }: { className?: string }) {
               placeholder={
                 pageCategory
                   ? `Search in ${pageCategory.replace(/-/g, " ")}…`
-                  : "Search products…"
+                  : "Search by name, SKU, color…"
               }
               aria-label={t("common.search")}
+              autoComplete="off"
             />
             <button type="button" aria-label="Close search" onClick={() => setOpen(false)}>
               <X size={18} />
@@ -166,7 +158,7 @@ export function SiteSearch({ className = "" }: { className?: string }) {
           <div className="site-search-results">
             {loading ? <p className="muted">Searching…</p> : null}
             {!loading && query.trim().length >= 2 && hits.length === 0 ? (
-              <p className="muted">No matches</p>
+              <p className="muted">No matches — try another word or press Enter for full results</p>
             ) : null}
             {hits.map((hit) => (
               <Link
@@ -176,7 +168,9 @@ export function SiteSearch({ className = "" }: { className?: string }) {
                 onClick={() => setOpen(false)}
               >
                 <span className="site-search-hit-media">
-                  <Image src={hit.imageSrc} alt="" fill sizes="56px" />
+                  {hit.imageSrc ? (
+                    <Image src={hit.imageSrc} alt="" fill sizes="56px" />
+                  ) : null}
                 </span>
                 <span className="site-search-hit-copy">
                   <small>{hit.type}</small>
@@ -185,6 +179,21 @@ export function SiteSearch({ className = "" }: { className?: string }) {
                 </span>
               </Link>
             ))}
+            {!loading && hits.length > 0 && query.trim().length >= 2 ? (
+              <button
+                type="button"
+                className="site-search-all"
+                onClick={() => {
+                  const q = query.trim();
+                  const params = new URLSearchParams({ q });
+                  if (pageCategory) router.push(`/${pageCategory}?${params.toString()}`);
+                  else router.push(`/search?${params.toString()}`);
+                  setOpen(false);
+                }}
+              >
+                View all results for “{query.trim()}”
+              </button>
+            ) : null}
           </div>
         </div>
       ) : null}

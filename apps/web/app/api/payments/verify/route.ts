@@ -83,6 +83,10 @@ export async function POST(request: NextRequest) {
       payment.id,
       order.id
     ]);
+    // Keep order.payment_status in sync when still awaiting payment (retry still allowed).
+    if (order.payment_status === "pending") {
+      await query(`update orders set payment_status = 'failed' where id = $1`, [order.id]);
+    }
     return fail("Payment verification failed", 400);
   }
 

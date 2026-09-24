@@ -13,7 +13,10 @@ const ALLOWED_FIELDS = [
   "image_path",
   "sort_order",
   "name_i18n",
-  "is_published"
+  "is_published",
+  "shipping_charge",
+  "shipping_is_free",
+  "shipping_rate_active"
 ] as const;
 
 export async function PATCH(request: NextRequest, { params }: Params) {
@@ -45,6 +48,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       }
       if (key === "is_published") {
         value = Boolean(value);
+      }
+      if (key === "shipping_is_free" || key === "shipping_rate_active") {
+        value = Boolean(value);
+      }
+      if (key === "shipping_charge") {
+        value = Math.max(0, Number(value) || 0);
       }
       values.push(value);
       updates.push(`${key} = $${values.length}`);

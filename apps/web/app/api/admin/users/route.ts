@@ -1,6 +1,10 @@
 import { NextRequest } from "next/server";
 import { fail, ok, requirePermission, writeAuditLog } from "../../../../lib/auth/api";
-import { createStaffUser } from "../../../../lib/db/auth";
+import {
+  createStaffUser,
+  deleteStaffUser,
+  updateStaffUser
+} from "../../../../lib/db/auth";
 import { query, queryOne } from "../../../../lib/db/pool";
 
 export async function GET(request: NextRequest) {
@@ -127,35 +131,106 @@ export async function PATCH(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as {
     userId?: string;
     roleCode?: string;
+    fullName?: string;
+    email?: string;
+    phone?: string | null;
+    password?: string;
   } | null;
 
-  if (!body?.userId || !body?.roleCode) return fail("userId and roleCode are required");
+  if (!body?.userId) return fail("userId is required");
 
-  const role = await queryOne<{ id: string; code: string }>(
-    `select id, code from roles where code = $1`,
-    [body.roleCode]
-  );
-  if (!role) return fail("Role not found", 404);
-  if (role.code === "customer") {
-    return fail("Cannot assign the customer role from the staff Users page");
+  const hasProfileEdit =
+    body.fullName !== undefined ||
+    body.email !== undefined ||
+    body.phone !== undefined ||
+    body.password !== undefined;
+
+  // Quick role-only change (legacy table dropdown)
+  if (!hasProfileEdit && body.roleCode) {
+    const role = await queryOne<{ id: string; code: string }>(
+      `select id, code from roles where code = $1`,
+      [body.roleCode]
+    );
+    if (!role) return fail("Role not found", 404);
+    if (role.code === "customer") {
+      return fail("Cannot assign the customer role from the staff Users page");
+    }
+
+    const user = await queryOne(`select id from users where id = $1`, [body.userId]);
+    if (!user) return fail("User not found", 404);
+
+    await query(
+      `delete from user_roles ur
+       using roles r
+       where ur.role_id = r.id and ur.user_id = $1 and r.code <> 'customer'`,
+      [body.userId]
+    );
+    await query(
+      `insert into user_roles (user_id, role_id) values ($1, $2) on conflict do nothing`,
+      [body.userId, role.id]
+    );
+
+    await writeAuditLog({
+      actorUserId: ctx.userId,
+      action: "assign_role",
+      entityType: "users",
+      entityId: body.userId,
+      after: { roleCode: body.roleCode }
+    });
+
+    return ok({ userId: body.userId, roleCode: body.roleCode });
   }
 
-  const user = await queryOne(`select id from users where id = $1`, [body.userId]);
-  if (!user) return fail("User not found", 404);
+  try {
+    const updated = await updateStaffUser({
+      userId: body.userId,
+      fullName: body.fullName,
+      email: body.email,
+      phone: body.phone,
+      password: body.password,
+      roleCode: body.roleCode
+    });
 
-  await query(`delete from user_roles where user_id = $1`, [body.userId]);
-  await query(
-    `insert into user_roles (user_id, role_id) values ($1, $2) on conflict do nothing`,
-    [body.userId, role.id]
-  );
+    await writeAuditLog({
+      actorUserId: ctx.userId,
+      action: "update",
+      entityType: "users",
+      entityId: body.userId,
+      after: {
+        email: updated.email,
+        fullName: updated.full_name,
+        phone: updated.phone,
+        roleCode: body.roleCode || undefined,
+        passwordChanged: Boolean(body.password)
+      }
+    });
 
-  await writeAuditLog({
-    actorUserId: ctx.userId,
-    action: "assign_role",
-    entityType: "users",
-    entityId: body.userId,
-    after: { roleCode: body.roleCode }
-  });
+    return ok(updated);
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : "Failed to update user", 400);
+  }
+}
 
-  return ok({ userId: body.userId, roleCode: body.roleCode });
+export async function DELETE(request: NextRequest) {
+  const { error, ctx } = await requirePermission(request, "users:manage");
+  if (error || !ctx) return error;
+
+  const body = (await request.json().catch(() => null)) as { userId?: string } | null;
+  const userId =
+    body?.userId || new URL(request.url).searchParams.get("userId") || undefined;
+  if (!userId) return fail("userId is required");
+
+  try {
+    const result = await deleteStaffUser(userId, ctx.userId);
+    await writeAuditLog({
+      actorUserId: ctx.userId,
+      action: result.deleted ? "delete" : "demote",
+      entityType: "users",
+      entityId: userId,
+      after: result
+    });
+    return ok(result);
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : "Failed to delete user", 400);
+  }
 }

@@ -129,6 +129,146 @@ export async function createStaffUser(input: {
   return user;
 }
 
+export async function updateStaffUser(input: {
+  userId: string;
+  fullName?: string;
+  email?: string;
+  phone?: string | null;
+  password?: string;
+  roleCode?: string;
+}) {
+  const existing = await queryOne<{
+    id: string;
+    email: string;
+    full_name: string;
+    phone: string | null;
+  }>(`select id, email, full_name, phone from users where id = $1`, [input.userId]);
+  if (!existing) throw new Error("User not found");
+
+  const fullName = (input.fullName ?? existing.full_name).trim();
+  const email = (input.email ?? existing.email).trim().toLowerCase();
+  const phone =
+    input.phone === undefined ? existing.phone : input.phone?.trim() ? input.phone.trim() : null;
+
+  if (!fullName) throw new Error("Full name is required");
+  if (!email) throw new Error("Email is required");
+
+  if (email !== existing.email) {
+    const clash = await queryOne(`select id from users where email = $1 and id <> $2`, [
+      email,
+      input.userId
+    ]);
+    if (clash) throw new Error("A user with this email already exists");
+  }
+
+  if (input.password) {
+    if (input.password.length < 6) throw new Error("Password must be at least 6 characters");
+    const passwordHash = await bcrypt.hash(input.password, 10);
+    await query(
+      `update users
+       set full_name = $2, email = $3, phone = $4, password_hash = $5, updated_at = now()
+       where id = $1`,
+      [input.userId, fullName, email, phone, passwordHash]
+    );
+  } else {
+    await query(
+      `update users
+       set full_name = $2, email = $3, phone = $4, updated_at = now()
+       where id = $1`,
+      [input.userId, fullName, email, phone]
+    );
+  }
+
+  await query(
+    `insert into customers (id, full_name, email, phone) values ($1, $2, $3, $4)
+     on conflict (id) do update
+       set full_name = excluded.full_name, email = excluded.email, phone = excluded.phone`,
+    [input.userId, fullName, email, phone]
+  );
+
+  if (input.roleCode) {
+    if (input.roleCode === "customer") {
+      throw new Error("Cannot assign the customer role from the staff Users page");
+    }
+    const role = await queryOne<{ id: string; code: string }>(
+      `select id, code from roles where code = $1`,
+      [input.roleCode]
+    );
+    if (!role) throw new Error("Role not found");
+    await query(
+      `delete from user_roles ur
+       using roles r
+       where ur.role_id = r.id and ur.user_id = $1 and r.code <> 'customer'`,
+      [input.userId]
+    );
+    await query(
+      `insert into user_roles (user_id, role_id) values ($1, $2) on conflict do nothing`,
+      [input.userId, role.id]
+    );
+  }
+
+  return { id: input.userId, email, full_name: fullName, phone };
+}
+
+export async function deleteStaffUser(userId: string, actorUserId: string) {
+  if (userId === actorUserId) {
+    throw new Error("You cannot delete your own account");
+  }
+
+  const user = await queryOne(`select id from users where id = $1`, [userId]);
+  if (!user) throw new Error("User not found");
+
+  const isSuperAdmin = await queryOne(
+    `select 1 as ok
+     from user_roles ur
+     join roles r on r.id = ur.role_id
+     where ur.user_id = $1 and r.code = 'super_admin'
+     limit 1`,
+    [userId]
+  );
+  if (isSuperAdmin) {
+    const otherAdmins = await queryOne<{ count: string }>(
+      `select count(*)::text as count
+       from user_roles ur
+       join roles r on r.id = ur.role_id
+       where r.code = 'super_admin' and ur.user_id <> $1`,
+      [userId]
+    );
+    if (Number(otherAdmins?.count || 0) < 1) {
+      throw new Error("Cannot delete the last Super Admin");
+    }
+  }
+
+  await query(
+    `delete from user_roles ur
+     using roles r
+     where ur.role_id = r.id and ur.user_id = $1 and r.code <> 'customer'`,
+    [userId]
+  );
+
+  const hasOrders = await queryOne(
+    `select 1 as ok from orders where customer_id = $1 limit 1`,
+    [userId]
+  );
+  if (hasOrders) {
+    const customerRole = await queryOne<{ id: string }>(
+      `select id from roles where code = 'customer'`
+    );
+    if (customerRole) {
+      await query(
+        `insert into user_roles (user_id, role_id) values ($1, $2) on conflict do nothing`,
+        [userId, customerRole.id]
+      );
+    }
+    return { deleted: false, demoted: true, userId };
+  }
+
+  await query(`delete from user_roles where user_id = $1`, [userId]);
+  await query(`delete from customers where id = $1`, [userId]);
+  await query(`delete from users where id = $1`, [userId]);
+  return { deleted: true, demoted: false, userId };
+}
+
 export async function assignRole(userId: string, roleCode: string) {
   const role = await queryOne<{ id: string }>(`select id from roles where code = $1`, [roleCode]);
   if (!role) throw new Error("Role not found");

@@ -10,6 +10,9 @@ export async function GET() {
     `select
        c.id, c.name, c.slug, c.description, c.image_path, c.sort_order, c.name_i18n, c.created_at,
        coalesce(c.is_published, true) as is_published,
+       coalesce(c.shipping_charge, 0) as shipping_charge,
+       coalesce(c.shipping_is_free, false) as shipping_is_free,
+       coalesce(c.shipping_rate_active, false) as shipping_rate_active,
        coalesce(
          (
            select json_agg(
@@ -45,6 +48,9 @@ export async function POST(request: NextRequest) {
     image_path?: string | null;
     name_i18n?: unknown;
     is_published?: boolean;
+    shipping_charge?: number;
+    shipping_is_free?: boolean;
+    shipping_rate_active?: boolean;
   } | null;
 
   if (!body?.name || !body?.slug) return fail("name and slug are required");
@@ -56,8 +62,11 @@ export async function POST(request: NextRequest) {
   });
 
   const data = await queryOne(
-    `insert into categories (name, slug, description, image_path, sort_order, name_i18n, is_published)
-     values ($1, $2, $3, $4, $5, $6::jsonb, $7)
+    `insert into categories (
+       name, slug, description, image_path, sort_order, name_i18n, is_published,
+       shipping_charge, shipping_is_free, shipping_rate_active
+     )
+     values ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10)
      returning *`,
     [
       body.name,
@@ -66,7 +75,10 @@ export async function POST(request: NextRequest) {
       body.image_path ?? null,
       body.sort_order ?? 0,
       JSON.stringify(nameI18n),
-      body.is_published !== false
+      body.is_published !== false,
+      Math.max(0, Number(body.shipping_charge || 0)),
+      Boolean(body.shipping_is_free),
+      Boolean(body.shipping_rate_active)
     ]
   );
 

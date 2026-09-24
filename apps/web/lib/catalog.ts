@@ -11,7 +11,10 @@ export async function ensureCategoriesSchema() {
   if (!categoriesSchemaReady) {
     categoriesSchemaReady = query(`
       alter table categories
-        add column if not exists is_published boolean not null default true
+        add column if not exists is_published boolean not null default true,
+        add column if not exists shipping_charge numeric(12,2) not null default 0,
+        add column if not exists shipping_is_free boolean not null default false,
+        add column if not exists shipping_rate_active boolean not null default false
     `).then(() => undefined);
   }
   await categoriesSchemaReady;
@@ -70,6 +73,8 @@ export type ListProductsOptions = {
   limit?: number;
   featuredOnly?: boolean;
   mode?: "card" | "detail";
+  /** Storefront search query (name, sku, tag, color, category, variants). */
+  q?: string;
 };
 
 const CATEGORY_TONES = ["brown", "wine", "clay", "umber"] as const;
@@ -268,6 +273,14 @@ export async function listActiveProducts(options?: ListProductsOptions) {
   const featuredOnly = Boolean(options?.featuredOnly);
   const mode = options?.mode ?? "detail";
   const limit = options?.limit && options.limit > 0 ? Math.min(options.limit, 200) : null;
+  const tokens = String(options?.q || "")
+    .trim()
+    .toLowerCase()
+    .split(/[\s,+/|_-]+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 1)
+    .slice(0, 8);
+  const searchTokens = tokens.length ? tokens : null;
 
   const rows = await query<ProductRow>(
     `select
@@ -285,9 +298,42 @@ export async function listActiveProducts(options?: ListProductsOptions) {
        and ($1::text is null or c.slug = $1)
        and ($2::text is null or sc.slug = $2)
        and ($3::boolean = false or p.is_featured = true)
-     order by p.is_featured desc, p.created_at desc
+       and (
+         $4::text[] is null
+         or (
+           select bool_and(
+             p.name ilike '%' || t || '%'
+             or coalesce(p.short_name, '') ilike '%' || t || '%'
+             or coalesce(p.sku, '') ilike '%' || t || '%'
+             or coalesce(p.tag, '') ilike '%' || t || '%'
+             or p.slug ilike '%' || t || '%'
+             or coalesce(p.color, '') ilike '%' || t || '%'
+             or coalesce(p.short_description, '') ilike '%' || t || '%'
+             or coalesce(p.description, '') ilike '%' || t || '%'
+             or c.name ilike '%' || t || '%'
+             or coalesce(sc.name, '') ilike '%' || t || '%'
+             or exists (
+               select 1 from product_variants pv
+               where pv.product_id = p.id
+                 and (
+                   coalesce(pv.sku, '') ilike '%' || t || '%'
+                   or coalesce(pv.name, '') ilike '%' || t || '%'
+                 )
+             )
+           )
+           from unnest($4::text[]) as t
+         )
+       )
+     order by
+       case
+         when $4::text[] is not null and p.name ilike '%' || $4[1] || '%' then 0
+         when $4::text[] is not null and coalesce(p.sku, '') ilike '%' || $4[1] || '%' then 1
+         else 2
+       end,
+       p.is_featured desc,
+       p.created_at desc
      ${limit ? `limit ${limit}` : ""}`,
-    [categorySlug, subcategorySlug, featuredOnly]
+    [categorySlug, subcategorySlug, featuredOnly, searchTokens]
   );
 
   const { variantsByProduct, imagesByProduct } = await loadVariantsAndImages(

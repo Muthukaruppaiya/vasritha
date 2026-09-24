@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { fail, ok, requirePermission, writeAuditLog } from "../../../../lib/auth/api";
-import { queryOne } from "../../../../lib/db/pool";
+import { query, queryOne } from "../../../../lib/db/pool";
 
 type Order = { id: string; order_number: string; total_amount: string; payment_status: string };
 
@@ -21,7 +21,12 @@ export async function POST(request: NextRequest) {
   );
 
   if (!order) return fail("Order not found", 404);
-  if (order.payment_status === "paid") return fail("Order already paid");
+  // Allow retry after a failed attempt
+  if (order.payment_status === "failed") {
+    await query(`update orders set payment_status = 'pending' where id = $1`, [order.id]);
+  } else if (order.payment_status === "paid") {
+    return fail("Order already paid");
+  }
 
   const keyId = process.env.RAZORPAY_KEY_ID;
   const keySecret = process.env.RAZORPAY_KEY_SECRET;

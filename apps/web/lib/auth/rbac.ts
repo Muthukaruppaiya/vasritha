@@ -55,6 +55,7 @@ export type Permission =
   | "wishlist:own"
   | "checkout:own"
   | "finance:read"
+  | "finance:write"
   | "exports:finance";
 
 export const ROLE_ORDER: AppRole[] = [
@@ -193,6 +194,7 @@ const ALL_STAFF_PERMISSIONS: Permission[] = [
   "cms:manage",
   "coupons:manage",
   "finance:read",
+  "finance:write",
   "exports:finance"
 ];
 
@@ -238,6 +240,7 @@ export const ROLE_PERMISSIONS: Record<AppRole, Permission[]> = {
     "roles:manage",
     "audit:read",
     "finance:read",
+    "finance:write",
     "exports:finance"
   ],
 
@@ -318,6 +321,7 @@ export const ROLE_PERMISSIONS: Record<AppRole, Permission[]> = {
   accountant: [
     "dashboard:finance",
     "finance:read",
+    "finance:write",
     "reports:finance",
     "exports:finance",
     "orders:view",
@@ -351,6 +355,7 @@ export const ADMIN_NAV_PERMISSIONS: Record<string, Permission[]> = {
   "/admin/invoices/store": ["invoices:print", "pos:create", "orders:view"],
   "/admin/customers": ["customers:search", "customers:support", "customers:manage"],
   "/admin/users": ["users:manage"],
+  "/admin/login-log": ["audit:read", "users:manage"],
   "/admin/inventory": ["stock:operate", "stock:approve", "purchases:operate"],
   "/admin/inventory/grn": ["stock:operate", "stock:approve", "purchases:operate"],
   "/admin/barcodes": ["products:manage", "products:read", "stock:operate", "purchases:operate"],
@@ -364,7 +369,16 @@ export const ADMIN_NAV_PERMISSIONS: Record<string, Permission[]> = {
   "/admin/settings": ["settings:business", "roles:manage", "config:all"],
   "/admin/brands": ["settings:business", "config:all"],
   "/admin/shops": ["settings:business", "config:all"],
-  "/admin/integrations": ["settings:business", "config:all"]
+  "/admin/integrations": ["settings:business", "config:all"],
+  "/admin/finance": ["finance:read", "finance:write", "reports:finance", "dashboard:finance"],
+  "/admin/finance/pnl": ["finance:read", "finance:write", "reports:finance", "dashboard:finance"],
+  "/admin/finance/incoming": ["finance:read", "finance:write", "reports:finance", "dashboard:finance"],
+  "/admin/finance/receivables": ["finance:read", "finance:write", "reports:finance", "dashboard:finance"],
+  "/admin/finance/payables": ["finance:read", "finance:write", "reports:finance", "dashboard:finance"],
+  "/admin/finance/expenses": ["finance:read", "finance:write", "reports:finance", "dashboard:finance"],
+  "/admin/finance/cash-bank": ["finance:read", "finance:write", "reports:finance", "dashboard:finance"],
+  "/admin/finance/reports": ["finance:read", "finance:write", "reports:finance", "exports:finance", "dashboard:finance"],
+  "/admin/reports": ["reports:ops", "reports:finance", "exports:finance", "dashboard:ops", "dashboard:finance", "dashboard:all", "finance:read"]
 };
 
 export function permissionsForRoles(roles: AppRole[]): Set<Permission> {

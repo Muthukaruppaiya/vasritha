@@ -13,6 +13,7 @@ import { ScrollRevealInit } from "../components/scroll-reveal";
 import { SmoothScroll } from "../components/smooth-scroll";
 import { StorefrontI18n } from "../components/storefront-i18n";
 import { GiftVoucherNotice } from "../components/gift-voucher-notice";
+import { LoyaltyPopup } from "../components/loyalty-popup";
 import { WhatsAppFloat } from "../components/whatsapp-float";
 import "./globals.css";
 
@@ -69,6 +70,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             {children}
             <WhatsAppFloat />
             <GiftVoucherNotice />
+            <LoyaltyPopup />
           </SmoothScroll>
           <ScrollRevealInit />
         </StorefrontI18n>

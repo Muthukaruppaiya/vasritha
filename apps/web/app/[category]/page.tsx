@@ -15,17 +15,10 @@ export default async function CategoryPage({
   const [category, navCategories] = await Promise.all([getCategoryBySlug(slug), listCategories()]);
   if (!category) notFound();
 
-  const products = await listActiveProducts({ categorySlug: category.slug });
-  const needle = q.trim().toLowerCase();
-  const filtered = needle
-    ? products.filter((product) => {
-        const hay = [product.name, product.shortName, product.type, product.sku, product.tag, product.slug]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-        return hay.includes(needle);
-      })
-    : products;
+  const products = await listActiveProducts({
+    categorySlug: category.slug,
+    q: q.trim() || undefined
+  });
 
   return (
     <>
@@ -38,7 +31,7 @@ export default async function CategoryPage({
         }))}
       />
       <main>
-        <CategoryListing category={category} products={filtered} searchQuery={q} />
+        <CategoryListing category={category} products={products} searchQuery={q} />
       </main>
       <Footer
         categories={navCategories.map((item) => ({

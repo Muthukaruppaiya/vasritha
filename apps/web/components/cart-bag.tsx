@@ -18,6 +18,15 @@ import { resolveCartCheckoutPath } from "../lib/customer-session";
 import { useLocale, useT } from "../lib/i18n/provider";
 import { localizeCategoryName, localizeProductFields, localizeSize } from "../lib/i18n/catalog-local";
 import { getAppliedCoupon, COUPON_EVENT, type AppliedCoupon } from "../lib/applied-coupon";
+import {
+  OfferUnlockNudge,
+  buildOfferLockedMessage,
+  type OfferProgressView
+} from "./offer-unlock-nudge";
+import { DeliveryConditions } from "./delivery-conditions";
+import { PurchasePolicyNotice } from "./purchase-policy-notice";
+import { evaluateCouponProgress } from "../lib/coupon-discount";
+import type { ShippingQuote } from "../lib/shipping";
 
 type SuggestProduct = {
   slug: string;
@@ -37,6 +46,8 @@ export function CartBag() {
   const [ready, setReady] = useState(false);
   const [suggestions, setSuggestions] = useState<SuggestProduct[]>([]);
   const [appliedVoucher, setAppliedVoucher] = useState<AppliedCoupon | null>(null);
+  const [offerProgress, setOfferProgress] = useState<OfferProgressView | null>(null);
+  const [shippingQuote, setShippingQuote] = useState<ShippingQuote | null>(null);
   const [actionError, setActionError] = useState("");
   const [tick, setTick] = useState(0);
 
@@ -91,13 +102,102 @@ export function CartBag() {
     0
   );
   const savings = Math.max(0, compareTotal - subtotal);
-  const freeShipping = subtotal >= 2500;
+  const shippingAmount = shippingQuote?.delivery_available
+    ? Number(shippingQuote.shipping_amount || 0)
+    : 0;
+  const bagTotal = subtotal + shippingAmount;
   const holdHint = useMemo(() => {
     void tick;
     return lines
       .map((line) => formatHoldRemaining(line.reservedUntil))
       .find((text) => text && !text.startsWith("Hold expired"));
   }, [lines, tick]);
+
+  // Instant local progress when applied voucher already stores min_order meta
+  useEffect(() => {
+    if (!appliedVoucher?.minOrderAmount || appliedVoucher.minOrderAmount <= 0) return;
+    if (!appliedVoucher.discountType || appliedVoucher.discountValue == null) return;
+    const local = evaluateCouponProgress({
+      discountType: appliedVoucher.discountType,
+      discountValue: appliedVoucher.discountValue,
+      minOrderAmount: appliedVoucher.minOrderAmount,
+      maxDiscountAmount: appliedVoucher.maxDiscountAmount ?? null,
+      subtotal,
+      headline: appliedVoucher.headline,
+      code: appliedVoucher.code
+    });
+    setOfferProgress({ ...local, code: appliedVoucher.code, source: "applied" });
+  }, [appliedVoucher, subtotal]);
+
+  // Authoritative progress from backend (active/expired + opening offer priority)
+  useEffect(() => {
+    if (!ready || lines.length === 0) {
+      setOfferProgress(null);
+      return;
+    }
+    const params = new URLSearchParams({ subtotal: String(subtotal) });
+    if (appliedVoucher?.code) params.set("code", appliedVoucher.code);
+    const ac = new AbortController();
+    const timer = window.setTimeout(() => {
+      fetch(`/api/coupons/offer-progress?${params.toString()}`, { signal: ac.signal })
+        .then((res) => res.json())
+        .then((payload) => {
+          const data = payload?.data as
+            | {
+                applicable?: boolean;
+                reason?: string;
+                coupon?: { code?: string; benefitLabel?: string } | null;
+                progress?: OfferProgressView | null;
+              }
+            | undefined;
+          if (!data?.applicable || !data.progress || data.progress.minOrderAmount <= 0) {
+            if (!(appliedVoucher?.minOrderAmount && appliedVoucher.minOrderAmount > 0)) {
+              setOfferProgress(null);
+            }
+            return;
+          }
+          setOfferProgress({
+            ...data.progress,
+            code: data.coupon?.code || appliedVoucher?.code,
+            benefitLabel: data.progress.benefitLabel || data.coupon?.benefitLabel || "offer"
+          });
+        })
+        .catch(() => {
+          /* keep local progress if any */
+        });
+    }, 180);
+    return () => {
+      ac.abort();
+      window.clearTimeout(timer);
+    };
+  }, [ready, lines.length, subtotal, appliedVoucher?.code, appliedVoucher?.minOrderAmount]);
+
+  // Shipping quote from admin site_settings + category rates
+  useEffect(() => {
+    if (!ready || lines.length === 0) {
+      setShippingQuote(null);
+      return;
+    }
+    const productIds = Array.from(new Set(lines.map((l) => l.productId).filter(Boolean)));
+    const params = new URLSearchParams({ subtotal: String(subtotal) });
+    if (productIds.length) params.set("product_ids", productIds.join(","));
+    const ac = new AbortController();
+    const timer = window.setTimeout(() => {
+      fetch(`/api/shipping/quote?${params.toString()}`, {
+        signal: ac.signal
+      })
+        .then((res) => res.json())
+        .then((payload) => {
+          const data = payload?.data as ShippingQuote | undefined;
+          if (data) setShippingQuote(data);
+        })
+        .catch(() => undefined);
+    }, 160);
+    return () => {
+      ac.abort();
+      window.clearTimeout(timer);
+    };
+  }, [ready, lines, subtotal]);
 
   const onRemove = async (productId: string, variantId?: string | null) => {
     setActionError("");
@@ -204,7 +304,7 @@ export function CartBag() {
                 slug: line.slug,
                 name: line.name,
                 shortName: line.name,
-                type: line.type
+                type: line.type || ""
               },
               locale
             );
@@ -267,6 +367,17 @@ export function CartBag() {
               Gift voucher <strong>{appliedVoucher.code}</strong> is ready. It applies when you pay.
             </p>
           ) : null}
+          {offerProgress ? (
+            <OfferUnlockNudge
+              progress={offerProgress}
+              lockedMessage={buildOfferLockedMessage(
+                offerProgress.remainingAmount,
+                offerProgress.benefitLabel
+              )}
+              unlockedMessage={`Offer unlocked · ${offerProgress.benefitLabel} 🎉`}
+              appliesAtPayNote="Applies at payment"
+            />
+          ) : null}
           <div className="bag-summary-row">
             <span>{t("bag.subtotal")}</span>
             <strong>{formatPrice(subtotal)}</strong>
@@ -277,22 +388,28 @@ export function CartBag() {
               <strong>{formatPrice(savings)}</strong>
             </div>
           )}
+          {shippingQuote ? <DeliveryConditions quote={shippingQuote} compact /> : null}
+          <PurchasePolicyNotice variant="compact" />
           <div className="bag-summary-row">
             <span>{t("checkout.shipping")}</span>
             <strong>
-              {freeShipping ? t("bag.freeShippingUnlocked") : t("checkout.checkout")}
+              {!shippingQuote
+                ? "—"
+                : !shippingQuote.delivery_available
+                  ? "N/A"
+                  : shippingQuote.free_shipping || shippingQuote.shipping_amount <= 0
+                    ? "FREE"
+                    : formatPrice(shippingQuote.shipping_amount)}
             </strong>
           </div>
-          <p className="muted bag-shipping-note">
-            {freeShipping ? t("bag.freeShippingUnlocked") : t("bag.freeShippingHint")}
-          </p>
           <div className="bag-summary-total">
             <span>{t("account.total")}</span>
-            <strong>{formatPrice(subtotal)}</strong>
+            <strong>{formatPrice(bagTotal)}</strong>
           </div>
           <button
             type="button"
             className="btn bag-checkout"
+            disabled={Boolean(shippingQuote && !shippingQuote.delivery_available)}
             onClick={() => router.push(resolveCartCheckoutPath())}
           >
             {t("bag.checkout")}

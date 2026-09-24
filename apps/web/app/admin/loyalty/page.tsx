@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Pencil, Plus, Power } from "lucide-react";
 import {
   AdminAlert,
@@ -12,7 +12,7 @@ import {
   statusTone
 } from "../../../components/admin/admin-ui";
 import { AdminFormModal } from "../../../components/admin/admin-form-modal";
-import { adminFetch } from "../../../lib/admin-api";
+import { adminFetch, adminUpload } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
 import { OPS_PLATFORM_NAME } from "../../../lib/platform";
 
@@ -33,6 +33,21 @@ type LoyaltyRule = {
   reward_value: string;
   message_template: string | null;
   unlocked_message: string | null;
+};
+
+type PopupForm = {
+  enabled: boolean;
+  title: string;
+  message: string;
+  image_path: string;
+  guest_cta_label: string;
+  guest_cta_href: string;
+  login_cta_label: string;
+  member_cta_label: string;
+  member_cta_href: string;
+  delay_ms: string;
+  show_once_per_session: boolean;
+  homepage_only: boolean;
 };
 
 const RULE_TYPE_LABEL: Record<string, string> = {
@@ -63,6 +78,21 @@ const blankForm = () => ({
   reward_value: "10",
   message_template: "Spend ₹{remaining} more to unlock {reward_value}% off.",
   unlocked_message: "Unlocked: {reward_value}% loyalty offer."
+});
+
+const blankPopup = (): PopupForm => ({
+  enabled: true,
+  title: "Vasritha Loyalty",
+  message: "Join our loyalty program and get exclusive offers!",
+  image_path: "",
+  guest_cta_label: "Join Now",
+  guest_cta_href: "/account/register",
+  login_cta_label: "Login",
+  member_cta_label: "View my account",
+  member_cta_href: "/account",
+  delay_ms: "4500",
+  show_once_per_session: true,
+  homepage_only: true
 });
 
 function fmtNum(value: string | number | null | undefined) {
@@ -116,6 +146,44 @@ export default function AdminLoyaltyPage() {
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [formError, setFormError] = useState("");
   const [form, setForm] = useState(blankForm);
+  const [popupForm, setPopupForm] = useState<PopupForm>(blankPopup);
+  const [popupLoading, setPopupLoading] = useState(true);
+  const [popupSaving, setPopupSaving] = useState(false);
+  const [popupMsg, setPopupMsg] = useState("");
+  const [popupErr, setPopupErr] = useState("");
+  const [popupUploadBusy, setPopupUploadBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      setPopupLoading(true);
+      const result = await adminFetch<PopupForm & { image_path?: string | null; delay_ms?: number }>(
+        "/api/admin/loyalty/popup"
+      );
+      if (cancelled) return;
+      if (result.data) {
+        const d = result.data;
+        setPopupForm({
+          enabled: d.enabled !== false,
+          title: d.title || blankPopup().title,
+          message: d.message || blankPopup().message,
+          image_path: d.image_path || "",
+          guest_cta_label: d.guest_cta_label || blankPopup().guest_cta_label,
+          guest_cta_href: d.guest_cta_href || blankPopup().guest_cta_href,
+          login_cta_label: d.login_cta_label || blankPopup().login_cta_label,
+          member_cta_label: d.member_cta_label || blankPopup().member_cta_label,
+          member_cta_href: d.member_cta_href || blankPopup().member_cta_href,
+          delay_ms: String(d.delay_ms ?? 4500),
+          show_once_per_session: d.show_once_per_session !== false,
+          homepage_only: d.homepage_only !== false
+        });
+      }
+      setPopupLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const openCreate = () => {
     setEditing(null);
@@ -193,12 +261,58 @@ export default function AdminLoyaltyPage() {
     await reload();
   };
 
+  const onSavePopup = async (event: FormEvent) => {
+    event.preventDefault();
+    setPopupSaving(true);
+    setPopupMsg("");
+    setPopupErr("");
+    const result = await adminFetch("/api/admin/loyalty/popup", {
+      method: "PATCH",
+      json: {
+        enabled: popupForm.enabled,
+        title: popupForm.title,
+        message: popupForm.message,
+        image_path: popupForm.image_path || null,
+        guest_cta_label: popupForm.guest_cta_label,
+        guest_cta_href: popupForm.guest_cta_href,
+        login_cta_label: popupForm.login_cta_label,
+        member_cta_label: popupForm.member_cta_label,
+        member_cta_href: popupForm.member_cta_href,
+        delay_ms: Number(popupForm.delay_ms || 4500),
+        show_once_per_session: popupForm.show_once_per_session,
+        homepage_only: popupForm.homepage_only
+      }
+    });
+    setPopupSaving(false);
+    if (result.error) {
+      setPopupErr(result.error);
+      return;
+    }
+    setPopupMsg("Loyalty popup settings saved.");
+  };
+
+  const onUploadPopupImage = async (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    setPopupUploadBusy(true);
+    setPopupErr("");
+    const fd = new FormData();
+    fd.set("file", file);
+    const uploaded = await adminUpload<{ path: string }>("/api/admin/loyalty/popup/image", fd);
+    setPopupUploadBusy(false);
+    if (uploaded.error || !uploaded.data?.path) {
+      setPopupErr(uploaded.error || "Upload failed");
+      return;
+    }
+    setPopupForm((f) => ({ ...f, image_path: uploaded.data!.path }));
+  };
+
   return (
     <div className="admin-stack">
       <AdminPageHeader
         eyebrow={OPS_PLATFORM_NAME}
-        title="Loyalty rules"
-        description="One customer list for website and store. Points and milestone prompts show at checkout and on POS bills."
+        title="Loyalty"
+        description="Rules for points and milestones, plus the storefront loyalty popup."
         actions={
           <button type="button" className="btn" onClick={openCreate}>
             <Plus size={16} />
@@ -208,6 +322,156 @@ export default function AdminLoyaltyPage() {
       />
 
       {error ? <AdminAlert>{error}</AdminAlert> : null}
+
+      <AdminPanel title="Storefront loyalty popup">
+        {popupLoading ? <AdminLoading /> : null}
+        {!popupLoading ? (
+          <form className="admin-form-grid" onSubmit={onSavePopup}>
+            {popupErr ? (
+              <div className="admin-span-2">
+                <AdminAlert>{popupErr}</AdminAlert>
+              </div>
+            ) : null}
+            {popupMsg ? (
+              <p className="muted admin-span-2" style={{ margin: 0 }}>
+                {popupMsg}
+              </p>
+            ) : null}
+            <label>
+              <span>Status</span>
+              <select
+                value={popupForm.enabled ? "1" : "0"}
+                onChange={(e) =>
+                  setPopupForm((f) => ({ ...f, enabled: e.target.value === "1" }))
+                }
+              >
+                <option value="1">Active</option>
+                <option value="0">Inactive</option>
+              </select>
+            </label>
+            <label>
+              <span>Delay before show (ms)</span>
+              <input
+                type="number"
+                min="0"
+                max="60000"
+                step="100"
+                value={popupForm.delay_ms}
+                onChange={(e) => setPopupForm((f) => ({ ...f, delay_ms: e.target.value }))}
+              />
+            </label>
+            <label className="admin-check">
+              <input
+                type="checkbox"
+                checked={popupForm.show_once_per_session}
+                onChange={(e) =>
+                  setPopupForm((f) => ({ ...f, show_once_per_session: e.target.checked }))
+                }
+              />
+              Once per browser session
+            </label>
+            <label className="admin-check">
+              <input
+                type="checkbox"
+                checked={popupForm.homepage_only}
+                onChange={(e) =>
+                  setPopupForm((f) => ({ ...f, homepage_only: e.target.checked }))
+                }
+              />
+              Homepage only
+            </label>
+            <label className="admin-span-2">
+              <span>Title</span>
+              <input
+                value={popupForm.title}
+                onChange={(e) => setPopupForm((f) => ({ ...f, title: e.target.value }))}
+                required
+              />
+            </label>
+            <label className="admin-span-2">
+              <span>Message</span>
+              <textarea
+                rows={2}
+                value={popupForm.message}
+                onChange={(e) => setPopupForm((f) => ({ ...f, message: e.target.value }))}
+                required
+              />
+            </label>
+            <label className="admin-span-2">
+              <span>Banner image (optional)</span>
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                <input
+                  style={{ flex: 1, minWidth: 180 }}
+                  value={popupForm.image_path}
+                  onChange={(e) => setPopupForm((f) => ({ ...f, image_path: e.target.value }))}
+                  placeholder="/uploads/… or leave blank"
+                />
+                <label className="btn btn-ghost" style={{ cursor: "pointer", margin: 0 }}>
+                  {popupUploadBusy ? "Uploading…" : "Upload"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    disabled={popupUploadBusy}
+                    onChange={(e) => {
+                      void onUploadPopupImage(e.target.files);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+              </div>
+            </label>
+            <label>
+              <span>Guest button</span>
+              <input
+                value={popupForm.guest_cta_label}
+                onChange={(e) =>
+                  setPopupForm((f) => ({ ...f, guest_cta_label: e.target.value }))
+                }
+              />
+            </label>
+            <label>
+              <span>Guest button link</span>
+              <input
+                value={popupForm.guest_cta_href}
+                onChange={(e) => setPopupForm((f) => ({ ...f, guest_cta_href: e.target.value }))}
+              />
+            </label>
+            <label>
+              <span>Login button</span>
+              <input
+                value={popupForm.login_cta_label}
+                onChange={(e) =>
+                  setPopupForm((f) => ({ ...f, login_cta_label: e.target.value }))
+                }
+              />
+            </label>
+            <label>
+              <span>Member button</span>
+              <input
+                value={popupForm.member_cta_label}
+                onChange={(e) =>
+                  setPopupForm((f) => ({ ...f, member_cta_label: e.target.value }))
+                }
+              />
+            </label>
+            <label className="admin-span-2">
+              <span>Member button link</span>
+              <input
+                value={popupForm.member_cta_href}
+                onChange={(e) =>
+                  setPopupForm((f) => ({ ...f, member_cta_href: e.target.value }))
+                }
+              />
+            </label>
+            <div className="admin-span-2">
+              <button type="submit" className="btn" disabled={popupSaving}>
+                {popupSaving ? "Saving…" : "Save popup"}
+              </button>
+            </div>
+          </form>
+        ) : null}
+      </AdminPanel>
 
       <AdminPanel title="Active program">
         {loading ? <AdminLoading /> : null}

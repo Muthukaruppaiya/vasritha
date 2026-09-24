@@ -4,11 +4,14 @@ import { Footer, Header } from "../../../components/storefront";
 import { getCategoryBySlug, listActiveProducts, listCategories } from "../../../lib/catalog";
 
 export default async function SubcategoryPage({
-  params
+  params,
+  searchParams
 }: {
   params: Promise<{ category: string; subcategory: string }>;
+  searchParams: Promise<{ q?: string }>;
 }) {
   const { category: categorySlug, subcategory: subcategorySlug } = await params;
+  const { q = "" } = await searchParams;
   const [category, navCategories] = await Promise.all([
     getCategoryBySlug(categorySlug),
     listCategories()
@@ -20,7 +23,8 @@ export default async function SubcategoryPage({
 
   const products = await listActiveProducts({
     categorySlug: category.slug,
-    subcategorySlug: child.slug
+    subcategorySlug: child.slug,
+    q: q.trim() || undefined
   });
 
   return (
@@ -38,6 +42,7 @@ export default async function SubcategoryPage({
           category={category}
           products={products}
           activeSubcategorySlug={child.slug}
+          searchQuery={q}
         />
       </main>
       <Footer

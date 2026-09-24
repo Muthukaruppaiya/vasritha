@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { Plus } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import {
   AdminAlert,
   AdminBadge,
@@ -44,8 +44,12 @@ export default function AdminUsersPage() {
   const [q, setQ] = useState("");
   const [submitted, setSubmitted] = useState("");
   const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<AdminUser | null>(null);
   const [saving, setSaving] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [formError, setFormError] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
+  const [actionError, setActionError] = useState("");
   const [form, setForm] = useState(blankForm);
 
   const path = useMemo(
@@ -58,6 +62,7 @@ export default function AdminUsersPage() {
   const staffRoles = (roles || []).filter((role) => role.code !== "customer");
 
   const openCreate = () => {
+    setEditing(null);
     setForm({
       ...blankForm(),
       roleCode: staffRoles[0]?.code || "manager"
@@ -66,10 +71,51 @@ export default function AdminUsersPage() {
     setModalOpen(true);
   };
 
-  const onCreate = async (event: FormEvent) => {
+  const openEdit = (user: AdminUser) => {
+    const staffOnlyRoles = user.roles.filter((role) => role.code !== "customer");
+    setEditing(user);
+    setForm({
+      fullName: user.full_name,
+      email: user.email,
+      phone: user.phone || "",
+      password: "",
+      roleCode: staffOnlyRoles[0]?.code || staffRoles[0]?.code || "manager"
+    });
+    setFormError("");
+    setModalOpen(true);
+  };
+
+  const onSave = async (event: FormEvent) => {
     event.preventDefault();
     setSaving(true);
     setFormError("");
+    setActionError("");
+    setActionMessage("");
+
+    if (editing) {
+      const result = await adminFetch("/api/admin/users", {
+        method: "PATCH",
+        json: {
+          userId: editing.id,
+          fullName: form.fullName,
+          email: form.email,
+          phone: form.phone || null,
+          roleCode: form.roleCode,
+          ...(form.password.trim() ? { password: form.password.trim() } : {})
+        }
+      });
+      setSaving(false);
+      if (result.error) {
+        setFormError(result.error);
+        return;
+      }
+      setModalOpen(false);
+      setEditing(null);
+      setActionMessage("User updated.");
+      await reload();
+      return;
+    }
+
     const result = await adminFetch("/api/admin/users", {
       method: "POST",
       json: {
@@ -87,15 +133,36 @@ export default function AdminUsersPage() {
     }
     setModalOpen(false);
     setForm(blankForm());
+    setActionMessage("User created.");
     await reload();
   };
 
-  const updateRole = async (userId: string, roleCode: string) => {
-    const result = await adminFetch("/api/admin/users", {
-      method: "PATCH",
-      json: { userId, roleCode }
-    });
-    if (!result.error) await reload();
+  const onDelete = async (user: AdminUser) => {
+    const ok = window.confirm(
+      `Remove staff access for ${user.full_name}?\n\nThis deletes the account if they have no orders, or demotes them to customer if they do.`
+    );
+    if (!ok) return;
+    setActionError("");
+    setActionMessage("");
+    setBusyId(user.id);
+    const result = await adminFetch<{ deleted?: boolean; demoted?: boolean }>(
+      "/api/admin/users",
+      {
+        method: "DELETE",
+        json: { userId: user.id }
+      }
+    );
+    setBusyId(null);
+    if (result.error) {
+      setActionError(result.error);
+      return;
+    }
+    setActionMessage(
+      result.data?.demoted
+        ? `${user.full_name} removed from staff (kept as customer — has orders).`
+        : `${user.full_name} deleted.`
+    );
+    await reload();
   };
 
   return (
@@ -103,7 +170,7 @@ export default function AdminUsersPage() {
       <AdminPageHeader
         eyebrow="Access"
         title="Users"
-        description="Create staff accounts and assign roles for the admin panel."
+        description="Create, edit, and remove staff accounts. Assign roles for the admin panel."
         actions={
           <button type="button" className="btn" onClick={openCreate}>
             <Plus size={15} />
@@ -132,6 +199,9 @@ export default function AdminUsersPage() {
         </button>
       </form>
 
+      {actionMessage ? <AdminAlert tone="ok">{actionMessage}</AdminAlert> : null}
+      {actionError ? <AdminAlert>{actionError}</AdminAlert> : null}
+
       <AdminPanel title="Staff directory">
         {loading && <AdminLoading />}
         {error && <AdminAlert>{error}</AdminAlert>}
@@ -148,7 +218,7 @@ export default function AdminUsersPage() {
                   <th>Phone</th>
                   <th>Role</th>
                   <th>Joined</th>
-                  <th>Change role</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -157,7 +227,6 @@ export default function AdminUsersPage() {
                   const displayRoles = staffOnlyRoles.length
                     ? staffOnlyRoles
                     : [{ code: "none", name: "No role" }];
-                  const currentRole = staffOnlyRoles[0]?.code || "";
                   return (
                     <tr key={user.id}>
                       <td>
@@ -176,21 +245,30 @@ export default function AdminUsersPage() {
                       </td>
                       <td>{formatDate(user.created_at)}</td>
                       <td>
-                        <select
-                          defaultValue={currentRole}
-                          onChange={(e) => {
-                            if (e.target.value) void updateRole(user.id, e.target.value);
-                          }}
-                        >
-                          <option value="" disabled>
-                            Select role
-                          </option>
-                          {staffRoles.map((role) => (
-                            <option key={role.code} value={role.code}>
-                              {role.name}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="admin-row-actions" role="group" aria-label={`${user.full_name} actions`}>
+                          <button
+                            type="button"
+                            className="admin-action-btn"
+                            data-tooltip="Edit user"
+                            aria-label={`Edit ${user.full_name}`}
+                            disabled={busyId === user.id}
+                            onClick={() => openEdit(user)}
+                          >
+                            <Pencil size={14} strokeWidth={2} />
+                            <span>Edit</span>
+                          </button>
+                          <button
+                            type="button"
+                            className="admin-action-btn admin-action-btn--danger"
+                            data-tooltip="Delete user"
+                            aria-label={`Delete ${user.full_name}`}
+                            disabled={busyId === user.id}
+                            onClick={() => void onDelete(user)}
+                          >
+                            <Trash2 size={14} strokeWidth={2} />
+                            <span>Delete</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -203,14 +281,17 @@ export default function AdminUsersPage() {
 
       <AdminFormModal
         open={modalOpen}
-        title="Add user"
+        title={editing ? "Edit user" : "Add user"}
         eyebrow="Staff access"
-        submitLabel="Create user"
-        savingLabel="Creating…"
+        submitLabel={editing ? "Save changes" : "Create user"}
+        savingLabel={editing ? "Saving…" : "Creating…"}
         saving={saving}
         error={formError}
-        onClose={() => setModalOpen(false)}
-        onSubmit={onCreate}
+        onClose={() => {
+          setModalOpen(false);
+          setEditing(null);
+        }}
+        onSubmit={onSave}
       >
         <label>
           <span>Full name</span>
@@ -237,12 +318,13 @@ export default function AdminUsersPage() {
           />
         </label>
         <label>
-          <span>Password</span>
+          <span>{editing ? "New password (optional)" : "Password"}</span>
           <input
-            required
+            required={!editing}
             type="password"
             minLength={6}
             value={form.password}
+            placeholder={editing ? "Leave blank to keep current" : undefined}
             onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
           />
         </label>

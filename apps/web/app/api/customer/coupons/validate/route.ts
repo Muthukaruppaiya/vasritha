@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { fail, ok, requirePermission } from "../../../../../lib/auth/api";
 import { queryOne } from "../../../../../lib/db/pool";
+import { computeCouponDiscount } from "../../../../../lib/coupon-discount";
 
 type Coupon = {
   id: string;
@@ -36,9 +37,6 @@ export async function POST(request: NextRequest) {
   const now = Date.now();
   if (coupon.starts_at && new Date(coupon.starts_at).getTime() > now) return fail("Coupon not started");
   if (coupon.ends_at && new Date(coupon.ends_at).getTime() < now) return fail("Coupon expired");
-  if (Number(body.subtotal) < Number(coupon.min_order_amount)) {
-    return fail(`Minimum order amount is ${coupon.min_order_amount}`);
-  }
 
   if (coupon.usage_limit != null) {
     const total = await queryOne<{ count: string }>(
@@ -59,21 +57,22 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  let discount =
-    coupon.discount_type === "percentage"
-      ? (Number(body.subtotal) * Number(coupon.discount_value)) / 100
-      : Number(coupon.discount_value);
-
-  if (coupon.max_discount_amount != null) {
-    discount = Math.min(discount, Number(coupon.max_discount_amount));
-  }
-  discount = Math.min(discount, Number(body.subtotal));
+  const priced = computeCouponDiscount({
+    discountType: coupon.discount_type,
+    discountValue: Number(coupon.discount_value),
+    minOrderAmount: Number(coupon.min_order_amount),
+    maxDiscountAmount:
+      coupon.max_discount_amount != null ? Number(coupon.max_discount_amount) : null,
+    subtotal: Number(body.subtotal)
+  });
+  if (!priced.ok) return fail(priced.error);
 
   return ok({
     couponId: coupon.id,
     code: coupon.code,
     discountType: coupon.discount_type,
     discountValue: coupon.discount_value,
-    discountAmount: Number(discount.toFixed(2))
+    discountAmount: priced.discount,
+    minOrderAmount: Number(coupon.min_order_amount)
   });
 }

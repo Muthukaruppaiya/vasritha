@@ -5,6 +5,7 @@ import { query, queryOne } from "../../../../lib/db/pool";
 import { ensureGstSchema, normalizeGstRate, summariseInclusiveLines } from "../../../../lib/gst";
 import { getPurchasableStock } from "../../../../lib/cart-reservations";
 import { ensureBrandsSchema, resolveBrandId } from "../../../../lib/brands";
+import { quoteShipping } from "../../../../lib/shipping";
 
 type OrderRow = {
   id: string;
@@ -272,7 +273,23 @@ export async function POST(request: NextRequest) {
     discountAmount,
     false
   );
-  const total = taxSummary.payable;
+
+  const postalCode =
+    (address as { postal_code?: string | null }).postal_code ||
+    (address as { pincode?: string | null }).pincode ||
+    null;
+
+  const shippingQuote = await quoteShipping({
+    subtotal,
+    postalCode,
+    productIds: orderItems.map((item) => item.product_id)
+  });
+  if (!shippingQuote.delivery_available) {
+    return fail(shippingQuote.delivery_message || "Delivery is not available for this address", 400);
+  }
+
+  const shippingAmount = shippingQuote.shipping_amount;
+  const total = Number((taxSummary.payable + shippingAmount).toFixed(2));
 
   const orderNumber = `VAS-${Date.now().toString().slice(-8)}`;
   const brandId = await resolveBrandId(null);
@@ -281,10 +298,14 @@ export async function POST(request: NextRequest) {
     order_number: string;
     created_at: string;
     total_amount: string;
+    shipping_amount: string;
+    discount_amount: string;
+    tax_amount: string;
+    subtotal: string;
   }>(
     `insert into orders (order_number, customer_id, shipping_address_id, status, payment_status, subtotal, discount_amount, tax_amount, shipping_amount, total_amount, brand_id)
-     values ($1, $2, $3, 'pending', 'pending', $4, $5, $6, 0, $7, $8)
-     returning id, order_number, created_at, total_amount`,
+     values ($1, $2, $3, 'pending', 'pending', $4, $5, $6, $7, $8, $9)
+     returning id, order_number, created_at, total_amount, shipping_amount, discount_amount, tax_amount, subtotal`,
     [
       orderNumber,
       ctx.userId,
@@ -292,6 +313,7 @@ export async function POST(request: NextRequest) {
       subtotal,
       discountAmount,
       taxSummary.gst,
+      shippingAmount,
       total,
       brandId
     ]

@@ -7,12 +7,21 @@ export const COUPON_EVENT = "vasritha:coupon";
 export type AppliedCoupon = {
   id: string;
   code: string;
+  headline?: string;
+  minOrderAmount?: number;
+  discountType?: string;
+  discountValue?: number;
+  maxDiscountAmount?: number | null;
 };
 
 export type SavedVoucher = {
   id: string;
   code: string;
   headline?: string;
+  minOrderAmount?: number;
+  discountType?: string;
+  discountValue?: number;
+  maxDiscountAmount?: number | null;
   status: "available" | "used";
   claimedAt: string;
   usedAt?: string;
@@ -95,8 +104,19 @@ export function claimOpeningVoucher(input: {
   id: string;
   code: string;
   headline?: string;
+  minOrderAmount?: number;
+  discountType?: string;
+  discountValue?: number;
+  maxDiscountAmount?: number | null;
 }) {
   markOpeningSeen(input.id);
+  const meta = {
+    headline: input.headline,
+    minOrderAmount: input.minOrderAmount,
+    discountType: input.discountType,
+    discountValue: input.discountValue,
+    maxDiscountAmount: input.maxDiscountAmount
+  };
   const wallet = getSavedVouchers();
   const existing = wallet.find((row) => row.id === input.id);
   if (existing) {
@@ -106,7 +126,13 @@ export function claimOpeningVoucher(input: {
     }
     const next = wallet.map((row) =>
       row.id === input.id
-        ? { ...row, code: input.code, headline: input.headline || row.headline, status: "available" as const }
+        ? {
+            ...row,
+            code: input.code,
+            ...meta,
+            headline: input.headline || row.headline,
+            status: "available" as const
+          }
         : row
     );
     writeJson(WALLET_KEY, next);
@@ -114,20 +140,28 @@ export function claimOpeningVoucher(input: {
     const row: SavedVoucher = {
       id: input.id,
       code: input.code,
-      headline: input.headline,
+      ...meta,
       status: "available",
       claimedAt: new Date().toISOString()
     };
     writeJson(WALLET_KEY, [row, ...wallet]);
   }
-  setAppliedCoupon({ id: input.id, code: input.code });
+  setAppliedCoupon({ id: input.id, code: input.code, ...meta });
   return getSavedVouchers().find((row) => row.id === input.id) || null;
 }
 
 export function applySavedVoucher(id: string) {
   const row = getSavedVouchers().find((item) => item.id === id && item.status === "available");
   if (!row) return false;
-  setAppliedCoupon({ id: row.id, code: row.code });
+  setAppliedCoupon({
+    id: row.id,
+    code: row.code,
+    headline: row.headline,
+    minOrderAmount: row.minOrderAmount,
+    discountType: row.discountType,
+    discountValue: row.discountValue,
+    maxDiscountAmount: row.maxDiscountAmount
+  });
   return true;
 }
 
