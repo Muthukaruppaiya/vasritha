@@ -138,6 +138,7 @@ export type Messages = {
     showing: string;
     noProducts: string;
     exploreMore: string;
+    pieceCount: string;
   };
   product: {
     description: string;
@@ -400,7 +401,8 @@ export const en: Messages = {
     nameAZ: "Name A–Z",
     showing: "Showing",
     noProducts: "No products in this filter yet.",
-    exploreMore: "Explore more"
+    exploreMore: "Explore more",
+    pieceCount: "{count} pieces"
   },
   product: {
     description: "Description",

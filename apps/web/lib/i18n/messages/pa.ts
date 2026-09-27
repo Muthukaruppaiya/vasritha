@@ -140,7 +140,8 @@ export const pa: Messages = {
     nameAZ: "ਨਾਮ ਅ–ੜ",
     showing: "ਦਿਖਾ ਰਿਹਾ ਹੈ",
     noProducts: "ਇਸ ਫਿਲਟਰ ਵਿੱਚ ਹਾਲੇ ਕੋਈ ਉਤਪਾਦ ਨਹੀਂ।",
-    exploreMore: "ਹੋਰ ਵੇਖੋ"
+    exploreMore: "ਹੋਰ ਵੇਖੋ",
+    pieceCount: "{count} ਪੀਸ"
   },
   product: {
     description: "ਵੇਰਵਾ",

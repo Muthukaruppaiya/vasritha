@@ -141,7 +141,8 @@ export const kn: Messages = {
     nameAZ: "ಹೆಸರು ಅ–ಹ",
     showing: "ತೋರಿಸಲಾಗುತ್ತಿದೆ",
     noProducts: "ಈ ಫಿಲ್ಟರ್‌ನಲ್ಲಿ ಉತ್ಪನ್ನಗಳಿಲ್ಲ.",
-    exploreMore: "ಇನ್ನಷ್ಟು ಅನ್ವೇಷಿಸಿ"
+    exploreMore: "ಇನ್ನಷ್ಟು ಅನ್ವೇಷಿಸಿ",
+    pieceCount: "{count} ತುಂಡುಗಳು"
   },
   product: {
     description: "ವಿವರಣೆ",

@@ -76,6 +76,8 @@ export function CategoryListing({
   }, [products, sort]);
 
   const hasChildren = category.subcategories.length > 0;
+  const description = (category.description || "").trim();
+  const q = searchQuery.trim();
 
   return (
     <>
@@ -100,16 +102,24 @@ export function CategoryListing({
           </nav>
           <div className="eyebrow">{t("listing.boutiqueEdit")}</div>
           <h1>{heading}</h1>
-          {searchQuery.trim() ? (
-            <p>Showing matches for “{searchQuery.trim()}”</p>
+          {q ? (
+            <p>
+              {t("listing.showing")} “{q}”
+            </p>
+          ) : description ? (
+            <p>{description}</p>
           ) : (
-            <p>{category.description}</p>
+            <p>Hand-selected pieces from the Vasritha floor — curated for this edit.</p>
           )}
+          <div className="listing-hero-meta">
+            <span>{t("listing.pieceCount", { count: products.length })}</span>
+            {activeChild ? <span>{activeChild.name}</span> : null}
+          </div>
         </div>
       </section>
 
       <section className="shell listing-page">
-        <div className="listing-filters" data-reveal>
+        <div className="listing-toolbar" data-reveal>
           {hasChildren ? (
             <div className="listing-chips" role="tablist" aria-label={`${categoryName} filters`}>
               <Link
@@ -136,18 +146,27 @@ export function CategoryListing({
               })}
             </div>
           ) : (
-            <div />
+            <p className="listing-toolbar-count">
+              {t("listing.pieceCount", { count: shown.length })}
+            </p>
           )}
 
-          <label className="listing-sort">
-            <span className="listing-sort-label">{t("listing.sortBy")}</span>
-            <select value={sort} onChange={(event) => setSort(event.target.value as SortKey)}>
-              <option value="featured">{t("listing.featured")}</option>
-              <option value="name">{t("listing.nameAZ")}</option>
-              <option value="price-asc">{t("listing.priceLowHigh")}</option>
-              <option value="price-desc">{t("listing.priceHighLow")}</option>
-            </select>
-          </label>
+          <div className="listing-toolbar-end">
+            {hasChildren ? (
+              <p className="listing-toolbar-count">
+                {t("listing.pieceCount", { count: shown.length })}
+              </p>
+            ) : null}
+            <label className="listing-sort">
+              <span className="listing-sort-label">{t("listing.sortBy")}</span>
+              <select value={sort} onChange={(event) => setSort(event.target.value as SortKey)}>
+                <option value="featured">{t("listing.featured")}</option>
+                <option value="name">{t("listing.nameAZ")}</option>
+                <option value="price-asc">{t("listing.priceLowHigh")}</option>
+                <option value="price-desc">{t("listing.priceHighLow")}</option>
+              </select>
+            </label>
+          </div>
         </div>
 
         {shown.length ? (
@@ -161,30 +180,38 @@ export function CategoryListing({
         ) : (
           <div className="listing-empty" data-reveal>
             <h2>{t("listing.noProducts")}</h2>
-            <p className="muted">{category.description}</p>
+            <p className="muted">{description || categoryName}</p>
             <Link className="btn" href="/collections">
               {t("common.allCollections")}
             </Link>
           </div>
         )}
 
-        <div className="listing-more" data-reveal>
-          <div className="eyebrow">{t("listing.exploreMore")}</div>
-          <div className="listing-more-grid">
-            {otherCategories.map((item, index) => (
-              <Link
-                key={item.slug}
-                href={`/${item.slug}`}
-                className="listing-more-card"
-                data-reveal
-                data-reveal-delay={String(index + 1)}
-              >
-                <Image src={item.image} alt="" fill sizes="(max-width:800px) 45vw, 20vw" />
-                <span>{localizeCategoryName(item.slug, locale, item.name, item.nameI18n)}</span>
-              </Link>
-            ))}
+        {otherCategories.length > 0 ? (
+          <div className="listing-more" data-reveal>
+            <div className="listing-more-head">
+              <div>
+                <div className="eyebrow">{t("listing.exploreMore")}</div>
+                <h2>{t("common.allCollections")}</h2>
+              </div>
+              <Link href="/collections">{t("listing.exploreMore")} →</Link>
+            </div>
+            <div className="listing-more-grid">
+              {otherCategories.map((item, index) => (
+                <Link
+                  key={item.slug}
+                  href={`/${item.slug}`}
+                  className="listing-more-card"
+                  data-reveal
+                  data-reveal-delay={String(index + 1)}
+                >
+                  <Image src={item.image} alt="" fill sizes="(max-width:800px) 45vw, 20vw" />
+                  <span>{localizeCategoryName(item.slug, locale, item.name, item.nameI18n)}</span>
+                </Link>
+              ))}
+            </div>
           </div>
-        </div>
+        ) : null}
       </section>
     </>
   );

@@ -141,7 +141,8 @@ export const hi: Messages = {
     nameAZ: "नाम अ–ह",
     showing: "दिखा रहा है",
     noProducts: "इस फ़िल्टर में अभी कोई उत्पाद नहीं।",
-    exploreMore: "और देखें"
+    exploreMore: "और देखें",
+    pieceCount: "{count} पीस"
   },
   product: {
     description: "विवरण",

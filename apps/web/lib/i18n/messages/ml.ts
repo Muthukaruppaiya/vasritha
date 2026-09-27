@@ -141,7 +141,8 @@ export const ml: Messages = {
     nameAZ: "പേര് അ–ഺ",
     showing: "കാണിക്കുന്നു",
     noProducts: "ഈ ഫിൽറ്ററിൽ ഉൽപ്പന്നങ്ങളില്ല.",
-    exploreMore: "കൂടുതൽ എക്സ്പ്ലോർ ചെയ്യുക"
+    exploreMore: "കൂടുതൽ എക്സ്പ്ലോർ ചെയ്യുക",
+    pieceCount: "{count} കഷണങ്ങൾ"
   },
   product: {
     description: "വിവരണം",

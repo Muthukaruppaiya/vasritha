@@ -140,7 +140,8 @@ export const gu: Messages = {
     nameAZ: "નામ અ–જ્ઞ",
     showing: "બતાવી રહ્યા છીએ",
     noProducts: "આ ફિલ્ટરમાં હજુ કોઈ પ્રોડક્ટ નથી.",
-    exploreMore: "વધુ જુઓ"
+    exploreMore: "વધુ જુઓ",
+    pieceCount: "{count} પીસ"
   },
   product: {
     description: "વર્ણન",

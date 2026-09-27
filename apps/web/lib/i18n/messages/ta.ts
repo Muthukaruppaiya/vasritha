@@ -141,7 +141,8 @@ export const ta: Messages = {
     nameAZ: "பெயர் அ–ஃ",
     showing: "காட்டப்படுகிறது",
     noProducts: "இந்த வடிகட்டியில் பொருட்கள் இல்லை.",
-    exploreMore: "மேலும் ஆராயுங்கள்"
+    exploreMore: "மேலும் ஆராயுங்கள்",
+    pieceCount: "{count} துண்டுகள்"
   },
   product: {
     description: "விளக்கம்",

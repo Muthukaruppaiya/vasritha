@@ -164,10 +164,15 @@ export function ProductCard({
   const { locale } = useLocale();
   const localized = localizeProductFields(product, locale);
   const isListing = variant === "listing";
+  const comingSoon = Boolean(product.restockExpected && product.stock_quantity <= 0);
+  const savePct =
+    product.compareAtValue != null && product.compareAtValue > product.priceValue
+      ? Math.round(((product.compareAtValue - product.priceValue) / product.compareAtValue) * 100)
+      : 0;
 
   return (
     <article className={`card${isListing ? " card--listing" : ""}`}>
-      <Link href={`/products/${product.slug}`}>
+      <Link href={`/products/${product.slug}`} className="card-media-link">
         <div className="picture">
           <Image
             src={product.imageSrc}
@@ -176,9 +181,10 @@ export function ProductCard({
             sizes="(max-width: 800px) 50vw, 25vw"
           />
           {!isListing && <span>{localized.type}</span>}
-          {product.restockExpected && product.stock_quantity <= 0 ? (
-            <em className="card-coming-soon">Coming soon</em>
+          {isListing && savePct > 0 ? (
+            <em className="card-sale-badge">{t("product.savePercent", { pct: savePct })}</em>
           ) : null}
+          {comingSoon ? <em className="card-coming-soon">Coming soon</em> : null}
         </div>
       </Link>
       <div className="card-body">
@@ -203,7 +209,7 @@ export function ProductCard({
           </div>
           {isListing && (
             <div className="card-actions">
-              {product.restockExpected && product.stock_quantity <= 0 ? (
+              {comingSoon ? (
                 <span className="card-coming-soon-label">Coming soon · stock may increase</span>
               ) : product.sizes.length > 1 ? (
                 <Link href={`/products/${product.slug}`} className="card-buy-link">
