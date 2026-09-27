@@ -176,6 +176,9 @@ export function ProductCard({
             sizes="(max-width: 800px) 50vw, 25vw"
           />
           {!isListing && <span>{localized.type}</span>}
+          {product.restockExpected && product.stock_quantity <= 0 ? (
+            <em className="card-coming-soon">Coming soon</em>
+          ) : null}
         </div>
       </Link>
       <div className="card-body">
@@ -200,7 +203,9 @@ export function ProductCard({
           </div>
           {isListing && (
             <div className="card-actions">
-              {product.sizes.length > 1 ? (
+              {product.restockExpected && product.stock_quantity <= 0 ? (
+                <span className="card-coming-soon-label">Coming soon · stock may increase</span>
+              ) : product.sizes.length > 1 ? (
                 <Link href={`/products/${product.slug}`} className="card-buy-link">
                   {t("common.selectSizeBuy")}
                 </Link>

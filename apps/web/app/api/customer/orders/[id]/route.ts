@@ -1,12 +1,15 @@
 import { NextRequest } from "next/server";
 import { fail, ok, requirePermission } from "../../../../../lib/auth/api";
 import { query, queryOne } from "../../../../../lib/db/pool";
+import { ensureOrderCourierSchema } from "../../../../../lib/order-courier";
 
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(request: NextRequest, { params }: Params) {
   const { error, ctx } = await requirePermission(request, "orders:own");
   if (error || !ctx) return error;
+
+  await ensureOrderCourierSchema();
 
   const { id } = await params;
 
@@ -21,9 +24,13 @@ export async function GET(request: NextRequest, { params }: Params) {
     total_amount: string;
     created_at: string;
     shipping_address_id: string | null;
+    courier_name: string | null;
+    courier_awb: string | null;
+    courier_note: string | null;
   }>(
     `select id, order_number, status, payment_status, subtotal, tax_amount, shipping_amount,
-            total_amount, created_at, shipping_address_id
+            total_amount, created_at, shipping_address_id,
+            courier_name, courier_awb, courier_note
      from orders
      where id = $1 and customer_id = $2`,
     [id, ctx.userId]

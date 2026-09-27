@@ -18,6 +18,7 @@ import {
   normalizeProductStatus
 } from "../../../../../lib/product-status";
 import type { AppRole } from "../../../../../lib/auth/rbac";
+import { ensureProductRestockSchema } from "../../../../../lib/order-courier";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -42,7 +43,8 @@ const ALLOWED_FIELDS = [
   "parent_product_id",
   "hsn_code",
   "gst_rate",
-  "brand_id"
+  "brand_id",
+  "restock_expected"
 ] as const;
 
 export async function GET(request: NextRequest, { params }: Params) {
@@ -126,6 +128,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   await ensureGstSchema();
   await ensureProductStatusEnum();
+  await ensureProductRestockSchema();
 
   const { id } = await params;
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
@@ -188,6 +191,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const normalized = { ...body };
   if ("fast_selling" in normalized && !("is_featured" in normalized)) {
     normalized.is_featured = Boolean(normalized.fast_selling);
+  }
+  if ("restock_expected" in normalized) {
+    normalized.restock_expected = Boolean(normalized.restock_expected);
   }
   if ("subcategory_id" in normalized) {
     normalized.subcategory_id = emptyToNull(normalized.subcategory_id);

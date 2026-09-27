@@ -84,6 +84,11 @@ function LoginForm() {
           required
         />
       </label>
+      <p className="login-forgot">
+        <Link href={`/forgot-password?next=${encodeURIComponent(nextPath)}`}>
+          Forgot password?
+        </Link>
+      </p>
       {error ? <p className="admin-alert admin-alert--error">{error}</p> : null}
       <button className="btn" type="submit" disabled={loading}>
         {loading ? t("auth.signingIn") : t("auth.signIn")}

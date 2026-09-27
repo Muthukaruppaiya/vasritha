@@ -23,6 +23,8 @@ export type ParsedGrnPayload = {
   supplierMeta: string;
   billNo: string;
   invoiceAmount: number;
+  invoiceDate: string | null;
+  documentPath: string | null;
   extraNote: string;
   lines: GrnLineInput[];
   linesTotal: number;
@@ -89,6 +91,12 @@ export async function ensureInventoryGrnSchema() {
         and status in ('pending_approval', 'approved')
   `);
 
+  await query(`
+    alter table public.inventory_grns
+      add column if not exists invoice_date date,
+      add column if not exists document_path text
+  `);
+
   schemaReady = true;
 }
 
@@ -98,6 +106,8 @@ export async function parseAndValidateGrnBody(body: {
   billNo?: string;
   note?: string;
   invoiceAmount?: number;
+  invoiceDate?: string | null;
+  documentPath?: string | null;
   lines?: Array<{ productVariantId?: string; quantity?: number; purchasePrice?: number }>;
 }): Promise<{ ok: true; data: ParsedGrnPayload } | { ok: false; error: string }> {
   const lines = (body.lines || [])
@@ -153,6 +163,25 @@ export async function parseAndValidateGrnBody(body: {
     return { ok: false, error: "Invoice amount must be a valid number" };
   }
 
+  const invoiceDateRaw = String(body.invoiceDate || "").trim();
+  let invoiceDate: string | null = null;
+  if (invoiceDateRaw) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(invoiceDateRaw)) {
+      return { ok: false, error: "Invoice date must be YYYY-MM-DD" };
+    }
+    const parsed = new Date(`${invoiceDateRaw}T00:00:00`);
+    if (Number.isNaN(parsed.getTime())) {
+      return { ok: false, error: "Invoice date is invalid" };
+    }
+    invoiceDate = invoiceDateRaw;
+  }
+
+  const documentPathRaw = String(body.documentPath || "").trim();
+  const documentPath =
+    documentPathRaw && documentPathRaw.startsWith("/uploads/")
+      ? documentPathRaw.slice(0, 500)
+      : null;
+
   const linesTotal = lines.reduce(
     (sum, line) => sum + Math.round(line.quantity * line.purchasePrice * 100) / 100,
     0
@@ -162,6 +191,7 @@ export async function parseAndValidateGrnBody(body: {
     supplierName ? `Supplier: ${supplierName}` : "",
     supplierMeta,
     billNo ? `Bill: ${billNo}` : "",
+    invoiceDate ? `Invoice date: ${invoiceDate}` : "",
     `Invoice amt: ₹${invoiceAmount.toFixed(2)}`,
     `Lines total: ₹${linesTotal.toFixed(2)}`,
     extraNote
@@ -175,6 +205,8 @@ export async function parseAndValidateGrnBody(body: {
       supplierMeta,
       billNo,
       invoiceAmount,
+      invoiceDate,
+      documentPath,
       extraNote,
       lines: lines.map((l) => ({
         productVariantId: l.productVariantId,
@@ -321,14 +353,17 @@ export async function createPendingGrn(input: {
     const grnNumber = nextGrnNumber();
     const grn = await db.queryOne<{ id: string; grn_number: string; status: GrnStatus }>(
       `insert into inventory_grns (
-         grn_number, status, supplier_id, bill_no, invoice_amount, lines_total, note, created_by
-       ) values ($1, 'pending_approval', $2, $3, $4, $5, $6, $7)
+         grn_number, status, supplier_id, bill_no, invoice_amount, invoice_date, document_path,
+         lines_total, note, created_by
+       ) values ($1, 'pending_approval', $2, $3, $4, $5, $6, $7, $8, $9)
        returning id, grn_number, status`,
       [
         grnNumber,
         input.payload.supplierId,
         input.payload.billNo || null,
         input.payload.invoiceAmount,
+        input.payload.invoiceDate,
+        input.payload.documentPath,
         input.payload.linesTotal,
         input.payload.note,
         input.userId
@@ -380,6 +415,8 @@ export async function loadGrnPayload(
     supplier_id: string | null;
     bill_no: string | null;
     invoice_amount: string | number | null;
+    invoice_date: string | null;
+    document_path: string | null;
     lines_total: string | number;
     note: string | null;
   }>(`select * from inventory_grns where id = $1`, [grnId]);
@@ -424,6 +461,8 @@ export async function loadGrnPayload(
       supplierMeta,
       billNo: grn.bill_no || "",
       invoiceAmount: Number(grn.invoice_amount || 0),
+      invoiceDate: grn.invoice_date || null,
+      documentPath: grn.document_path || null,
       extraNote: "",
       lines: mapped,
       linesTotal: Number(grn.lines_total || 0),
@@ -547,6 +586,7 @@ export async function listGrns(filters: {
 
   return query(
     `select g.id, g.grn_number, g.status, g.supplier_id, g.bill_no, g.invoice_amount,
+            g.invoice_date, g.document_path,
             g.lines_total, g.note, g.created_by, g.approved_by, g.approved_at, g.created_at,
             s.name as supplier_name, s.code as supplier_code,
             (select count(*)::int from inventory_grn_lines l where l.grn_id = g.id) as line_count

@@ -1,13 +1,19 @@
 import { query, queryOne } from "./db/pool";
 import { resolveMediaUrl } from "./product-image-storage";
 import { categoryImage } from "./category-images";
+import { ensureProductRestockSchema } from "./order-courier";
+import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
 
 export { categoryImage } from "./category-images";
 
 let categoriesSchemaReady: Promise<void> | null = null;
 
 export async function ensureCategoriesSchema() {
-  // Cheap idempotent ALTER — always run so storefront publish filters work on Vercel too.
+  if (skipRuntimeSchemaEnsure()) {
+    await ensureProductRestockSchema();
+    return;
+  }
+  // Idempotent ALTER — run once per process, then cache.
   if (!categoriesSchemaReady) {
     categoriesSchemaReady = query(`
       alter table categories
@@ -18,6 +24,7 @@ export async function ensureCategoriesSchema() {
     `).then(() => undefined);
   }
   await categoriesSchemaReady;
+  await ensureProductRestockSchema();
 }
 
 export type StoreVariant = {
@@ -52,6 +59,8 @@ export type StoreProduct = {
   description: string;
   isFeatured: boolean;
   stock_quantity: number;
+  /** When true and stock is 0, product stays visible as “Coming soon”. */
+  restockExpected: boolean;
   variants: StoreVariant[];
 };
 
@@ -104,6 +113,7 @@ type ProductRow = {
   short_description: string | null;
   color: string | null;
   is_featured: boolean;
+  restock_expected?: boolean;
   price: string;
   compare_at_price: string | null;
   stock_quantity: number;
@@ -192,6 +202,7 @@ function mapProduct(
     description: isCard ? "" : row.description || "",
     isFeatured: Boolean(row.is_featured),
     stock_quantity: Number(row.stock_quantity),
+    restockExpected: Boolean(row.restock_expected),
     variants: isCard ? [] : productVariants
   };
 }
@@ -285,6 +296,7 @@ export async function listActiveProducts(options?: ListProductsOptions) {
   const rows = await query<ProductRow>(
     `select
        p.id, p.name, p.short_name, p.slug, p.sku, p.tag, p.description, p.short_description, p.color, p.is_featured,
+       coalesce(p.restock_expected, false) as restock_expected,
        p.price::text, p.compare_at_price::text,
        p.stock_quantity, c.slug as category_slug, c.name as category_name,
        sc.name as subcategory_name,
@@ -294,7 +306,7 @@ export async function listActiveProducts(options?: ListProductsOptions) {
      left join subcategories sc on sc.id = p.subcategory_id
      where p.status = 'active'
        and coalesce(c.is_published, true) = true
-       and p.stock_quantity > 0
+       and (p.stock_quantity > 0 or coalesce(p.restock_expected, false) = true)
        and ($1::text is null or c.slug = $1)
        and ($2::text is null or sc.slug = $2)
        and ($3::boolean = false or p.is_featured = true)
@@ -353,6 +365,7 @@ export async function listRelatedProducts(
   const rows = await query<ProductRow>(
     `select
        p.id, p.name, p.short_name, p.slug, p.sku, p.tag, p.description, p.short_description, p.color, p.is_featured,
+       coalesce(p.restock_expected, false) as restock_expected,
        p.price::text, p.compare_at_price::text,
        p.stock_quantity, c.slug as category_slug, c.name as category_name,
        sc.name as subcategory_name,
@@ -362,7 +375,7 @@ export async function listRelatedProducts(
      left join subcategories sc on sc.id = p.subcategory_id
      where p.status = 'active'
        and coalesce(c.is_published, true) = true
-       and p.stock_quantity > 0
+       and (p.stock_quantity > 0 or coalesce(p.restock_expected, false) = true)
        and c.slug = $1
        and p.slug <> $2
      order by p.is_featured desc, p.created_at desc
@@ -382,6 +395,7 @@ export async function getProductBySlug(slug: string) {
   const row = await queryOne<ProductRow>(
     `select
        p.id, p.name, p.short_name, p.slug, p.sku, p.tag, p.description, p.short_description, p.color, p.is_featured,
+       coalesce(p.restock_expected, false) as restock_expected,
        p.price::text, p.compare_at_price::text,
        p.stock_quantity, c.slug as category_slug, c.name as category_name,
        sc.name as subcategory_name,
@@ -389,7 +403,10 @@ export async function getProductBySlug(slug: string) {
      from products p
      join categories c on c.id = p.category_id
      left join subcategories sc on sc.id = p.subcategory_id
-     where p.slug = $1 and p.status = 'active' and coalesce(c.is_published, true) = true`,
+     where p.slug = $1
+       and p.status = 'active'
+       and coalesce(c.is_published, true) = true
+       and (p.stock_quantity > 0 or coalesce(p.restock_expected, false) = true)`,
     [slug]
   );
   if (!row) return null;

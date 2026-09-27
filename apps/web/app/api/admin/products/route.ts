@@ -16,6 +16,7 @@ import {
   normalizeProductStatus
 } from "../../../../lib/product-status";
 import type { AppRole } from "../../../../lib/auth/rbac";
+import { ensureProductRestockSchema } from "../../../../lib/order-courier";
 
 async function upsertDefaultVariant(input: {
   productId: string;
@@ -122,6 +123,7 @@ export async function POST(request: NextRequest) {
     await ensureGstSchema();
     await ensureBrandsSchema();
     await ensureProductStatusEnum();
+    await ensureProductRestockSchema();
 
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
     if (!body?.name || !body?.slug || !body?.category_id || body.price == null) {
@@ -181,8 +183,9 @@ export async function POST(request: NextRequest) {
       `insert into products
          (name, slug, sku, barcode, tag, sku_prefix, label_size, category_id, subcategory_id,
           short_name, short_description, color, description,
-          price, compare_at_price, hsn_code, gst_rate, status, stock_quantity, is_featured, parent_product_id, brand_id)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+          price, compare_at_price, hsn_code, gst_rate, status, stock_quantity, is_featured,
+          parent_product_id, brand_id, restock_expected)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
        returning *`,
       [
         String(body.name),
@@ -206,7 +209,8 @@ export async function POST(request: NextRequest) {
         0,
         Boolean(body.is_featured ?? body.fast_selling),
         parentProductId,
-        brandId
+        brandId,
+        Boolean(body.restock_expected)
       ]
     );
 

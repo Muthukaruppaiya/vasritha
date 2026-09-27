@@ -8,6 +8,7 @@ import { Footer, Header } from "../../components/storefront";
 import { formatPrice, getCartItems } from "../../lib/cart";
 import {
   getCachedAddress,
+  getCustomerProfile,
   getCustomerSession,
   isLoggedIn
 } from "../../lib/customer-session";
@@ -57,6 +58,7 @@ function CheckoutContent() {
   const [loyaltyPoints, setLoyaltyPoints] = useState<number | null>(null);
 
   const session = useMemo(() => (ready ? getCustomerSession() : null), [ready]);
+  const profile = useMemo(() => (ready ? getCustomerProfile() : null), [ready]);
   const nextCheckout = `/checkout?${searchParams.toString()}`;
   const paymentHref = `/checkout/payment?from=${encodeURIComponent(nextCheckout)}`;
 
@@ -152,7 +154,7 @@ function CheckoutContent() {
       setShippingQuote(null);
       return;
     }
-    const pin = session?.address?.pincode || "";
+    const pin = session?.address?.pincode || getCachedAddress()?.postal_code || "";
     const params = new URLSearchParams({ subtotal: String(orderTotal) });
     if (pin) params.set("postal_code", pin);
     const productIds = Array.from(new Set(lineItems.map((l) => l.productId).filter(Boolean)));
@@ -169,14 +171,7 @@ function CheckoutContent() {
   }, [ready, orderTotal, session?.address?.pincode, lineItems]);
 
   useEffect(() => {
-    if (!isLoggedIn()) {
-      router.replace(`/login?next=${encodeURIComponent(nextCheckout)}`);
-      return;
-    }
-    if (!getCachedAddress()?.id) {
-      router.replace(`/account/address?next=${encodeURIComponent(nextCheckout)}`);
-      return;
-    }
+    // Summary is public; sign-in happens only when continuing to payment.
     if (fromCart && getCartItems().length === 0) {
       router.replace("/cart");
       return;
@@ -241,11 +236,21 @@ function CheckoutContent() {
     };
 
     void load();
-  }, [router, nextCheckout, fromCart, productSlug, size]);
+  }, [router, fromCart, productSlug, size]);
 
   const onPay = (event: FormEvent) => {
     event.preventDefault();
     if (deliveryBlocked) return;
+
+    if (!isLoggedIn()) {
+      router.push(`/login?next=${encodeURIComponent(nextCheckout)}`);
+      return;
+    }
+    if (!getCachedAddress()?.id) {
+      router.push(`/account/address?next=${encodeURIComponent(nextCheckout)}`);
+      return;
+    }
+
     const address = getCachedAddress();
     if (!address?.id || !lineItems.length) return;
 
@@ -271,11 +276,11 @@ function CheckoutContent() {
     router.push(paymentHref);
   };
 
-  if (!ready || !session) {
+  if (!ready) {
     return (
       <main className="checkout-page" data-reveal>
         <div className="shell section checkout-page-inner">
-          <p className="muted">Preparing your secure checkout…</p>
+          <p className="muted">Preparing your order summary…</p>
         </div>
       </main>
     );
@@ -302,28 +307,57 @@ function CheckoutContent() {
         <section className="checkout-details" aria-label="Customer and delivery">
           <article className="checkout-surface">
             <p className="checkout-kicker">Customer</p>
-            <p className="checkout-value">{session.name}</p>
-            <p className="muted checkout-meta">{session.email}</p>
-            <p className="muted checkout-meta">{session.phone}</p>
+            {profile ? (
+              <>
+                <p className="checkout-value">{profile.name || "Signed in"}</p>
+                <p className="muted checkout-meta">{profile.email}</p>
+                {profile.phone ? <p className="muted checkout-meta">{profile.phone}</p> : null}
+              </>
+            ) : (
+              <>
+                <p className="checkout-value">Guest</p>
+                <p className="muted checkout-meta">
+                  Review your bag now. Sign in when you continue to payment.
+                </p>
+                <Link
+                  className="checkout-edit"
+                  href={`/login?next=${encodeURIComponent(nextCheckout)}`}
+                >
+                  Sign in
+                </Link>
+              </>
+            )}
           </article>
 
           <article className="checkout-surface">
             <div className="checkout-block-head">
               <p className="checkout-kicker">Delivery address</p>
-              <Link
-                className="checkout-edit"
-                href={`/account/address?next=${encodeURIComponent(nextCheckout)}`}
-              >
-                Change
-              </Link>
+              {profile ? (
+                <Link
+                  className="checkout-edit"
+                  href={`/account/address?next=${encodeURIComponent(nextCheckout)}`}
+                >
+                  {session?.address ? "Change" : "Add"}
+                </Link>
+              ) : null}
             </div>
-            <p className="checkout-value">
-              {session.address.line1}
-              {session.address.line2 ? `, ${session.address.line2}` : ""}
-            </p>
-            <p className="muted checkout-meta">
-              {session.address.city}, {session.address.state} {session.address.pincode}
-            </p>
+            {session?.address ? (
+              <>
+                <p className="checkout-value">
+                  {session.address.line1}
+                  {session.address.line2 ? `, ${session.address.line2}` : ""}
+                </p>
+                <p className="muted checkout-meta">
+                  {session.address.city}, {session.address.state} {session.address.pincode}
+                </p>
+              </>
+            ) : (
+              <p className="muted checkout-meta">
+                {profile
+                  ? "Add a delivery address before payment."
+                  : "Address is collected after you sign in at payment."}
+              </p>
+            )}
           </article>
         </section>
 
@@ -434,7 +468,11 @@ function CheckoutContent() {
 
           <form className="checkout-pay-form" onSubmit={onPay}>
             <button className="btn checkout-pay" type="submit" disabled={deliveryBlocked}>
-              {deliveryBlocked ? "Delivery unavailable" : "Continue to payment"}
+              {deliveryBlocked
+                ? "Delivery unavailable"
+                : isLoggedIn()
+                  ? "Continue to payment"
+                  : "Sign in to pay"}
             </button>
             {deliveryBlocked && shippingQuote ? (
               <p className="checkout-delivery-block">{shippingQuote.delivery_message}</p>

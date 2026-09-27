@@ -36,8 +36,17 @@ export type CourierLabelData = {
   status: string;
   total_amount: string | number;
   item_count: number;
+  items?: Array<{
+    product_name: string;
+    variant_name?: string | null;
+    sku?: string | null;
+    quantity: number;
+  }>;
   shipping_address: CourierAddress | null;
   seller?: CourierSeller | null;
+  courier_name?: string | null;
+  courier_awb?: string | null;
+  courier_note?: string | null;
 };
 
 type Props = {
@@ -64,7 +73,10 @@ export function CourierLabel({ data, id = "vasritha-parcel-label" }: Props) {
     String(data.payment_status || "").toLowerCase()
   );
   const routeCode = `${ship?.postal_code || "000000"}-${seller?.state_code || "00"}`;
-  const awb = `VSR${String(data.order_number).replace(/\D/g, "").slice(-10).padStart(10, "0")}`;
+  const awb =
+    String(data.courier_awb || "").trim() ||
+    `VSR${String(data.order_number).replace(/\D/g, "").slice(-10).padStart(10, "0")}`;
+  const lineItems = data.items || [];
 
   const [barcodeSrc, setBarcodeSrc] = useState("");
   const [qrSrc, setQrSrc] = useState("");
@@ -121,6 +133,22 @@ export function CourierLabel({ data, id = "vasritha-parcel-label" }: Props) {
           <p>
             Pieces: {data.item_count} · Placed: {formatStamp(data.created_at)}
           </p>
+          {data.courier_name ? <p>Courier: {data.courier_name}</p> : null}
+          {lineItems.length > 0 ? (
+            <div className="parcel-label-items">
+              <h3>Contents</h3>
+              <ul>
+                {lineItems.map((item, index) => (
+                  <li key={`${item.sku || item.product_name}-${index}`}>
+                    {item.quantity}× {item.product_name}
+                    {item.variant_name ? ` (${item.variant_name})` : ""}
+                    {item.sku ? ` · ${item.sku}` : ""}
+                  </li>
+                ))}
+              </ul>
+              {data.courier_note ? <p className="parcel-label-note">{data.courier_note}</p> : null}
+            </div>
+          ) : null}
         </section>
         {qrSrc ? (
           // eslint-disable-next-line @next/next/no-img-element

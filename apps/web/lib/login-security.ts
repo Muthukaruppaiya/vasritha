@@ -1,5 +1,6 @@
 import { query, queryOne } from "./db/pool";
 import { classifyHost } from "./hosts";
+import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
 
 export type LoginSecurityConfig = {
   enabled: boolean;
@@ -17,6 +18,7 @@ export type StaffLoginClient = "staff" | "pos" | "website" | "unknown";
 let schemaReady: Promise<void> | null = null;
 
 export async function ensureLoginSecuritySchema() {
+  if (skipRuntimeSchemaEnsure()) return;
   if (!schemaReady) {
     schemaReady = (async () => {
       await query(`

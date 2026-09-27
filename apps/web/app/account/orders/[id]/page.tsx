@@ -24,6 +24,9 @@ type OrderDetail = {
   shipping_amount: string;
   total_amount: string;
   created_at: string;
+  courier_name?: string | null;
+  courier_awb?: string | null;
+  courier_note?: string | null;
   order_items: Array<{
     id: string;
     product_name: string;
@@ -256,6 +259,26 @@ export default function AccountOrderDetailPage() {
               })}
             </ol>
           )}
+          {(order.courier_name || order.courier_awb || order.courier_note) && !cancelled ? (
+            <div className="account-courier-box" style={{ marginTop: 16 }}>
+              <h3 style={{ margin: "0 0 8px", fontSize: "1rem" }}>Courier details</h3>
+              {order.courier_name ? (
+                <p className="muted" style={{ margin: "0 0 4px" }}>
+                  Courier: <strong>{order.courier_name}</strong>
+                </p>
+              ) : null}
+              {order.courier_awb ? (
+                <p className="muted" style={{ margin: "0 0 4px" }}>
+                  AWB / tracking: <strong>{order.courier_awb}</strong>
+                </p>
+              ) : null}
+              {order.courier_note ? (
+                <p className="muted" style={{ margin: 0 }}>
+                  Note: {order.courier_note}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
         </section>
 
         <div className="account-detail-layout">

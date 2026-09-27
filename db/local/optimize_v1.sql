@@ -10,21 +10,25 @@ create extension if not exists pgcrypto;
 -- -----------------------------------------------------------------------------
 do $$ begin
   create type public.coupon_status as enum ('draft', 'active', 'expired', 'disabled');
-exception when duplicate_object then null; end $$;
+exception when duplicate_object then null; when duplicate_table then null; end $$;
+
 
 do $$ begin
   create type public.return_status as enum ('requested', 'approved', 'rejected', 'received', 'refunded', 'cancelled');
-exception when duplicate_object then null; end $$;
+exception when duplicate_object then null; when duplicate_table then null; end $$;
+
 
 do $$ begin
   create type public.inventory_movement_type as enum (
     'sale', 'return', 'manual_adjustment', 'opening_stock', 'purchase', 'transfer_in', 'transfer_out'
   );
-exception when duplicate_object then null; end $$;
+exception when duplicate_object then null; when duplicate_table then null; end $$;
+
 
 do $$ begin
   create type public.channel_type as enum ('online', 'pos');
-exception when duplicate_object then null; end $$;
+exception when duplicate_object then null; when duplicate_table then null; end $$;
+
 
 -- -----------------------------------------------------------------------------
 -- 2) Integrity helpers: timestamps
@@ -111,11 +115,16 @@ set stock_quantity = coalesce((
 do $$ begin
   alter table public.subcategories
     add constraint subcategories_category_id_id_key unique (category_id, id);
-exception when duplicate_object then null; end $$;
+exception
+  when duplicate_object then null;
+  when duplicate_table then null;
+end $$;
+
 
 do $$ begin
   alter table public.products drop constraint if exists products_subcategory_id_fkey;
 exception when undefined_object then null; end $$;
+
 
 -- Clear orphan subcategory refs before composite FK
 update public.products p
@@ -134,28 +143,38 @@ do $$ begin
     foreign key (category_id, subcategory_id)
     references public.subcategories (category_id, id)
     on delete set null;
-exception when duplicate_object then null; end $$;
+exception when duplicate_object then null; when duplicate_table then null; end $$;
+
 
 -- -----------------------------------------------------------------------------
 -- 5) Missing / tightened CHECK constraints
 -- -----------------------------------------------------------------------------
+-- Clear invalid compare-at prices before enforcing the CHECK
+update public.products
+set compare_at_price = null
+where compare_at_price is not null
+  and compare_at_price < price;
+
 do $$ begin
   alter table public.products
     add constraint products_compare_at_price_chk
     check (compare_at_price is null or compare_at_price >= price);
-exception when duplicate_object then null; end $$;
+exception when duplicate_object then null; when duplicate_table then null; end $$;
+
 
 do $$ begin
   alter table public.order_items
     add constraint order_items_line_total_chk
     check (line_total = round(unit_price * quantity, 2));
-exception when duplicate_object then null; end $$;
+exception when duplicate_object then null; when duplicate_table then null; end $$;
+
 
 do $$ begin
   alter table public.order_items
     add constraint order_items_unit_price_chk
     check (unit_price >= 0);
-exception when duplicate_object then null; end $$;
+exception when duplicate_object then null; when duplicate_table then null; end $$;
+
 
 do $$ begin
   alter table public.orders
@@ -166,40 +185,47 @@ do $$ begin
       and shipping_amount >= 0
       and total_amount >= 0
     );
-exception when duplicate_object then null; end $$;
+exception when duplicate_object then null; when duplicate_table then null; end $$;
+
 
 do $$ begin
   alter table public.payments
     add constraint payments_amount_chk check (amount >= 0);
-exception when duplicate_object then null; end $$;
+exception when duplicate_object then null; when duplicate_table then null; end $$;
+
 
 do $$ begin
   alter table public.taxes
     add constraint taxes_rate_chk check (rate >= 0);
-exception when duplicate_object then null; end $$;
+exception when duplicate_object then null; when duplicate_table then null; end $$;
+
 
 do $$ begin
   alter table public.coupons
     add constraint coupons_discount_value_chk check (discount_value > 0);
-exception when duplicate_object then null; end $$;
+exception when duplicate_object then null; when duplicate_table then null; end $$;
+
 
 do $$ begin
   alter table public.coupons
     add constraint coupons_window_chk
     check (starts_at is null or ends_at is null or starts_at <= ends_at);
-exception when duplicate_object then null; end $$;
+exception when duplicate_object then null; when duplicate_table then null; end $$;
+
 
 do $$ begin
   alter table public.banners
     add constraint banners_window_chk
     check (starts_at is null or ends_at is null or starts_at <= ends_at);
-exception when duplicate_object then null; end $$;
+exception when duplicate_object then null; when duplicate_table then null; end $$;
+
 
 do $$ begin
   alter table public.inventory_movements
     add constraint inventory_movements_quantity_nonzero_chk
     check (quantity <> 0);
-exception when duplicate_object then null; end $$;
+exception when duplicate_object then null; when duplicate_table then null; end $$;
+
 
 -- -----------------------------------------------------------------------------
 -- 6) Uniqueness / business rules
@@ -207,7 +233,8 @@ exception when duplicate_object then null; end $$;
 do $$ begin
   alter table public.customers
     add constraint customers_email_key unique (email);
-exception when duplicate_object then null; end $$;
+exception when duplicate_object then null; when duplicate_table then null; end $$;
+
 
 create unique index if not exists addresses_one_default_per_customer_uidx
   on public.addresses (customer_id)
@@ -236,12 +263,14 @@ do $$ begin
     foreign key (order_id) references public.orders(id) on delete restrict;
 exception when others then null; end $$;
 
+
 do $$ begin
   alter table public.coupon_usage drop constraint if exists coupon_usage_coupon_id_fkey;
   alter table public.coupon_usage
     add constraint coupon_usage_coupon_id_fkey
     foreign key (coupon_id) references public.coupons(id) on delete restrict;
 exception when others then null; end $$;
+
 
 do $$ begin
   alter table public.inventory_movements drop constraint if exists inventory_movements_product_variant_id_fkey;
@@ -250,12 +279,14 @@ do $$ begin
     foreign key (product_variant_id) references public.product_variants(id) on delete restrict;
 exception when others then null; end $$;
 
+
 do $$ begin
   alter table public.order_items drop constraint if exists order_items_product_id_fkey;
   alter table public.order_items
     add constraint order_items_product_id_fkey
     foreign key (product_id) references public.products(id) on delete set null;
 exception when others then null; end $$;
+
 
 do $$ begin
   alter table public.order_items drop constraint if exists order_items_variant_id_fkey;
@@ -264,6 +295,7 @@ do $$ begin
     foreign key (variant_id) references public.product_variants(id) on delete set null;
 exception when others then null; end $$;
 
+
 do $$ begin
   alter table public.cart_items drop constraint if exists cart_items_product_id_fkey;
   alter table public.cart_items
@@ -271,12 +303,14 @@ do $$ begin
     foreign key (product_id) references public.products(id) on delete cascade;
 exception when others then null; end $$;
 
+
 do $$ begin
   alter table public.wishlist_items drop constraint if exists wishlist_items_product_id_fkey;
   alter table public.wishlist_items
     add constraint wishlist_items_product_id_fkey
     foreign key (product_id) references public.products(id) on delete cascade;
 exception when others then null; end $$;
+
 
 -- -----------------------------------------------------------------------------
 -- 8) Missing FK / lookup indexes

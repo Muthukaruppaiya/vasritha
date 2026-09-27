@@ -10,19 +10,23 @@ export type StickerItem = {
   price?: number | string;
   labelSize?: "accessory" | "dress";
   productName?: string;
-  categoryName?: string;
+  shortName?: string | null;
+  categoryName?: string | null;
   sku?: string | null;
   color?: string | null;
+  hsnCode?: string | null;
   compareAtPrice?: number | string | null;
 };
 
 export type StickerProductMeta = {
   brand?: string;
   productName?: string;
-  categoryName?: string;
+  shortName?: string | null;
+  categoryName?: string | null;
   sku?: string | null;
   color?: string | null;
   tag?: string | null;
+  hsnCode?: string | null;
   compareAtPrice?: number | string | null;
   shopCode?: string | null;
 };
@@ -109,11 +113,24 @@ function stickerHtml(input: {
   qrSrc: string;
 }) {
   const codes = splitUnitCode(input.item.unit_code);
-  const category = (input.item.categoryName || input.meta.categoryName || "APPAREL").toUpperCase();
-  const counter = (input.item.productName || input.meta.productName || category).toUpperCase();
-  const size = input.item.sizeLabel || input.item.color || input.meta.color || input.meta.tag || "—";
+  const category = (
+    input.item.categoryName ||
+    input.meta.categoryName ||
+    "APPAREL"
+  ).toUpperCase();
+  const shortName = (
+    input.item.shortName ||
+    input.meta.shortName ||
+    input.item.productName ||
+    input.meta.productName ||
+    category
+  ).toUpperCase();
+  const fullName = (input.item.productName || input.meta.productName || "").toUpperCase();
+  const color = input.item.color || input.meta.color || "";
+  const size = input.item.sizeLabel || color || "—";
   const ref = input.item.tag || input.item.sku || input.meta.sku || input.item.unit_code;
   const shop = input.meta.shopCode || "VAS";
+  const hsn = input.item.hsnCode || input.meta.hsnCode || "";
   const itemMrp =
     input.item.compareAtPrice != null &&
     Number(input.item.compareAtPrice) > Number(input.price.replace(/[^\d.]/g, ""))
@@ -130,12 +147,18 @@ function stickerHtml(input: {
         <div>${escapePrintHtml(codes.line1)}</div>
         ${codes.line2 ? `<div>${escapePrintHtml(codes.line2)}</div>` : ""}
         ${codes.line3 ? `<div>${escapePrintHtml(codes.line3)}</div>` : ""}
+        ${hsn ? `<div class="sale-tag-hsn">HSN ${escapePrintHtml(hsn)}</div>` : ""}
       </div>
       <div class="sale-tag-right">
         <div>C/</div>
         <div>${escapePrintHtml(shop)}</div>
         <div class="sale-tag-dept">${escapePrintHtml(category)}</div>
-        <div class="sale-tag-counter">${escapePrintHtml(counter)}</div>
+        <div class="sale-tag-counter">${escapePrintHtml(shortName)}</div>
+        ${
+          fullName && fullName !== shortName
+            ? `<div class="sale-tag-fullname">${escapePrintHtml(fullName)}</div>`
+            : ""
+        }
       </div>
     </div>
     <div class="sale-tag-mid">
@@ -144,6 +167,7 @@ function stickerHtml(input: {
         <div class="sale-tag-ref">${escapePrintHtml(ref)}</div>
         <div class="sale-tag-price">${escapePrintHtml(input.price)}</div>
         ${itemMrp ? `<div class="sale-tag-mrp">MRP ${escapePrintHtml(itemMrp)}</div>` : ""}
+        ${color ? `<div class="sale-tag-color">COLOUR ${escapePrintHtml(color)}</div>` : ""}
       </div>
     </div>
     <img class="sale-tag-barcode" src="${input.barcodeSrc}" alt="${escapePrintHtml(input.item.barcode)}" />
@@ -166,7 +190,7 @@ export async function printProductStickers(input: {
     throw new Error("No unique barcodes to print. Save stock first, or inward more pieces.");
   }
 
-  const brand = input.brand || input.meta?.brand || "VASRITHA FASHIONS";
+  const brand = input.brand || input.meta?.brand || "VASRITHA";
   const defaultPrice = formatPrice(input.price);
   const defaultSize = input.labelSize === "accessory" ? "accessory" : "dress";
   const meta = input.meta || {};
@@ -208,15 +232,15 @@ export async function printProductStickers(input: {
   }
 
   printDocument(
-    `<!doctype html><html><head><title>Sale tags</title>
+    `<!doctype html><html><head><title>Vasritha sale tags</title>
     <style>
       @page { margin: 4mm; size: auto; }
-      html, body { margin: 0; background: #fff; color: #000; }
+      html, body { margin: 0; background: #fff; color: #2c1a10; }
       body { font-family: Arial, Helvetica, sans-serif; }
       .sheet { display: flex; flex-wrap: wrap; gap: 4mm; padding: 3mm; }
       .sale-tag {
-        border: 1px solid #111;
-        border-radius: 4px;
+        border: 1px solid #422314;
+        border-radius: 3px;
         box-sizing: border-box;
         padding: 2.5mm 3mm 2mm;
         background: #fff;
@@ -232,15 +256,15 @@ export async function printProductStickers(input: {
         display: flex;
         align-items: center;
         gap: 2mm;
-        border-bottom: 1px solid #111;
+        border-bottom: 1px solid #c89b5c;
         padding-bottom: 1mm;
       }
       .sale-tag-mark {
         width: 7mm;
         height: 7mm;
         border-radius: 50%;
-        background: #1f5f2d;
-        color: #fff;
+        background: #422314;
+        color: #c89b5c;
         display: grid;
         place-items: center;
         font-weight: 800;
@@ -249,8 +273,8 @@ export async function printProductStickers(input: {
       .accessory .sale-tag-mark { width: 5mm; height: 5mm; font-size: 6px; }
       .sale-tag-brand strong {
         font-size: 9px;
-        letter-spacing: 0.04em;
-        color: #1f5f2d;
+        letter-spacing: 0.08em;
+        color: #422314;
         line-height: 1.1;
       }
       .accessory .sale-tag-brand strong { font-size: 7px; }
@@ -262,8 +286,10 @@ export async function printProductStickers(input: {
       }
       .sale-tag-left { font-weight: 700; }
       .sale-tag-right { text-align: right; }
-      .sale-tag-dept { font-weight: 800; margin-top: 0.5mm; }
+      .sale-tag-dept { font-weight: 800; margin-top: 0.5mm; color: #61351f; }
       .sale-tag-counter { font-size: 6px; font-weight: 700; }
+      .sale-tag-fullname { font-size: 5px; color: #806a5b; margin-top: 0.4mm; }
+      .sale-tag-hsn { font-size: 5px; color: #806a5b; margin-top: 0.4mm; }
       .accessory .sale-tag-counter { font-size: 5px; }
       .sale-tag-mid {
         display: grid;
@@ -274,17 +300,24 @@ export async function printProductStickers(input: {
       .sale-tag-qr { width: 16mm; height: 16mm; object-fit: contain; }
       .accessory .sale-tag-qr { width: 11mm; height: 11mm; }
       .sale-tag-price-block { text-align: center; }
-      .sale-tag-ref { font-size: 6px; margin-bottom: 0.5mm; }
+      .sale-tag-ref { font-size: 6px; margin-bottom: 0.5mm; letter-spacing: 0.04em; }
       .sale-tag-price {
         font-size: 13px;
         font-weight: 800;
         letter-spacing: 0.02em;
+        color: #422314;
       }
       .accessory .sale-tag-price { font-size: 10px; }
       .sale-tag-mrp {
         font-size: 6px;
         text-decoration: line-through;
-        color: #444;
+        color: #806a5b;
+      }
+      .sale-tag-color {
+        font-size: 5.5px;
+        font-weight: 700;
+        margin-top: 0.4mm;
+        color: #61351f;
       }
       .sale-tag-barcode {
         width: 100%;
@@ -298,6 +331,8 @@ export async function printProductStickers(input: {
         align-items: end;
         font-size: 6px;
         font-weight: 700;
+        border-top: 1px solid #e7d8c9;
+        padding-top: 1mm;
       }
       .accessory .sale-tag-foot { font-size: 5px; }
       .sale-tag-barcode-num { letter-spacing: 0.04em; }

@@ -49,6 +49,7 @@ export type ProductFormValues = {
   color: string;
   description: string;
   is_featured: boolean;
+  restock_expected: boolean;
 };
 
 export type ProductParentOption = {
@@ -284,10 +285,12 @@ export function ProductFormModal({
       const subcategory = category?.subcategories?.find((s) => s.id === form.subcategory_id);
       const stickerMeta = {
         productName: form.name,
+        shortName: form.short_name || undefined,
         categoryName: subcategory?.name || category?.name,
         sku: form.sku,
         color: form.color,
         tag: form.tag,
+        hsnCode: form.hsn_code || undefined,
         compareAtPrice: form.compare_at_price
       };
 
@@ -401,7 +404,8 @@ export function ProductFormModal({
       color: form.color.trim(),
       short_description: form.short_description.trim(),
       description: form.description.trim(),
-      is_featured: Boolean(form.is_featured)
+      is_featured: Boolean(form.is_featured),
+      restock_expected: Boolean(form.restock_expected)
     };
 
     try {
@@ -815,6 +819,21 @@ export function ProductFormModal({
               </small>
             </label>
 
+            <label className="admin-span-2 admin-check-field">
+              <span className="admin-check-row">
+                <input
+                  type="checkbox"
+                  checked={Boolean(form.restock_expected)}
+                  onChange={(e) => setForm((f) => ({ ...f, restock_expected: e.target.checked }))}
+                />
+                <span>Coming soon / restock expected</span>
+              </span>
+              <small className="admin-field-hint">
+                Keep this product visible on the website with “Coming soon” when stock is zero. Stock
+                can increase later via GRN.
+              </small>
+            </label>
+
             <label className="admin-span-2">
               <span>Short description</span>
               <textarea
@@ -1141,6 +1160,7 @@ export function blankProductForm(categoryId = ""): ProductFormValues {
     short_description: "",
     color: "",
     description: "",
-    is_featured: false
+    is_featured: false,
+    restock_expected: false
   };
 }

@@ -59,6 +59,9 @@ type ShippingAddress = {
 };
 
 type OrderDetail = Order & {
+  courier_name?: string | null;
+  courier_awb?: string | null;
+  courier_note?: string | null;
   shipping_address: ShippingAddress | null;
   seller?: {
     legal_name?: string | null;
@@ -790,8 +793,17 @@ export default function AdminOrdersPage() {
                       status: selected.status,
                       total_amount: selected.total_amount,
                       item_count: itemCount,
+                      items: selected.items.map((item) => ({
+                        product_name: item.product_name,
+                        variant_name: item.variant_name,
+                        sku: item.sku,
+                        quantity: item.quantity
+                      })),
                       shipping_address: selected.shipping_address,
-                      seller: selected.seller
+                      seller: selected.seller,
+                      courier_name: selected.courier_name,
+                      courier_awb: selected.courier_awb,
+                      courier_note: selected.courier_note
                     }}
                     id="online-courier-print"
                   />
@@ -800,6 +812,66 @@ export default function AdminOrdersPage() {
             </div>
 
             <footer className="orders-modal-foot">
+              {deskTab === "courier" ? (
+                <div className="orders-courier-fields admin-form-grid" style={{ marginBottom: 12 }}>
+                  <label>
+                    <span>Courier name</span>
+                    <input
+                      value={selected.courier_name || ""}
+                      onChange={(e) =>
+                        setSelected((prev) =>
+                          prev ? { ...prev, courier_name: e.target.value } : prev
+                        )
+                      }
+                      placeholder="e.g. Delhivery / BlueDart"
+                    />
+                  </label>
+                  <label>
+                    <span>AWB / tracking no.</span>
+                    <input
+                      value={selected.courier_awb || ""}
+                      onChange={(e) =>
+                        setSelected((prev) =>
+                          prev ? { ...prev, courier_awb: e.target.value } : prev
+                        )
+                      }
+                      placeholder="Tracking number"
+                    />
+                  </label>
+                  <label className="grn-span-2">
+                    <span>Courier note / description</span>
+                    <input
+                      value={selected.courier_note || ""}
+                      onChange={(e) =>
+                        setSelected((prev) =>
+                          prev ? { ...prev, courier_note: e.target.value } : prev
+                        )
+                      }
+                      placeholder="Handle with care / fragile / etc."
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="btn admin-ghost-btn"
+                    onClick={() =>
+                      void adminFetch("/api/admin/orders", {
+                        method: "PATCH",
+                        json: {
+                          orderId: selected.id,
+                          courier_name: selected.courier_name || null,
+                          courier_awb: selected.courier_awb || null,
+                          courier_note: selected.courier_note || null
+                        }
+                      }).then((result) => {
+                        if (result.error) setDetailError(result.error);
+                        else setStatusMessage("Courier details saved.");
+                      })
+                    }
+                  >
+                    Save courier details
+                  </button>
+                </div>
+              ) : null}
               <div className="orders-print-bar orders-print-bar--row">
                 <button type="button" className="btn" onClick={() => printSlips("invoice")}>
                   <Printer size={14} />
@@ -837,8 +909,17 @@ export default function AdminOrdersPage() {
                   status: selected.status,
                   total_amount: selected.total_amount,
                   item_count: itemCount,
+                  items: selected.items.map((item) => ({
+                    product_name: item.product_name,
+                    variant_name: item.variant_name,
+                    sku: item.sku,
+                    quantity: item.quantity
+                  })),
                   shipping_address: selected.shipping_address,
-                  seller: selected.seller
+                  seller: selected.seller,
+                  courier_name: selected.courier_name,
+                  courier_awb: selected.courier_awb,
+                  courier_note: selected.courier_note
                 }}
                 id="online-courier-print-stack"
               />

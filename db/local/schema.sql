@@ -1,5 +1,7 @@
 -- Vasritha local PostgreSQL schema (temporary — not Supabase)
--- After create, apply integrity upgrade: db/local/optimize_v1.sql (npm run db:optimize)
+-- After create, apply integrity upgrades:
+--   npm run db:optimize
+--   (db/local/optimize_v1.sql + db/local/optimize_v2.sql)
 -- Relationship walkthrough for DBA review: docs/DATABASE.md
 create extension if not exists pgcrypto;
 
@@ -143,6 +145,7 @@ create table if not exists public.products (
   stock_quantity integer not null default 0 check (stock_quantity >= 0),
   is_featured boolean not null default false,
   featured_order integer not null default 0,
+  restock_expected boolean not null default false,
   parent_product_id uuid references public.products(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -274,6 +277,9 @@ create table if not exists public.orders (
   pos_customer_name text,
   pos_customer_phone text,
   pos_customer_email text,
+  courier_name text,
+  courier_awb text,
+  courier_note text,
   created_at timestamptz not null default now()
 );
 
@@ -648,4 +654,77 @@ create index if not exists orders_status_created_idx on public.orders (status, c
 create index if not exists menu_items_menu_id_idx on public.menu_items (menu_id);
 create index if not exists banners_active_sort_idx on public.banners (is_active, sort_order);
 create index if not exists page_sections_page_active_idx on public.page_sections (page_slug, is_active, sort_order);
+
+-- ---------------------------------------------------------------------------
+-- Purchase / GRN / auth extensions (kept in baseline so fresh installs match prod)
+-- Full integrity (FKs, comments, stock repair) is applied by optimize_v1 + optimize_v2.
+-- ---------------------------------------------------------------------------
+alter table public.categories
+  add column if not exists is_published boolean not null default true,
+  add column if not exists shipping_charge numeric(12,2) not null default 0,
+  add column if not exists shipping_is_free boolean not null default false,
+  add column if not exists shipping_rate_active boolean not null default false;
+
+create table if not exists public.suppliers (
+  id uuid primary key default gen_random_uuid(),
+  code text not null,
+  name text not null,
+  trade_name text,
+  contact_person text,
+  phone text,
+  email text,
+  address text,
+  city text,
+  state text,
+  state_code text,
+  pincode text,
+  gstin text,
+  pan text,
+  bank_name text,
+  bank_account text,
+  bank_ifsc text,
+  payment_terms text,
+  notes text,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.inventory_grns (
+  id uuid primary key default gen_random_uuid(),
+  grn_number text not null unique,
+  status text not null default 'pending_approval'
+    check (status in ('pending_approval', 'approved', 'cancelled')),
+  supplier_id uuid references public.suppliers(id),
+  bill_no text,
+  invoice_date date,
+  document_path text,
+  invoice_amount numeric(12,2),
+  lines_total numeric(12,2) not null default 0,
+  note text,
+  created_by uuid references public.users(id),
+  approved_by uuid references public.users(id),
+  approved_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.inventory_grn_lines (
+  id uuid primary key default gen_random_uuid(),
+  grn_id uuid not null references public.inventory_grns(id) on delete cascade,
+  product_variant_id uuid not null references public.product_variants(id),
+  quantity integer not null check (quantity > 0),
+  purchase_price numeric(12,2) not null check (purchase_price >= 0),
+  line_total numeric(12,2) not null check (line_total >= 0),
+  sort_order integer not null default 0
+);
+
+create table if not exists public.password_reset_tokens (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.users(id) on delete cascade,
+  token_hash text not null unique,
+  expires_at timestamptz not null,
+  used_at timestamptz,
+  created_at timestamptz not null default now()
+);
 

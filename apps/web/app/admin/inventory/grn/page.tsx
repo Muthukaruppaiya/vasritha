@@ -23,6 +23,7 @@ import {
 } from "../../../../components/admin/admin-ui";
 import {
   adminFetch,
+  adminUpload,
   formatDate,
   formatMoney,
   getAdminUser
@@ -72,6 +73,8 @@ type PendingGrn = {
   supplier_code: string | null;
   bill_no: string | null;
   invoice_amount: string | number | null;
+  invoice_date?: string | null;
+  document_path?: string | null;
   lines_total: string | number;
   line_count: number;
   created_at: string;
@@ -114,6 +117,7 @@ function GrnPageInner() {
   const [bulkSummary, setBulkSummary] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<"pending_approval" | "all">("pending_approval");
   const [supplierFilter, setSupplierFilter] = useState("");
+  const [docUploading, setDocUploading] = useState(false);
 
   const listUrl = useMemo(() => {
     const params = new URLSearchParams();
@@ -196,6 +200,28 @@ function GrnPageInner() {
     const lines = [...inward.lines];
     lines[index] = { ...lines[index], ...patch };
     persistDraft({ ...inward, lines });
+  };
+
+  const onInvoiceDocument = async (file: File | null) => {
+    if (!file) {
+      persistDraft({ ...inward, documentPath: "", documentName: "" });
+      return;
+    }
+    setDocUploading(true);
+    setFormError("");
+    const form = new FormData();
+    form.append("file", file);
+    const result = await adminUpload<{ path: string }>("/api/admin/inventory/grn/document", form);
+    setDocUploading(false);
+    if (result.error || !result.data?.path) {
+      setFormError(result.error || "Could not upload invoice document");
+      return;
+    }
+    persistDraft({
+      ...inward,
+      documentPath: result.data.path,
+      documentName: file.name
+    });
   };
 
   const toggleSelect = (id: string) => {
@@ -329,6 +355,8 @@ function GrnPageInner() {
         billNo: inward.billNo || undefined,
         note: inward.note || undefined,
         invoiceAmount,
+        invoiceDate: inward.invoiceDate || undefined,
+        documentPath: inward.documentPath || undefined,
         approveNow: approveNow || undefined,
         lines: inward.lines.map((line) => ({
           productVariantId: line.productVariantId,
@@ -493,6 +521,8 @@ function GrnPageInner() {
                   <th>GRN</th>
                   <th>Supplier</th>
                   <th>Bill</th>
+                  <th>Invoice date</th>
+                  <th>Doc</th>
                   <th>Lines</th>
                   <th>Invoice</th>
                   <th>Status</th>
@@ -525,6 +555,16 @@ function GrnPageInner() {
                         ) : null}
                       </td>
                       <td>{row.bill_no || "—"}</td>
+                      <td>{row.invoice_date ? formatDate(row.invoice_date) : "—"}</td>
+                      <td>
+                        {row.document_path ? (
+                          <a href={row.document_path} target="_blank" rel="noreferrer">
+                            View
+                          </a>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
                       <td>{row.line_count}</td>
                       <td>{formatMoney(row.invoice_amount)}</td>
                       <td>
@@ -601,6 +641,14 @@ function GrnPageInner() {
               />
             </label>
             <label>
+              <span>Invoice date</span>
+              <input
+                type="date"
+                value={inward.invoiceDate}
+                onChange={(e) => persistDraft({ ...inward, invoiceDate: e.target.value })}
+              />
+            </label>
+            <label>
               <span>Invoice amount (₹) *</span>
               <input
                 required
@@ -615,6 +663,31 @@ function GrnPageInner() {
             <label>
               <span>Lines total (auto)</span>
               <input readOnly value={formatMoney(linesTotal)} />
+            </label>
+            <label className="grn-span-2">
+              <span>Invoice document (PDF / image)</span>
+              <input
+                type="file"
+                accept="application/pdf,image/jpeg,image/png,image/webp"
+                disabled={docUploading}
+                onChange={(e) => void onInvoiceDocument(e.target.files?.[0] || null)}
+              />
+              <small className="admin-field-hint">
+                {docUploading
+                  ? "Uploading…"
+                  : inward.documentPath
+                    ? `Attached: ${inward.documentName || inward.documentPath}`
+                    : "Optional scan or PDF of the supplier invoice."}
+              </small>
+              {inward.documentPath ? (
+                <button
+                  type="button"
+                  className="btn admin-ghost-btn"
+                  onClick={() => persistDraft({ ...inward, documentPath: "", documentName: "" })}
+                >
+                  Remove document
+                </button>
+              ) : null}
             </label>
             <label>
               <span>Note</span>

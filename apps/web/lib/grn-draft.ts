@@ -12,6 +12,9 @@ export type GrnDraft = {
   supplier: string;
   billNo: string;
   invoiceAmount: string;
+  invoiceDate: string;
+  documentPath: string;
+  documentName: string;
   note: string;
   lines: GrnDraftLine[];
   /** Which line index to fill after creating a product */
@@ -27,6 +30,9 @@ export function blankGrnDraft(variantId = ""): GrnDraft {
     supplier: "",
     billNo: "",
     invoiceAmount: "",
+    invoiceDate: "",
+    documentPath: "",
+    documentName: "",
     note: "",
     lines: [{ productVariantId: variantId, quantity: "1", purchasePrice: "" }],
     focusLineIndex: 0,
@@ -55,6 +61,9 @@ export function loadGrnDraft(): GrnDraft | null {
       supplier: String(parsed.supplier || ""),
       billNo: String(parsed.billNo || ""),
       invoiceAmount: String(parsed.invoiceAmount || ""),
+      invoiceDate: String((parsed as GrnDraft).invoiceDate || ""),
+      documentPath: String((parsed as GrnDraft).documentPath || ""),
+      documentName: String((parsed as GrnDraft).documentName || ""),
       note: String(parsed.note || ""),
       focusLineIndex: Number.isFinite(parsed.focusLineIndex) ? Number(parsed.focusLineIndex) : 0,
       savedAt: parsed.savedAt || new Date().toISOString(),

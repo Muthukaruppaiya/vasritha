@@ -29,6 +29,8 @@ export async function POST(request: NextRequest) {
     billNo?: string;
     note?: string;
     invoiceAmount?: number;
+    invoiceDate?: string;
+    documentPath?: string;
     approveNow?: boolean;
     lines?: Array<{ productVariantId?: string; quantity?: number; purchasePrice?: number }>;
   } | null;

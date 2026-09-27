@@ -394,7 +394,10 @@ function AdminProductsPageInner() {
       short_description: product.short_description || "",
       color: product.color || "",
       description: product.description || "",
-      is_featured: Boolean(product.is_featured)
+      is_featured: Boolean(product.is_featured),
+      restock_expected: Boolean(
+        (product as { restock_expected?: boolean }).restock_expected
+      )
     });
     setFormImages(
       (product.product_images || []).map((image) => ({

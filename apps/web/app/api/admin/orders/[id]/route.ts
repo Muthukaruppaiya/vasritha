@@ -8,6 +8,7 @@ import {
   stateCodeFromGstin,
   summariseInclusiveLines
 } from "../../../../../lib/gst";
+import { ensureOrderCourierSchema } from "../../../../../lib/order-courier";
 
 export async function GET(
   request: NextRequest,
@@ -22,6 +23,7 @@ export async function GET(
   if (error) return error;
 
   await ensureGstSchema();
+  await ensureOrderCourierSchema();
 
   const { id } = await context.params;
   const order = await queryOne<{
@@ -42,12 +44,16 @@ export async function GET(
     customer_name: string | null;
     customer_email: string | null;
     customer_phone: string | null;
+    courier_name: string | null;
+    courier_awb: string | null;
+    courier_note: string | null;
   }>(
     `select o.id, o.order_number, o.customer_id, o.shipping_address_id,
             o.status, o.payment_status, o.subtotal,
             coalesce(o.discount_amount, 0) as discount_amount,
             o.tax_amount, o.shipping_amount, o.total_amount,
             coalesce(o.channel, 'online') as channel, o.shop_id, o.created_at,
+            o.courier_name, o.courier_awb, o.courier_note,
             coalesce(nullif(o.pos_customer_name, ''), c.full_name) as customer_name,
             coalesce(nullif(o.pos_customer_email, ''), c.email) as customer_email,
             coalesce(nullif(o.pos_customer_phone, ''), c.phone) as customer_phone

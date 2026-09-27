@@ -44,9 +44,11 @@ export async function GET(request: NextRequest) {
     label_printed: boolean;
     product_id: string;
     product_name: string;
+    short_name: string | null;
     sku: string | null;
     price: string;
     color: string | null;
+    hsn_code: string | null;
     label_size: "accessory" | "dress" | null;
     compare_at_price: string | null;
     category_name: string | null;
@@ -61,9 +63,11 @@ export async function GET(request: NextRequest) {
        i.label_printed,
        p.id as product_id,
        p.name as product_name,
+       p.short_name,
        p.sku,
        p.price::text as price,
        p.color,
+       p.hsn_code,
        p.label_size::text as label_size,
        p.compare_at_price::text as compare_at_price,
        c.name as category_name,

@@ -76,3 +76,42 @@ export async function saveUploadedMedia(input: {
     mediaType: isVideo ? ("video" as const) : ("image" as const)
   } as const;
 }
+
+export async function saveUploadedDocument(input: {
+  folder: string;
+  file: File;
+  maxBytes?: number;
+}) {
+  const allowed = new Set([
+    "application/pdf",
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/webp"
+  ]);
+  if (!allowed.has(input.file.type)) {
+    return {
+      error: `Unsupported file type: ${input.file.type || "unknown"} (use PDF, JPG, PNG, or WebP)`
+    } as const;
+  }
+  const max = input.maxBytes ?? 8 * 1024 * 1024;
+  if (input.file.size > max) {
+    return { error: "Document must be 8MB or smaller" } as const;
+  }
+
+  const bytes = Buffer.from(await input.file.arrayBuffer());
+  const ext =
+    input.file.type === "application/pdf"
+      ? "pdf"
+      : input.file.type === "image/png"
+        ? "png"
+        : input.file.type === "image/webp"
+          ? "webp"
+          : "jpg";
+
+  const dir = path.join(process.cwd(), "public", "uploads", input.folder);
+  await mkdir(dir, { recursive: true });
+  const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  await writeFile(path.join(dir, filename), bytes);
+  return { path: `/uploads/${input.folder}/${filename}` } as const;
+}

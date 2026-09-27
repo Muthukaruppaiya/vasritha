@@ -33,9 +33,11 @@ type BarcodeItem = {
   label_printed: boolean;
   product_id: string;
   product_name: string;
+  short_name?: string | null;
   sku: string | null;
   price: string;
   color: string | null;
+  hsn_code?: string | null;
   label_size: "accessory" | "dress" | null;
   compare_at_price: string | null;
   category_name: string | null;
@@ -115,10 +117,12 @@ function BarcodesPageInner() {
           price: first.price,
           meta: {
             productName: first.product_name,
+            shortName: first.short_name || undefined,
             categoryName: first.category_name || undefined,
             sku: first.sku,
             color: first.color,
             tag: first.tag,
+            hsnCode: first.hsn_code || undefined,
             compareAtPrice: first.compare_at_price
           },
           items: group.map((item) => ({
@@ -131,9 +135,11 @@ function BarcodesPageInner() {
             sizeLabel: item.color,
             labelSize: first.label_size === "accessory" ? "accessory" : "dress",
             productName: item.product_name,
-            categoryName: item.category_name,
+            shortName: item.short_name || undefined,
+            categoryName: item.category_name || undefined,
             sku: item.sku,
             color: item.color,
+            hsnCode: item.hsn_code || undefined,
             compareAtPrice: item.compare_at_price
           }))
         });

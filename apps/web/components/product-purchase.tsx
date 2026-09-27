@@ -23,11 +23,16 @@ export function ProductPurchase({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const showSizePicker = product.sizes.length > 1;
+  const comingSoon = Boolean(product.restockExpected && product.stock_quantity <= 0);
 
   const selectedVariant =
     product.variants.find((variant) => variant.name === size) || product.variants[0] || null;
 
   const reserveAndGoToCart = async () => {
+    if (comingSoon) {
+      setError("This piece is coming soon — stock can increase when new arrivals land.");
+      return false;
+    }
     setBusy(true);
     setError("");
     const result = await addToCart({
@@ -95,26 +100,37 @@ export function ProductPurchase({
       )}
 
       <div className="product-detail-actions">
-        <button
-          type="button"
-          className="btn product-detail-buy"
-          onClick={() => void onBuyNow()}
-          disabled={busy}
-        >
-          {busy ? "Reserving…" : t("common.buyNow")}
-        </button>
-        <button
-          type="button"
-          className="btn product-detail-cta"
-          onClick={() => void onAddToBag()}
-          disabled={busy}
-        >
-          {busy ? "Reserving…" : added ? t("common.addedToBag") : t("common.addToBag")}
-        </button>
-        {added && (
-          <button type="button" className="product-detail-secondary" onClick={() => router.push("/cart")}>
-            {t("common.viewBag")}
-          </button>
+        {comingSoon ? (
+          <div className="product-coming-soon" role="status">
+            <strong>Coming soon</strong>
+            <p className="muted">
+              This piece is not available to buy yet. Stock can increase when new inventory arrives.
+            </p>
+          </div>
+        ) : (
+          <>
+            <button
+              type="button"
+              className="btn product-detail-buy"
+              onClick={() => void onBuyNow()}
+              disabled={busy}
+            >
+              {busy ? "Reserving…" : t("common.buyNow")}
+            </button>
+            <button
+              type="button"
+              className="btn product-detail-cta"
+              onClick={() => void onAddToBag()}
+              disabled={busy}
+            >
+              {busy ? "Reserving…" : added ? t("common.addedToBag") : t("common.addToBag")}
+            </button>
+            {added && (
+              <button type="button" className="product-detail-secondary" onClick={() => router.push("/cart")}>
+                {t("common.viewBag")}
+              </button>
+            )}
+          </>
         )}
         {!added && (
           <Link href={`/${product.category}`} className="product-detail-secondary">
@@ -123,9 +139,11 @@ export function ProductPurchase({
         )}
       </div>
       {error ? <p className="product-purchase-error">{error}</p> : null}
-      <p className="product-hold-hint muted">
-        Bag hold: stock is reserved for 30 minutes after you add an item.
-      </p>
+      {!comingSoon ? (
+        <p className="product-hold-hint muted">
+          Bag hold: stock is reserved for 30 minutes after you add an item.
+        </p>
+      ) : null}
     </div>
   );
 }
