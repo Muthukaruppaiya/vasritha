@@ -6095,12 +6095,8 @@ a.account-tile:hover .account-tile-chevron { transform:translateX(3px); }
     flex:0 0 min(68vw, 240px);
     aspect-ratio:5 / 4;
   }
-}
   .card--listing .card-body { padding:10px 4px 6px; }
   .card--listing .picture { border-radius:4px; }
-  .listing-more { margin-top:52px; padding-top:28px; }
-  .listing-more-grid { grid-template-columns:1fr 1fr; gap:10px; }
-  .listing-more-grid > :last-child:nth-child(odd) { grid-column:1 / -1; }
 }
 
 .collections-page {
