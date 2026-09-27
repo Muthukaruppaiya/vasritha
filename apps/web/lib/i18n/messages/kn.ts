@@ -153,7 +153,17 @@ export const kn: Messages = {
     moreFromEdit: "ಈ ಎಡಿಟ್‌ನಿಂದ ಇನ್ನಷ್ಟು",
     perkSelected: "ವಸ್ರಿತಾದಿಂದ ಕೈಯಿಂದ ಆಯ್ಕೆ",
     perkShipping: "ಭಾರತದಾದ್ಯಂತ ಉಚಿತ ಶಿಪ್ಪಿಂಗ್",
-    perkPacking: "ಉಡುಗೊರೆಗಾಗಿ ಯೋಚನಾಶೀಲ ಪ್ಯಾಕಿಂಗ್"
+    perkPacking: "ಉಡುಗೊರೆಗಾಗಿ ಯೋಚನಾಶೀಲ ಪ್ಯಾಕಿಂಗ್",
+    savePercent: "{pct}% ಉಳಿತಾಯ",
+    youSave: "ನೀವು ಉಳಿಸುವುದು {amount}",
+    limitedPieces: "ಕೆಲವೇ ಉಳಿದಿವೆ",
+    comingSoon: "ಶೀಘ್ರದಲ್ಲೇ",
+    uniquePiece: "ಪ್ರತಿ ಬಾರ್‌ಕೋಡ್ ವಿಶಿಷ್ಟ",
+    details: "ಈ ತುಂಡು",
+    careShipping: "ಶಿಪ್ಪಿಂಗ್ & ಎಕ್ಸ್‌ಚೇಂಜ್",
+    securePay: "ಸುರಕ್ಷಿತ ಚೆಕ್‌ಔಟ್",
+    giftReady: "ಗಿಫ್ಟ್‌ಗೆ ಸಿದ್ಧ",
+    detailsFallback: "ವಸ್ರಿತಾಗಾಗಿ ಆಯ್ಕೆಯಾದ ಬೂಟೀಕ್ ಪೀಸ್."
   },
   bag: {
     eyebrow: "ನಿಮ್ಮ ಬ್ಯಾಗ್",

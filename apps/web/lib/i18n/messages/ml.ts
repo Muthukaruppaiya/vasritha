@@ -153,7 +153,17 @@ export const ml: Messages = {
     moreFromEdit: "ഈ എഡിറ്റിൽ നിന്ന് കൂടുതൽ",
     perkSelected: "വസ്രിത കൈകൊണ്ട് തിരഞ്ഞെടുത്തത്",
     perkShipping: "ഇന്ത്യയിലുടനീളം സൗജന്യ ഷിപ്പിംഗ്",
-    perkPacking: "സമ്മാനത്തിന് ശ്രദ്ധയോടെയുള്ള പാക്കിംഗ്"
+    perkPacking: "സമ്മാനത്തിന് ശ്രദ്ധയോടെയുള്ള പാക്കിംഗ്",
+    savePercent: "{pct}% ലാഭം",
+    youSave: "നിങ്ങൾ ലാഭിക്കുന്നത് {amount}",
+    limitedPieces: "കുറച്ച് മാത്രം ബാക്കി",
+    comingSoon: "ഉടൻ വരുന്നു",
+    uniquePiece: "ഓരോ ബാർകോഡും യുണീക്ക്",
+    details: "ഈ കഷണം",
+    careShipping: "ഷിപ്പിംഗ് & എക്സ്ചേഞ്ച്",
+    securePay: "സുരക്ഷിത ചെക്കൗട്ട്",
+    giftReady: "ഗിഫ്റ്റിന് തയ്യാർ",
+    detailsFallback: "വസ്രിതയ്ക്കായി തിരഞ്ഞെടുത്ത ബുടീക്ക് പീസ്."
   },
   bag: {
     eyebrow: "നിങ്ങളുടെ ബാഗ്",

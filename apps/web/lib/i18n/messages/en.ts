@@ -150,6 +150,16 @@ export type Messages = {
     perkSelected: string;
     perkShipping: string;
     perkPacking: string;
+    savePercent: string;
+    youSave: string;
+    limitedPieces: string;
+    comingSoon: string;
+    uniquePiece: string;
+    details: string;
+    careShipping: string;
+    securePay: string;
+    giftReady: string;
+    detailsFallback: string;
   };
   bag: {
     eyebrow: string;
@@ -402,7 +412,17 @@ export const en: Messages = {
     moreFromEdit: "More from this edit",
     perkSelected: "Hand-selected by Vasritha",
     perkShipping: "Complimentary shipping across India",
-    perkPacking: "Thoughtful packing for gifting"
+    perkPacking: "Thoughtful packing for gifting",
+    savePercent: "Save {pct}%",
+    youSave: "You save {amount}",
+    limitedPieces: "Few pieces left",
+    comingSoon: "Coming soon",
+    uniquePiece: "Each barcode is unique — one piece at a time",
+    details: "The piece",
+    careShipping: "Shipping & exchange",
+    securePay: "Secure checkout on every order",
+    giftReady: "Ready for festive gifting",
+    detailsFallback: "A boutique piece curated for Vasritha — ask us for weave, finish, or pairing notes."
   },
   bag: {
     eyebrow: "Your bag",

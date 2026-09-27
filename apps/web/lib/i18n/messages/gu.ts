@@ -152,7 +152,17 @@ export const gu: Messages = {
     moreFromEdit: "આ એડિટમાંથી વધુ",
     perkSelected: "વસ્રિથા દ્વારા પસંદ",
     perkShipping: "ભારતમાં મફત શિપિંગ",
-    perkPacking: "ભેટ માટે સુંદર પેકિંગ"
+    perkPacking: "ભેટ માટે સુંદર પેકિંગ",
+    savePercent: "{pct}% બચત",
+    youSave: "તમે બચાવો છો {amount}",
+    limitedPieces: "થોડા જ બાકી",
+    comingSoon: "ટૂંક સમયમાં",
+    uniquePiece: "દરેક બારકોડ અનોખો",
+    details: "આ પીસ",
+    careShipping: "શિપિંગ અને એક્સચેન્જ",
+    securePay: "સુરક્ષિત ચેકઆઉટ",
+    giftReady: "ભેટ માટે તૈયાર",
+    detailsFallback: "વસ્રિથા માટે પસંદ કરેલ બુટિક પીસ."
   },
   bag: {
     eyebrow: "તમારી બેગ",

@@ -10,10 +10,12 @@ import { localizeSize } from "../lib/i18n/catalog-local";
 
 export function ProductPurchase({
   product,
-  categoryLabel
+  categoryLabel,
+  stickyMobile = false
 }: {
   product: StoreProduct;
   categoryLabel: string;
+  stickyMobile?: boolean;
 }) {
   const t = useT();
   const { locale } = useLocale();
@@ -69,8 +71,8 @@ export function ProductPurchase({
     router.push("/cart");
   };
 
-  return (
-    <div className="product-purchase">
+  const actions = (
+    <>
       {showSizePicker ? (
         <div className="product-size">
           <div className="product-size-head">
@@ -102,7 +104,7 @@ export function ProductPurchase({
       <div className="product-detail-actions">
         {comingSoon ? (
           <div className="product-coming-soon" role="status">
-            <strong>Coming soon</strong>
+            <strong>{t("product.comingSoon")}</strong>
             <p className="muted">
               This piece is not available to buy yet. Stock can increase when new inventory arrives.
             </p>
@@ -143,6 +145,36 @@ export function ProductPurchase({
         <p className="product-hold-hint muted">
           Bag hold: stock is reserved for 30 minutes after you add an item.
         </p>
+      ) : null}
+    </>
+  );
+
+  return (
+    <div className="product-purchase">
+      {actions}
+      {stickyMobile && !comingSoon ? (
+        <div className="product-sticky-cta" aria-label="Quick purchase">
+          <div className="product-sticky-cta-price">
+            <span>{product.price}</span>
+            {product.compareAtPrice ? <s>{product.compareAtPrice}</s> : null}
+          </div>
+          <button
+            type="button"
+            className="btn product-detail-buy"
+            onClick={() => void onBuyNow()}
+            disabled={busy}
+          >
+            {busy ? "…" : t("common.buyNow")}
+          </button>
+          <button
+            type="button"
+            className="btn product-detail-cta"
+            onClick={() => void onAddToBag()}
+            disabled={busy}
+          >
+            {busy ? "…" : added ? t("common.addedToBag") : t("common.addToBag")}
+          </button>
+        </div>
       ) : null}
     </div>
   );

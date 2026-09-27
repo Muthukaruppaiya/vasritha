@@ -152,7 +152,17 @@ export const pa: Messages = {
     moreFromEdit: "ਇਸ ਐਡਿਟ ਤੋਂ ਹੋਰ",
     perkSelected: "ਵਸਰਿਥਾ ਵੱਲੋਂ ਚੁਣਿਆ",
     perkShipping: "ਭਾਰਤ ਵਿੱਚ ਮੁਫ਼ਤ ਸ਼ਿਪਿੰਗ",
-    perkPacking: "ਤੋਹਫ਼ੇ ਲਈ ਸੋਹਣੀ ਪੈਕਿੰਗ"
+    perkPacking: "ਤੋਹਫ਼ੇ ਲਈ ਸੋਹਣੀ ਪੈਕਿੰਗ",
+    savePercent: "{pct}% ਬਚਤ",
+    youSave: "ਤੁਸੀਂ ਬਚਾਉਂਦੇ ਹੋ {amount}",
+    limitedPieces: "ਕੁਝ ਹੀ ਬਾਕੀ",
+    comingSoon: "ਜਲਦੀ ਆ ਰਿਹਾ",
+    uniquePiece: "ਹਰ ਬਾਰਕੋਡ ਵਿਲੱਖਣ",
+    details: "ਇਹ ਪੀਸ",
+    careShipping: "ਸ਼ਿਪਿੰਗ ਅਤੇ ਐਕਸਚੇਂਜ",
+    securePay: "ਸੁਰੱਖਿਤ ਚੈੱਕਆਉਟ",
+    giftReady: "ਤੋਹਫ਼ੇ ਲਈ ਤਿਆਰ",
+    detailsFallback: "ਵਸਰਿਥਾ ਲਈ ਚੁਣਿਆ ਬੂਟੀਕ ਪੀਸ।"
   },
   bag: {
     eyebrow: "ਤੁਹਾਡਾ ਬੈਗ",

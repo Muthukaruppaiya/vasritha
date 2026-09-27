@@ -153,7 +153,17 @@ export const hi: Messages = {
     moreFromEdit: "इस एडिट से और",
     perkSelected: "वस्रिता द्वारा चुना गया",
     perkShipping: "भारत में मुफ्त शिपिंग",
-    perkPacking: "गिफ्ट के लिए सुंदर पैकिंग"
+    perkPacking: "गिफ्ट के लिए सुंदर पैकिंग",
+    savePercent: "{pct}% बचत",
+    youSave: "आप बचाते हैं {amount}",
+    limitedPieces: "कुछ ही टुकड़े बचे",
+    comingSoon: "जल्दी आ रहा है",
+    uniquePiece: "हर बारकोड अनोखा है",
+    details: "यह पीस",
+    careShipping: "शिपिंग और एक्सचेंज",
+    securePay: "सुरक्षित चेकआउट",
+    giftReady: "गिफ्ट के लिए तैयार",
+    detailsFallback: "वस्रिता के लिए चुना गया बुटीक पीस।"
   },
   bag: {
     eyebrow: "आपका बैग",

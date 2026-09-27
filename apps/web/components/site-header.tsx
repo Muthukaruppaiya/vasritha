@@ -44,6 +44,15 @@ export function Header({
   const [appliedCode, setAppliedCode] = useState<string | null>(null);
   const [voucherPulse, setVoucherPulse] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isMobileNav, setIsMobileNav] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 800px)");
+    const sync = () => setIsMobileNav(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -159,10 +168,12 @@ export function Header({
         </Link>
 
         <div className="actions">
-          <div className="actions-cluster actions-cluster--utility">
-            <LanguageSwitcher />
-            <SiteSearch className="search-link--desktop" />
-          </div>
+          {!isMobileNav ? (
+            <div className="actions-cluster actions-cluster--utility">
+              <LanguageSwitcher />
+              <SiteSearch className="search-link--desktop" />
+            </div>
+          ) : null}
 
           <div className="actions-cluster actions-cluster--commerce">
             <div className="voucher-menu" ref={menuRef}>
@@ -243,13 +254,15 @@ export function Header({
               ) : null}
             </div>
 
-            <Link
-              className="icon-link nav-icon-btn login-link"
-              href={loggedIn ? "/account" : "/login"}
-              aria-label={loggedIn ? t("common.yourAccount") : t("common.login")}
-            >
-              <LoginIcon size={21} />
-            </Link>
+            {!isMobileNav ? (
+              <Link
+                className="icon-link nav-icon-btn login-link"
+                href={loggedIn ? "/account" : "/login"}
+                aria-label={loggedIn ? t("common.yourAccount") : t("common.login")}
+              >
+                <LoginIcon size={21} />
+              </Link>
+            ) : null}
             <Link
               className={`icon-link nav-icon-btn bag-link${bagCount ? " has-items" : ""}`}
               href="/cart"

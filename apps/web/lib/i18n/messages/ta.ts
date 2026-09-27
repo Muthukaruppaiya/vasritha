@@ -153,7 +153,17 @@ export const ta: Messages = {
     moreFromEdit: "இந்த தொகுப்பிலிருந்து மேலும்",
     perkSelected: "வஸ்ரிதாவால் கையால் தேர்ந்தெடுக்கப்பட்டவை",
     perkShipping: "இந்தியா முழுவதும் இலவச ஷிப்பிங்",
-    perkPacking: "பரிசுக்கான அழகான பேக்கிங்"
+    perkPacking: "பரிசுக்கான அழகான பேக்கிங்",
+    savePercent: "{pct}% சேமிப்பு",
+    youSave: "நீங்கள் சேமிப்பது {amount}",
+    limitedPieces: "சில துண்டுகள் மட்டுமே",
+    comingSoon: "விரைவில் வருகிறது",
+    uniquePiece: "ஒவ்வொரு பார்கோடும் தனித்துவமானது",
+    details: "இந்த துண்டு",
+    careShipping: "ஷிப்பிங் & பரிமாற்றம்",
+    securePay: "பாதுகாப்பான செக்அவுட்",
+    giftReady: "பரிசுக்கு தயார்",
+    detailsFallback: "வஸ்ரிதாவிற்காக தேர்ந்தெடுக்கப்பட்ட பூட்டிக் துண்டு."
   },
   bag: {
     eyebrow: "உங்கள் பை",

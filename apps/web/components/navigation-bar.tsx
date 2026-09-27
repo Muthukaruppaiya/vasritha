@@ -4,9 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 import { useEffect, useId, useMemo, useState, type CSSProperties } from "react";
+import { CUSTOMER_AUTH_EVENT } from "../lib/customer-auth-event";
+import { isLoggedIn } from "../lib/customer-session";
 import { useLocale, useT } from "../lib/i18n/provider";
 import { localizeCategoryName } from "../lib/i18n/catalog-local";
 import { fetchPublicJson } from "../lib/public-fetch-cache";
+import { LanguageSwitcher } from "./language-switcher";
 
 function isActivePath(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
@@ -32,6 +35,7 @@ export function NavigationBar({
   const titleId = useId();
   const [brandLogo, setBrandLogo] = useState("/vasritha-logo.png");
   const [whatsappHref, setWhatsappHref] = useState<string | null>(null);
+  const [loggedIn, setLoggedIn] = useState(false);
   const [shopLinks, setShopLinks] = useState<
     Array<{ href: string; label: string; hint: string; slug: string; nameI18n?: Record<string, string> }>
   >(
@@ -59,8 +63,13 @@ export function NavigationBar({
   );
 
   const accountLinks = useMemo(
-    () => [{ href: "/account", label: t("common.myAccount") }],
-    [t]
+    () => [
+      {
+        href: loggedIn ? "/account" : "/login",
+        label: loggedIn ? t("common.myAccount") : t("common.login")
+      }
+    ],
+    [t, loggedIn]
   );
 
   useEffect(() => {
@@ -126,6 +135,19 @@ export function NavigationBar({
         setWhatsappHref(href);
       })
       .catch(() => setWhatsappHref(null));
+  }, []);
+
+  useEffect(() => {
+    const syncAuth = () => setLoggedIn(isLoggedIn());
+    syncAuth();
+    window.addEventListener(CUSTOMER_AUTH_EVENT, syncAuth);
+    window.addEventListener("storage", syncAuth);
+    window.addEventListener("focus", syncAuth);
+    return () => {
+      window.removeEventListener(CUSTOMER_AUTH_EVENT, syncAuth);
+      window.removeEventListener("storage", syncAuth);
+      window.removeEventListener("focus", syncAuth);
+    };
   }, []);
 
   const localizedShopLinks = useMemo(
@@ -278,7 +300,7 @@ export function NavigationBar({
             <div className="drawer-links">
               {[offerLink, ...accountLinks].map((link, index) => (
                 <Link
-                  key={link.href}
+                  key={link.href + link.label}
                   href={link.href}
                   className={isActivePath(pathname, link.href) ? "is-active" : undefined}
                   style={{ "--i": index + discoverLinks.length + localizedShopLinks.length } as CSSProperties}
@@ -288,6 +310,11 @@ export function NavigationBar({
                 </Link>
               ))}
             </div>
+          </div>
+
+          <div className="drawer-group drawer-group--language">
+            <p className="drawer-group-label">{t("common.language")}</p>
+            <LanguageSwitcher variant="panel" />
           </div>
         </div>
 

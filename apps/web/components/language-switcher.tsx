@@ -5,14 +5,18 @@ import { Globe } from "lucide-react";
 import { LOCALES, LOCALE_META, type Locale } from "../lib/i18n/config";
 import { useLocale } from "../lib/i18n/provider";
 
-export function LanguageSwitcher() {
+export function LanguageSwitcher({
+  variant = "header"
+}: {
+  variant?: "header" | "panel";
+}) {
   const { locale, setLocale, t } = useLocale();
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const listId = useId();
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || variant !== "header") return;
     const onPointer = (event: MouseEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     };
@@ -25,12 +29,36 @@ export function LanguageSwitcher() {
       window.removeEventListener("mousedown", onPointer);
       window.removeEventListener("keydown", onKey);
     };
-  }, [open]);
+  }, [open, variant]);
 
   const choose = (next: Locale) => {
     setLocale(next);
     setOpen(false);
   };
+
+  if (variant === "panel") {
+    return (
+      <div className="lang-switcher-panel" role="listbox" aria-label={t("common.language")}>
+        {LOCALES.map((code) => {
+          const meta = LOCALE_META[code];
+          const active = code === locale;
+          return (
+            <button
+              key={code}
+              type="button"
+              role="option"
+              aria-selected={active}
+              className={`lang-switcher-chip${active ? " is-active" : ""}`}
+              onClick={() => choose(code)}
+            >
+              <strong>{meta.nativeLabel}</strong>
+              <span>{code.toUpperCase()}</span>
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
 
   return (
     <div className={`lang-switcher${open ? " is-open" : ""}`} ref={rootRef}>

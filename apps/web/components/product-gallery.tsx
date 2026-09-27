@@ -168,6 +168,11 @@ export function ProductGallery({ images, alt }: ProductGalleryProps) {
         <div className="product-gallery-hint" aria-hidden="true">
           Hover to zoom · swipe to browse
         </div>
+        {slides.length > 1 ? (
+          <div className="product-gallery-count" aria-live="polite">
+            {active + 1} / {slides.length}
+          </div>
+        ) : null}
       </div>
 
       {slides.length > 1 && (
