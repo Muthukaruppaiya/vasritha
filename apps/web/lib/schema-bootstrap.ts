@@ -1,15 +1,11 @@
 /**
- * Runtime DDL (ALTER/CREATE) is expensive on every local request.
- * After `npm run db:optimize`, schema is already applied — skip ensures.
+ * Runtime DDL (ALTER/CREATE IF NOT EXISTS) keeps hosted DBs in sync when
+ * migrations lag the app. Cached per process after the first success.
  *
- * Set SKIP_RUNTIME_SCHEMA_ENSURE=false only while inventing new columns
- * before you add them to optimize_v*.sql.
+ * Set SKIP_RUNTIME_SCHEMA_ENSURE=true locally after `npm run db:optimize`
+ * to avoid ALTER on every request. Never leave production skipping unless
+ * the Supabase schema is known to match optimize_v*.sql.
  */
 export function skipRuntimeSchemaEnsure() {
-  if (process.env.SKIP_RUNTIME_SCHEMA_ENSURE === "true") return true;
-  if (process.env.SKIP_RUNTIME_SCHEMA_ENSURE === "false") return false;
-  // Hosted: DB is migrated separately; never pay DDL per request.
-  return Boolean(
-    (process.env.VERCEL || process.env.NETLIFY) && process.env.DATABASE_URL
-  );
+  return process.env.SKIP_RUNTIME_SCHEMA_ENSURE === "true";
 }
