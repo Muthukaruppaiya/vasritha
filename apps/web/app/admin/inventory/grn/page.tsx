@@ -501,6 +501,18 @@ function GrnPageInner() {
           <AdminEmpty
             title="No GRNs in this view"
             body="Submit a GRN below. Pending records appear here for manager approval."
+            action={
+              <button
+                type="button"
+                className="btn admin-ghost-btn"
+                onClick={() => {
+                  const el = document.querySelector(".grn-page");
+                  el?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
+              >
+                Create GRN
+              </button>
+            }
           />
         ) : (
           <div className="admin-table-wrap">
@@ -610,14 +622,16 @@ function GrnPageInner() {
             </label>
 
             {selectedSupplier ? (
-              <div className="grn-span-2 grn-supplier-meta">
-                <span>GSTIN: {selectedSupplier.gstin || "—"}</span>
-                <span>PAN: {selectedSupplier.pan || "—"}</span>
-                <span>
-                  {selectedSupplier.state || "—"}
-                  {selectedSupplier.state_code ? ` (${selectedSupplier.state_code})` : ""}
-                </span>
-                {selectedSupplier.phone ? <span>{selectedSupplier.phone}</span> : null}
+              <div className="grn-supplier-row">
+                <div className="grn-supplier-meta">
+                  <span>GSTIN: {selectedSupplier.gstin || "—"}</span>
+                  <span>PAN: {selectedSupplier.pan || "—"}</span>
+                  <span>
+                    {selectedSupplier.state || "—"}
+                    {selectedSupplier.state_code ? ` (${selectedSupplier.state_code})` : ""}
+                  </span>
+                  {selectedSupplier.phone ? <span>{selectedSupplier.phone}</span> : null}
+                </div>
                 <button type="button" className="btn admin-ghost-btn" onClick={() => void reloadSuppliers()}>
                   Refresh list
                 </button>
@@ -680,13 +694,15 @@ function GrnPageInner() {
                     : "Optional scan or PDF of the supplier invoice."}
               </small>
               {inward.documentPath ? (
-                <button
-                  type="button"
-                  className="btn admin-ghost-btn"
-                  onClick={() => persistDraft({ ...inward, documentPath: "", documentName: "" })}
-                >
-                  Remove document
-                </button>
+                <div className="grn-doc-actions">
+                  <button
+                    type="button"
+                    className="btn admin-ghost-btn"
+                    onClick={() => persistDraft({ ...inward, documentPath: "", documentName: "" })}
+                  >
+                    Remove document
+                  </button>
+                </div>
               ) : null}
             </label>
             <label>

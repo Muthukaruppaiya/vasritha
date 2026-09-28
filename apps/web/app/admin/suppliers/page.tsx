@@ -200,12 +200,14 @@ export default function AdminSuppliersPage() {
       <AdminPanel
         title="Suppliers"
         actions={
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search name, GSTIN, PAN…"
-            style={{ minWidth: 220 }}
-          />
+          <label className="admin-panel-search">
+            <span className="sr-only">Search suppliers</span>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search name, GSTIN, PAN…"
+            />
+          </label>
         }
       >
         {loading && <AdminLoading />}

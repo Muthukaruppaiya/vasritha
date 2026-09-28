@@ -71,11 +71,20 @@ export function statusTone(status?: string | null): "neutral" | "success" | "war
   return "neutral";
 }
 
-export function AdminEmpty({ title, body }: { title: string; body?: string }) {
+export function AdminEmpty({
+  title,
+  body,
+  action
+}: {
+  title: string;
+  body?: string;
+  action?: ReactNode;
+}) {
   return (
     <div className="admin-empty">
       <strong>{title}</strong>
       {body ? <p className="muted">{body}</p> : null}
+      {action ? <div className="admin-empty-action">{action}</div> : null}
     </div>
   );
 }

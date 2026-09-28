@@ -250,7 +250,7 @@ function AdminInventoryPageInner() {
           <div>
             <strong>GRN / Inventory</strong>
             <p>
-              Open <Link href="/admin/inventory/grn">Receive stock</Link> to post inward qty.
+              Open <Link href="/admin/inventory/grn">Receive stock</Link> to submit GRN for approval.
             </p>
           </div>
         </div>
