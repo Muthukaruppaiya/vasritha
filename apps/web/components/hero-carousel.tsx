@@ -67,6 +67,7 @@ function HeroPanel({
             priority={priority && index === 0}
             sizes="(min-width: 1101px) 34vw, (min-width: 901px) 50vw, 100vw"
             draggable={false}
+            style={{ objectFit: "cover", objectPosition: "center center" }}
           />
         </div>
       ))}

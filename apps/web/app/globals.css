@@ -1003,12 +1003,17 @@ main {
   inset: 0;
   display: grid;
   grid-template-columns: 1fr;
+  gap: 0;
+  column-gap: 0;
+  row-gap: 0;
   z-index: 1;
 }
 .hero-panel {
   position: relative;
   overflow: hidden;
   min-height: 100%;
+  min-width: 0;
+  background: #2a1710;
 }
 .hero-layer {
   position: absolute;
@@ -1017,16 +1022,23 @@ main {
   z-index: 0;
   transition: opacity 1.8s cubic-bezier(.22,.61,.36,1);
   pointer-events: none;
+  background: #2a1710;
 }
 .hero-layer.is-on {
   opacity: 1;
   z-index: 1;
 }
+.hero-layer img,
+.hero-layer span,
+.hero-layer > span {
+  width: 100% !important;
+  height: 100% !important;
+}
 .hero-layer img {
-  object-fit: contain;
+  object-fit: cover !important;
   object-position: center center;
   pointer-events: none;
-  transform: scale(1.03);
+  transform: scale(1.04);
   transition: transform 8s cubic-bezier(.16,1,.3,1);
 }
 .hero.is-ready .hero-layer.is-on img {
@@ -1196,8 +1208,8 @@ main {
     min-height: min(78vh, 620px);
   }
   .hero-layer img {
-    object-fit: contain;
-    object-position: center center;
+    object-fit: cover !important;
+    object-position: center 12%;
   }
 }
 @media (prefers-reduced-motion: reduce) {
