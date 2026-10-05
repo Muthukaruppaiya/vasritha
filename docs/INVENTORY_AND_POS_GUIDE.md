@@ -165,7 +165,7 @@ On success, a **bill preview** opens.
 
 #### E. Print & finish
 
-1. Click **Print bill** (5″ thermal-style shop bill).  
+1. Click **Print bill** (3″ / 80 mm thermal shop bill).  
 2. Click **Close** to start the next sale, or **New sale** in the header to clear the cart.
 
 Stock is reduced automatically when payment is **paid**. Each sold unique piece is marked so it cannot be sold again.

@@ -194,7 +194,7 @@ export function InvoiceDirectory({
         <div className="pos-invoice-overlay" role="dialog" aria-modal="true">
           <div className={`pos-invoice-sheet${isStore ? "" : " pos-invoice-sheet--a4"}`}>
             <div className="tvs-receipt-preview-label">
-              {isStore ? "Store bill · 5″ roll" : "Tax invoice · A4"}
+              {isStore ? "Store bill · 3″ (80mm) thermal" : "Tax invoice · A4"}
             </div>
             <InvoiceBill data={selected} id={`${channel}-invoice-print`} />
             <div className="pos-invoice-actions">
@@ -217,7 +217,7 @@ export function InvoiceDirectory({
             </div>
             <p className="tvs-print-hint muted">
               {isStore
-                ? "Paper width 5 inch · height follows bill length (auto-cut)."
+                ? "Paper width 3 inch / 80 mm thermal · height follows bill length (auto-cut)."
                 : "Print on A4 paper for customer tax invoice."}
             </p>
           </div>

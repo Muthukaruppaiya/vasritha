@@ -25,7 +25,7 @@ function formatReceiptDate(value: string) {
   });
 }
 
-/** GST bill: A4 tax invoice for online orders; 5″ shop roll for POS. */
+/** GST bill: A4 tax invoice for online orders; 3″ (80mm) thermal roll for POS. */
 export function InvoiceBill({ data, id = "vasritha-invoice-bill" }: Props) {
   if (data.channel === "online") {
     return <TaxInvoiceA4 data={data} id={id} />;

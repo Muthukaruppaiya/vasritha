@@ -126,8 +126,17 @@ function loadRazorpayScript() {
   });
 }
 
+type PosCustomerHit = {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string;
+};
+
 export default function AdminBillingPage() {
   const scanRef = useRef<HTMLInputElement | null>(null);
+  const phoneRef = useRef<HTMLInputElement | null>(null);
+  const nameRef = useRef<HTMLInputElement | null>(null);
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState<PosItem[]>([]);
   const [lookingUp, setLookingUp] = useState(false);
@@ -139,6 +148,9 @@ export default function AdminBillingPage() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
+  const [customerHits, setCustomerHits] = useState<PosCustomerHit[]>([]);
+  const [customerLookupBusy, setCustomerLookupBusy] = useState(false);
+  const [customerStatus, setCustomerStatus] = useState<"idle" | "known" | "new">("idle");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [lastInvoice, setLastInvoice] = useState<InvoiceOrder | null>(null);
@@ -155,8 +167,15 @@ export default function AdminBillingPage() {
       : Math.min(subtotal, discountRaw);
   const payable = Math.max(0, subtotal - discountAmount);
 
+  const normalizePhone = (value: string) => {
+    const digits = value.replace(/\D/g, "");
+    if (digits.length === 12 && digits.startsWith("91")) return digits.slice(2);
+    if (digits.length === 11 && digits.startsWith("0")) return digits.slice(1);
+    return digits.slice(0, 10);
+  };
+
   useEffect(() => {
-    scanRef.current?.focus();
+    phoneRef.current?.focus();
   }, []);
 
   useEffect(() => {
@@ -180,7 +199,54 @@ export default function AdminBillingPage() {
   }, [shopId]);
 
   useEffect(() => {
-    if (!query.trim()) {
+    const phone = normalizePhone(customerPhone);
+    if (phone.length < 3) {
+      setCustomerHits([]);
+      if (!phone.length) {
+        setCustomerStatus("idle");
+      }
+      return;
+    }
+
+    const handle = window.setTimeout(() => {
+      void (async () => {
+        setCustomerLookupBusy(true);
+        const result = await adminFetch<PosCustomerHit[]>(
+          `/api/admin/pos/customers?q=${encodeURIComponent(phone)}`
+        );
+        setCustomerLookupBusy(false);
+        if (result.error) {
+          setCustomerHits([]);
+          return;
+        }
+        const rows = result.data || [];
+        setCustomerHits(rows);
+        if (phone.length === 10) {
+          const exact = rows.find((row) => row.phone === phone);
+          if (exact) {
+            setCustomerStatus("known");
+            setCustomerName(exact.fullName || "");
+            setCustomerEmail(exact.email || "");
+            setCustomerHits([]);
+            window.setTimeout(() => scanRef.current?.focus(), 0);
+          } else if (!rows.length) {
+            setCustomerStatus("new");
+            window.setTimeout(() => nameRef.current?.focus(), 0);
+          } else {
+            setCustomerStatus("idle");
+          }
+        } else {
+          setCustomerStatus("idle");
+        }
+      })();
+    }, 200);
+
+    return () => window.clearTimeout(handle);
+  }, [customerPhone]);
+
+  useEffect(() => {
+    const term = query.trim();
+    if (!term) {
       setSuggestions([]);
       setLookupError("");
       return;
@@ -191,7 +257,7 @@ export default function AdminBillingPage() {
         setLookingUp(true);
         setLookupError("");
         const result = await adminFetch<PosItem[]>(
-          `/api/admin/pos/lookup?q=${encodeURIComponent(query.trim())}`
+          `/api/admin/pos/lookup?q=${encodeURIComponent(term)}`
         );
         setLookingUp(false);
         if (result.error) {
@@ -201,10 +267,19 @@ export default function AdminBillingPage() {
         }
         setSuggestions(result.data || []);
       })();
-    }, 220);
+    }, 180);
 
     return () => window.clearTimeout(handle);
   }, [query]);
+
+  const pickCustomer = (hit: PosCustomerHit) => {
+    setCustomerPhone(hit.phone);
+    setCustomerName(hit.fullName || "");
+    setCustomerEmail(hit.email || "");
+    setCustomerHits([]);
+    setCustomerStatus("known");
+    window.setTimeout(() => scanRef.current?.focus(), 0);
+  };
 
   const addItem = (item: PosItem) => {
     const key = lineKey(item);
@@ -286,9 +361,11 @@ export default function AdminBillingPage() {
     setCustomerName("");
     setCustomerPhone("");
     setCustomerEmail("");
+    setCustomerHits([]);
+    setCustomerStatus("idle");
     setError("");
     setLastInvoice(null);
-    scanRef.current?.focus();
+    window.setTimeout(() => phoneRef.current?.focus(), 0);
   };
 
   const resetAfterPaid = () => {
@@ -299,6 +376,8 @@ export default function AdminBillingPage() {
     setCustomerName("");
     setCustomerPhone("");
     setCustomerEmail("");
+    setCustomerHits([]);
+    setCustomerStatus("idle");
   };
 
   const completeSale = async () => {
@@ -308,21 +387,21 @@ export default function AdminBillingPage() {
     }
 
     const name = customerName.trim();
-    const phoneDigits = customerPhone.replace(/\D/g, "");
-    const phone =
-      phoneDigits.length === 12 && phoneDigits.startsWith("91")
-        ? phoneDigits.slice(2)
-        : phoneDigits.length === 11 && phoneDigits.startsWith("0")
-          ? phoneDigits.slice(1)
-          : phoneDigits;
+    const phone = normalizePhone(customerPhone);
     const email = customerEmail.trim();
 
-    if (!name) {
-      setError("Customer name is required.");
+    if (phone.length !== 10) {
+      setError("Enter a valid 10-digit mobile number first.");
+      phoneRef.current?.focus();
       return;
     }
-    if (phone.length !== 10) {
-      setError("Enter a valid 10-digit mobile number.");
+    if (!name) {
+      setError(
+        customerStatus === "new"
+          ? "New customer — enter their name."
+          : "Customer name is required."
+      );
+      nameRef.current?.focus();
       return;
     }
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -369,7 +448,7 @@ export default function AdminBillingPage() {
       });
       resetAfterPaid();
       setBusy(false);
-      scanRef.current?.focus();
+      window.setTimeout(() => phoneRef.current?.focus(), 0);
       return;
     }
 
@@ -405,7 +484,7 @@ export default function AdminBillingPage() {
             ?.prompt ?? checkout.data.order.loyalty_prompt
       });
       resetAfterPaid();
-      scanRef.current?.focus();
+      window.setTimeout(() => phoneRef.current?.focus(), 0);
       return;
     }
 
@@ -464,7 +543,7 @@ export default function AdminBillingPage() {
               ?.prompt ?? orderSnapshot.loyalty_prompt
         });
         resetAfterPaid();
-        scanRef.current?.focus();
+        window.setTimeout(() => phoneRef.current?.focus(), 0);
       },
       modal: {
         ondismiss: () => {
@@ -533,8 +612,8 @@ export default function AdminBillingPage() {
                 </button>
               </form>
               {lookupError ? <AdminAlert>{lookupError}</AdminAlert> : null}
-              {suggestions.length > 1 && (
-                <div className="pos-suggest">
+              {suggestions.length > 0 && (
+                <div className="pos-suggest" role="listbox" aria-label="Product suggestions">
                   {suggestions.map((item) => (
                     <button
                       key={lineKey(item)}
@@ -557,6 +636,9 @@ export default function AdminBillingPage() {
                   ))}
                 </div>
               )}
+              {query.trim() && !lookingUp && !suggestions.length && !lookupError ? (
+                <p className="pos-suggest-empty muted">No matching product for “{query.trim()}”.</p>
+              ) : null}
             </div>
 
             <div className="pos-workspace-cart">
@@ -658,40 +740,75 @@ export default function AdminBillingPage() {
             <section className="pos-customer" aria-label="Customer details">
               <div className="pos-customer-head">
                 <p className="pos-customer-title">Customer</p>
-                <span className="pos-customer-req">Name &amp; mobile required</span>
+                <span className="pos-customer-req">
+                  {customerStatus === "known"
+                    ? "Existing customer"
+                    : customerStatus === "new"
+                      ? "New customer — enter name"
+                      : "Mobile first, then name"}
+                </span>
               </div>
               <div className="pos-customer-fields">
-                <div className="pos-customer-row">
-                  <label className="pos-field">
-                    <span className="pos-field-label">
-                      Name <em aria-hidden="true">*</em>
-                    </span>
-                    <input
-                      type="text"
-                      value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)}
-                      placeholder="Full name"
-                      autoComplete="name"
-                      disabled={busy}
-                      required
-                    />
-                  </label>
-                  <label className="pos-field">
-                    <span className="pos-field-label">
-                      Mobile <em aria-hidden="true">*</em>
-                    </span>
-                    <input
-                      type="tel"
-                      inputMode="numeric"
-                      value={customerPhone}
-                      onChange={(e) => setCustomerPhone(e.target.value.replace(/[^\d+\s-]/g, ""))}
-                      placeholder="10-digit mobile"
-                      autoComplete="tel"
-                      disabled={busy}
-                      required
-                    />
-                  </label>
-                </div>
+                <label className="pos-field pos-field--phone">
+                  <span className="pos-field-label">
+                    Mobile <em aria-hidden="true">*</em>
+                  </span>
+                  <input
+                    ref={phoneRef}
+                    type="tel"
+                    inputMode="numeric"
+                    value={customerPhone}
+                    onChange={(e) => {
+                      const next = normalizePhone(e.target.value);
+                      setCustomerPhone(next);
+                      if (customerStatus === "known") {
+                        setCustomerName("");
+                        setCustomerEmail("");
+                        setCustomerStatus("idle");
+                      }
+                    }}
+                    placeholder="10-digit mobile"
+                    autoComplete="tel"
+                    maxLength={10}
+                    disabled={busy}
+                    required
+                  />
+                  {customerLookupBusy ? (
+                    <span className="pos-field-hint muted">Searching…</span>
+                  ) : null}
+                  {customerHits.length > 0 ? (
+                    <div className="pos-customer-suggest" role="listbox" aria-label="Matching customers">
+                      {customerHits.map((hit) => (
+                        <button
+                          key={hit.id}
+                          type="button"
+                          className="pos-customer-suggest-row"
+                          onClick={() => pickCustomer(hit)}
+                        >
+                          <strong>{hit.phone}</strong>
+                          <span>{hit.fullName || "Customer"}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </label>
+                <label className="pos-field">
+                  <span className="pos-field-label">
+                    Name <em aria-hidden="true">*</em>
+                  </span>
+                  <input
+                    ref={nameRef}
+                    type="text"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    placeholder={
+                      customerStatus === "new" ? "Enter new customer name" : "Full name"
+                    }
+                    autoComplete="name"
+                    disabled={busy || normalizePhone(customerPhone).length < 10}
+                    required
+                  />
+                </label>
                 <label className="pos-field">
                   <span className="pos-field-label">
                     Email <span className="pos-field-optional">optional</span>
@@ -702,7 +819,7 @@ export default function AdminBillingPage() {
                     onChange={(e) => setCustomerEmail(e.target.value)}
                     placeholder="name@example.com"
                     autoComplete="email"
-                    disabled={busy}
+                    disabled={busy || normalizePhone(customerPhone).length < 10}
                   />
                 </label>
               </div>
@@ -799,7 +916,7 @@ export default function AdminBillingPage() {
                 Tell the customer: {lastInvoice.loyalty_prompt}
               </AdminAlert>
             ) : null}
-            <div className="tvs-receipt-preview-label">Shop bill · 5″ wide · height auto-cuts</div>
+            <div className="tvs-receipt-preview-label">Shop bill · 3″ (80mm) thermal · auto-cut</div>
             <InvoiceBill data={lastInvoice} id="pos-invoice-print" />
             <div className="pos-invoice-actions">
               <button type="button" className="btn" onClick={() => window.print()}>
@@ -812,8 +929,7 @@ export default function AdminBillingPage() {
               </button>
             </div>
             <p className="tvs-print-hint muted">
-              Paper width <b>5 inch</b> · height follows bill length (auto-cut). TVS LP 46 is only for
-              barcode stickers.
+              Paper width <b>3 inch / 80 mm</b> thermal · height follows bill length (auto-cut).
             </p>
           </div>
         </div>
