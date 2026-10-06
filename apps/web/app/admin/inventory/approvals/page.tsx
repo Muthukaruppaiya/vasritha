@@ -8,8 +8,10 @@ import {
   ArrowLeft,
   CheckCircle2,
   ClipboardCheck,
+  Eye,
   Printer,
-  Truck
+  Truck,
+  X
 } from "lucide-react";
 import {
   AdminAlert,
@@ -70,11 +72,17 @@ function AdminGrnApprovalsInner() {
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
   const [bulkSummary, setBulkSummary] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"pending_approval" | "all">("pending_approval");
+  const [statusFilter, setStatusFilter] = useState<
+    "pending_approval" | "approved" | "cancelled" | "all"
+  >("pending_approval");
   const [supplierFilter, setSupplierFilter] = useState("");
   const [printingId, setPrintingId] = useState<string | null>(null);
   const [printError, setPrintError] = useState("");
+  const [detail, setDetail] = useState<GrnPrintDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState("");
 
   const { data: suppliers } = useAdminQuery<Supplier[]>("/api/admin/suppliers?active=1");
 
@@ -95,6 +103,11 @@ function AdminGrnApprovalsInner() {
 
   const eligiblePending = useMemo(
     () => (listedGrns || []).filter((row) => row.status === "pending_approval"),
+    [listedGrns]
+  );
+
+  const approvedCount = useMemo(
+    () => (listedGrns || []).filter((row) => row.status === "approved").length,
     [listedGrns]
   );
 
@@ -125,6 +138,24 @@ function AdminGrnApprovalsInner() {
     });
   };
 
+  const openDetails = async (id: string) => {
+    setDetailLoading(true);
+    setDetailError("");
+    setDetail(null);
+    const result = await adminFetch<GrnPrintDetail>(`/api/admin/inventory/grn/${id}`);
+    setDetailLoading(false);
+    if (result.error || !result.data) {
+      setDetailError(result.error || "Could not load GRN details");
+      return;
+    }
+    setDetail(result.data);
+  };
+
+  const closeDetails = () => {
+    setDetail(null);
+    setDetailError("");
+  };
+
   const printGrn = async (id: string) => {
     setPrintingId(id);
     setPrintError("");
@@ -141,30 +172,30 @@ function AdminGrnApprovalsInner() {
     }
   };
 
-  const bulkApprove = async () => {
-    if (!selected.size || !canApprove) return;
-    const count = selected.size;
+  const approveIds = async (ids: string[], label: string) => {
+    if (!ids.length || !canApprove) return false;
     const okConfirm = window.confirm(
-      `Approve ${count} GRN${count === 1 ? "" : "s"}?\n\nStock will increase once for each approved GRN.`
+      `${label}\n\nStock will increase once for each approved GRN.`
     );
-    if (!okConfirm) return;
+    if (!okConfirm) return false;
 
     setBulkBusy(true);
     setBulkSummary("");
     const result = await adminFetch<BulkApproveResult>("/api/admin/inventory/grn/approve", {
       method: "POST",
-      json: { ids: Array.from(selected), shopId: sessionShopId || undefined }
+      json: { ids, shopId: sessionShopId || undefined }
     });
     setBulkBusy(false);
+    setApprovingId(null);
 
     if (result.error) {
       setBulkSummary(result.error);
-      return;
+      return false;
     }
 
     const data = result.data;
     const parts = [
-      `Approved ${data?.succeededCount || 0} of ${data?.requested || count}.`,
+      `Approved ${data?.succeededCount || 0} of ${data?.requested || ids.length}.`,
       data?.failedCount
         ? `Failed: ${(data.failed || [])
             .map((f) => `${f.grn_number || f.id.slice(0, 8)} — ${f.error}`)
@@ -174,7 +205,25 @@ function AdminGrnApprovalsInner() {
     ].filter(Boolean);
     setBulkSummary(parts.join(" "));
     clearSelection();
+    if (detail && ids.includes(detail.id)) closeDetails();
     await reloadList();
+    return true;
+  };
+
+  const bulkApprove = async () => {
+    if (!selected.size) return;
+    const count = selected.size;
+    await approveIds(
+      Array.from(selected),
+      `Approve ${count} GRN${count === 1 ? "" : "s"}?`
+    );
+  };
+
+  const approveOne = async (row: ListedGrn) => {
+    if (!canApprove || row.status !== "pending_approval") return;
+    setApprovingId(row.id);
+    const ok = await approveIds([row.id], `Approve ${row.grn_number}?`);
+    if (!ok) setApprovingId(null);
   };
 
   return (
@@ -206,7 +255,9 @@ function AdminGrnApprovalsInner() {
       />
 
       {justSubmitted && (
-        <AdminAlert tone="ok">GRN submitted for approval. Print from the row actions when ready.</AdminAlert>
+        <AdminAlert tone="ok">
+          GRN submitted for approval. Open Details or Approve from the row actions when ready.
+        </AdminAlert>
       )}
       {bulkSummary && (
         <AdminAlert tone={bulkSummary.toLowerCase().includes("failed") ? "error" : "ok"}>
@@ -214,11 +265,14 @@ function AdminGrnApprovalsInner() {
         </AdminAlert>
       )}
       {printError && <AdminAlert>{printError}</AdminAlert>}
+      {detailError && <AdminAlert>{detailError}</AdminAlert>}
 
       <AdminPanel
         title="Pending & history"
         actions={
-          eligiblePending.length > 0 ? (
+          statusFilter === "approved" ? (
+            <span className="muted">{approvedCount} approved</span>
+          ) : eligiblePending.length > 0 ? (
             <span className="muted">{eligiblePending.length} pending</span>
           ) : (
             <span className="muted">
@@ -233,11 +287,15 @@ function AdminGrnApprovalsInner() {
             <select
               value={statusFilter}
               onChange={(e) => {
-                setStatusFilter(e.target.value as "pending_approval" | "all");
+                setStatusFilter(
+                  e.target.value as "pending_approval" | "approved" | "cancelled" | "all"
+                );
                 clearSelection();
               }}
             >
               <option value="pending_approval">Pending approval</option>
+              <option value="approved">Approved GRNs</option>
+              <option value="cancelled">Cancelled</option>
               <option value="all">All statuses</option>
             </select>
           </label>
@@ -294,7 +352,11 @@ function AdminGrnApprovalsInner() {
         {!listLoading && !(listedGrns || []).length ? (
           <AdminEmpty
             title="No GRNs in this view"
-            body="Create a GRN on the entry page. Pending receipts show here for approval."
+            body={
+              statusFilter === "approved"
+                ? "No approved GRNs yet. Approve a pending receipt to see it here."
+                : "Create a GRN on the entry page. Pending receipts show here for approval."
+            }
             action={
               <Link className="btn admin-ghost-btn" href="/admin/inventory/grn">
                 Open GRN entry
@@ -326,12 +388,13 @@ function AdminGrnApprovalsInner() {
                   <th>Invoice</th>
                   <th>Status</th>
                   <th>Created</th>
-                  <th className="admin-actions-col">Print</th>
+                  <th className="admin-actions-col">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {(listedGrns || []).map((row) => {
                   const isPending = row.status === "pending_approval";
+                  const rowBusy = approvingId === row.id || printingId === row.id || bulkBusy;
                   return (
                     <tr key={row.id} className={selected.has(row.id) ? "is-selected" : ""}>
                       {canApprove ? (
@@ -374,17 +437,43 @@ function AdminGrnApprovalsInner() {
                       </td>
                       <td>{formatDate(row.created_at)}</td>
                       <td className="admin-actions-col">
-                        <button
-                          type="button"
-                          className="admin-icon-tip"
-                          disabled={printingId === row.id}
-                          onClick={() => void printGrn(row.id)}
-                          aria-label={`Print ${row.grn_number}`}
-                          title="Print GRN"
-                        >
-                          <Printer size={15} strokeWidth={2} />
-                          <span>{printingId === row.id ? "…" : "Print"}</span>
-                        </button>
+                        <div className="admin-row-actions">
+                          <button
+                            type="button"
+                            className="admin-icon-tip"
+                            disabled={detailLoading}
+                            onClick={() => void openDetails(row.id)}
+                            aria-label={`Details ${row.grn_number}`}
+                            data-tooltip="Details"
+                          >
+                            <Eye size={15} strokeWidth={2} />
+                            <span>Details</span>
+                          </button>
+                          {canApprove && isPending ? (
+                            <button
+                              type="button"
+                              className="admin-icon-tip"
+                              disabled={rowBusy}
+                              onClick={() => void approveOne(row)}
+                              aria-label={`Approve ${row.grn_number}`}
+                              data-tooltip="Approve"
+                            >
+                              <CheckCircle2 size={15} strokeWidth={2} />
+                              <span>{approvingId === row.id ? "…" : "Approve"}</span>
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            className="admin-icon-tip"
+                            disabled={printingId === row.id}
+                            onClick={() => void printGrn(row.id)}
+                            aria-label={`Print ${row.grn_number}`}
+                            data-tooltip="Print"
+                          >
+                            <Printer size={15} strokeWidth={2} />
+                            <span>{printingId === row.id ? "…" : "Print"}</span>
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -394,6 +483,160 @@ function AdminGrnApprovalsInner() {
           </div>
         )}
       </AdminPanel>
+
+      {detailLoading ? (
+        <div className="admin-modal-backdrop" role="presentation">
+          <div className="admin-modal" role="dialog" aria-modal="true">
+            <div className="admin-modal-body">
+              <AdminLoading />
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {detail ? (
+        <div className="admin-modal-backdrop" role="presentation" onClick={closeDetails}>
+          <div
+            className="admin-modal admin-modal--wide"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="grn-detail-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="admin-modal-head">
+              <div>
+                <p className="eyebrow">GRN details</p>
+                <h2 id="grn-detail-title">{detail.grn_number}</h2>
+              </div>
+              <button
+                type="button"
+                className="admin-modal-close"
+                aria-label="Close"
+                onClick={closeDetails}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="admin-modal-body">
+              <div className="grn-detail-meta">
+                <div>
+                  <span className="muted">Status</span>
+                  <div>
+                    <AdminBadge tone={statusTone(detail.status)}>
+                      {detail.status.replace(/_/g, " ")}
+                    </AdminBadge>
+                  </div>
+                </div>
+                <div>
+                  <span className="muted">Supplier</span>
+                  <strong>
+                    {detail.supplier.name || "—"}
+                    {detail.supplier.code ? ` · ${detail.supplier.code}` : ""}
+                  </strong>
+                </div>
+                <div>
+                  <span className="muted">Bill no</span>
+                  <strong>{detail.bill_no || "—"}</strong>
+                </div>
+                <div>
+                  <span className="muted">Invoice date</span>
+                  <strong>{detail.invoice_date ? formatDate(detail.invoice_date) : "—"}</strong>
+                </div>
+                <div>
+                  <span className="muted">Invoice amount</span>
+                  <strong>{formatMoney(detail.invoice_amount)}</strong>
+                </div>
+                <div>
+                  <span className="muted">Lines total</span>
+                  <strong>{formatMoney(detail.lines_total)}</strong>
+                </div>
+                <div>
+                  <span className="muted">Created</span>
+                  <strong>{formatDate(detail.created_at)}</strong>
+                </div>
+                <div>
+                  <span className="muted">Approved</span>
+                  <strong>{detail.approved_at ? formatDate(detail.approved_at) : "—"}</strong>
+                </div>
+              </div>
+
+              {detail.note ? (
+                <p className="grn-detail-note">
+                  <span className="muted">Note: </span>
+                  {detail.note}
+                </p>
+              ) : null}
+
+              {detail.document_path ? (
+                <p>
+                  <a href={detail.document_path} target="_blank" rel="noreferrer">
+                    Open attached document
+                  </a>
+                </p>
+              ) : null}
+
+              <div className="admin-table-wrap">
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Product</th>
+                      <th>SKU</th>
+                      <th>Qty</th>
+                      <th>Purchase ₹</th>
+                      <th>Line total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detail.lines.map((line, index) => (
+                      <tr key={`${line.sku || line.product_name}-${index}`}>
+                        <td>
+                          <strong>{line.product_name}</strong>
+                          {line.variant_name ? (
+                            <div className="muted admin-sub">{line.variant_name}</div>
+                          ) : null}
+                        </td>
+                        <td>{line.sku || "—"}</td>
+                        <td>{line.quantity}</td>
+                        <td>{formatMoney(line.purchase_price)}</td>
+                        <td>{formatMoney(line.line_total)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="admin-modal-actions">
+                <button type="button" className="admin-ghost-btn" onClick={closeDetails}>
+                  Close
+                </button>
+                <button
+                  type="button"
+                  className="admin-ghost-btn"
+                  onClick={() => void printGrn(detail.id)}
+                  disabled={printingId === detail.id}
+                >
+                  <Printer size={14} />
+                  {printingId === detail.id ? "Printing…" : "Print"}
+                </button>
+                {canApprove && detail.status === "pending_approval" ? (
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={bulkBusy || approvingId === detail.id}
+                    onClick={() =>
+                      void approveIds([detail.id], `Approve ${detail.grn_number}?`)
+                    }
+                  >
+                    <CheckCircle2 size={14} />
+                    {approvingId === detail.id || bulkBusy ? "Approving…" : "Approve GRN"}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

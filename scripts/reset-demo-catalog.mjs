@@ -1,8 +1,10 @@
 /**
  * Wipe product/test transactional data and seed 12–15 sellable demo products
- * with website + internal images, unique piece barcodes, and synced stock.
+ * with website + internal images, unique piece barcodes, synced stock,
+ * plus basic shops and suppliers for POS / GRN testing.
  *
  * Usage: node --env-file=apps/web/.env.local scripts/reset-demo-catalog.mjs
+ *    or: npm run db:reset:demo
  */
 import fs from "fs";
 import path from "path";
@@ -14,7 +16,81 @@ const root = path.resolve(__dirname, "..");
 const publicDir = path.join(root, "apps/web/public");
 
 const DATABASE_URL =
-  process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5433/vasritha";
+  process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5432/vasritha";
+
+const DEMO_SHOPS = [
+  {
+    code: "MAIN",
+    name: "Vasritha — Tirupur Main",
+    address: "12 Avinashi Road, Tirupur",
+    phone: "9876543210",
+    email: "main@vasritha.test",
+    state: "Tamil Nadu",
+    state_code: "33",
+    gstin: "33AAAAA0000A1Z5",
+    is_default: true
+  },
+  {
+    code: "ANNUR",
+    name: "Vasritha — Annur Branch",
+    address: "45 Market Street, Annur",
+    phone: "9876543211",
+    email: "annur@vasritha.test",
+    state: "Tamil Nadu",
+    state_code: "33",
+    gstin: null,
+    is_default: false
+  }
+];
+
+const DEMO_SUPPLIERS = [
+  {
+    code: "SUP-SILK",
+    name: "Kanchi Silk Traders",
+    trade_name: "Kanchi Silk",
+    contact_person: "Ramesh Kumar",
+    phone: "9840011122",
+    email: "orders@kanchisilk.test",
+    city: "Kanchipuram",
+    state: "Tamil Nadu",
+    state_code: "33",
+    gstin: "33BBBKB0000B1Z9",
+    payment_terms: "Net 30"
+  },
+  {
+    code: "SUP-JEWEL",
+    name: "Temple Craft Jewels",
+    trade_name: "Temple Craft",
+    contact_person: "Meena Devi",
+    phone: "9840033344",
+    email: "sales@templecraft.test",
+    city: "Coimbatore",
+    state: "Tamil Nadu",
+    state_code: "33",
+    gstin: "33CCCJC0000C1Z8",
+    payment_terms: "Advance 50%"
+  },
+  {
+    code: "SUP-WOOD",
+    name: "Nilgiri Handcrafts",
+    trade_name: "Nilgiri Crafts",
+    contact_person: "Suresh Babu",
+    phone: "9840055566",
+    email: "hello@nilgiricrafts.test",
+    city: "Coonoor",
+    state: "Tamil Nadu",
+    state_code: "33",
+    gstin: null,
+    payment_terms: "COD"
+  }
+];
+
+const DEMO_CATEGORIES = [
+  { slug: "sarees", name: "Sarees", sort: 1 },
+  { slug: "jewelry", name: "Jewelry", sort: 2 },
+  { slug: "churidhars-salwars", name: "Churidhars & Salwars", sort: 3 },
+  { slug: "handcrafted", name: "Handcrafted", sort: 4 }
+];
 
 const WIPE_TABLES = [
   "return_items",
@@ -124,7 +200,7 @@ const catalog = [
     price: 2900,
     compare: 3450,
     hsn: "7117",
-    gst: 3,
+    gst: 5,
     stock: 12,
     website: "/catalog-bangles.png",
     internal: "/gallery/gallery-bangles.png",
@@ -141,7 +217,7 @@ const catalog = [
     price: 1850,
     compare: 2250,
     hsn: "7117",
-    gst: 3,
+    gst: 5,
     stock: 15,
     website: "/catalog-earrings.png",
     internal: "/gallery/gallery-earrings.png",
@@ -158,7 +234,7 @@ const catalog = [
     price: 8750,
     compare: 9990,
     hsn: "7117",
-    gst: 3,
+    gst: 5,
     stock: 4,
     website: "/hero-jewelry.png",
     internal: "/gallery/gallery-necklace.png",
@@ -175,7 +251,7 @@ const catalog = [
     price: 4600,
     compare: 5200,
     hsn: "4420",
-    gst: 12,
+    gst: 18,
     stock: 7,
     website: "/catalog-wooden-item.png",
     internal: "/gallery/gallery-lotus-panel.png",
@@ -192,7 +268,7 @@ const catalog = [
     price: 5400,
     compare: 6100,
     hsn: "8306",
-    gst: 12,
+    gst: 18,
     stock: 5,
     website: "/catalog-brass-idol.png",
     internal: "/gallery/gallery-ganesha.png",
@@ -243,7 +319,7 @@ const catalog = [
     price: 6200,
     compare: 7200,
     hsn: "7117",
-    gst: 3,
+    gst: 5,
     stock: 5,
     website: "/hero-jewelry.png",
     internal: "/gallery/gallery-necklace.png",
@@ -260,7 +336,7 @@ const catalog = [
     price: 3850,
     compare: 4500,
     hsn: "4420",
-    gst: 12,
+    gst: 18,
     stock: 8,
     website: "/catalog-wooden-item.png",
     internal: "/gallery/gallery-lotus-panel.png",
@@ -354,6 +430,104 @@ async function main() {
       await client.query(`truncate table public.${table} restart identity cascade`);
       console.log(`cleared: ${table}`);
     }
+
+    // Categories (required for products)
+    for (const cat of DEMO_CATEGORIES) {
+      await client.query(
+        `insert into categories (slug, name, sort_order)
+         values ($1, $2, $3)
+         on conflict (slug) do update
+         set name = excluded.name, sort_order = excluded.sort_order`,
+        [cat.slug, cat.name, cat.sort]
+      );
+    }
+    console.log(`categories ready: ${DEMO_CATEGORIES.map((c) => c.slug).join(", ")}`);
+
+    // Shops
+    if (await tableExists(client, "shops")) {
+      for (const shop of DEMO_SHOPS) {
+        await client.query(
+          `insert into shops (
+             code, name, address, phone, email, state, state_code, gstin, is_active, is_default
+           ) values ($1,$2,$3,$4,$5,$6,$7,$8,true,$9)
+           on conflict ((lower(code))) do update set
+             name = excluded.name,
+             address = excluded.address,
+             phone = excluded.phone,
+             email = excluded.email,
+             state = excluded.state,
+             state_code = excluded.state_code,
+             gstin = excluded.gstin,
+             is_active = true,
+             is_default = excluded.is_default,
+             updated_at = now()`,
+          [
+            shop.code,
+            shop.name,
+            shop.address,
+            shop.phone,
+            shop.email,
+            shop.state,
+            shop.state_code,
+            shop.gstin,
+            shop.is_default
+          ]
+        );
+      }
+      // Ensure only one default
+      await client.query(`update shops set is_default = false where code <> 'MAIN'`);
+      await client.query(`update shops set is_default = true where code = 'MAIN'`);
+      console.log(`shops seeded: ${DEMO_SHOPS.map((s) => s.code).join(", ")}`);
+    } else {
+      console.log("skip shops: table missing");
+    }
+
+    // Suppliers
+    if (await tableExists(client, "suppliers")) {
+      for (const supplier of DEMO_SUPPLIERS) {
+        await client.query(
+          `insert into suppliers (
+             code, name, trade_name, contact_person, phone, email,
+             city, state, state_code, gstin, payment_terms, is_active
+           ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,true)
+           on conflict ((lower(code))) do update set
+             name = excluded.name,
+             trade_name = excluded.trade_name,
+             contact_person = excluded.contact_person,
+             phone = excluded.phone,
+             email = excluded.email,
+             city = excluded.city,
+             state = excluded.state,
+             state_code = excluded.state_code,
+             gstin = excluded.gstin,
+             payment_terms = excluded.payment_terms,
+             is_active = true,
+             updated_at = now()`,
+          [
+            supplier.code,
+            supplier.name,
+            supplier.trade_name,
+            supplier.contact_person,
+            supplier.phone,
+            supplier.email,
+            supplier.city,
+            supplier.state,
+            supplier.state_code,
+            supplier.gstin,
+            supplier.payment_terms
+          ]
+        );
+      }
+      console.log(`suppliers seeded: ${DEMO_SUPPLIERS.map((s) => s.code).join(", ")}`);
+    } else {
+      console.log("skip suppliers: table missing");
+    }
+
+    const defaultShop = (await tableExists(client, "shops"))
+      ? await client.query(`select id from shops where is_default = true limit 1`)
+      : { rows: [] };
+    const defaultShopId = defaultShop.rows[0]?.id || null;
+    const hasItemShop = await columnExists(client, "product_items", "shop_id");
 
     const hasImageKind = await columnExists(client, "product_images", "image_kind");
     const hasHsn = await columnExists(client, "products", "hsn_code");
@@ -472,12 +646,21 @@ async function main() {
         const padded = String(seq).padStart(4, "0");
         const unitCode = `${sku}-${padded}`.toUpperCase();
         const unitBarcode = `${compact}${padded}`;
-        await client.query(
-          `insert into product_items
-             (product_id, variant_id, tag, seq, unit_code, barcode, status)
-           values ($1, $2, $3, $4, $5, $6, 'to_sell')`,
-          [productId, variantId, tag, seq, unitCode, unitBarcode]
-        );
+        if (hasItemShop && defaultShopId) {
+          await client.query(
+            `insert into product_items
+               (product_id, variant_id, tag, seq, unit_code, barcode, status, shop_id)
+             values ($1, $2, $3, $4, $5, $6, 'to_sell', $7)`,
+            [productId, variantId, tag, seq, unitCode, unitBarcode, defaultShopId]
+          );
+        } else {
+          await client.query(
+            `insert into product_items
+               (product_id, variant_id, tag, seq, unit_code, barcode, status)
+             values ($1, $2, $3, $4, $5, $6, 'to_sell')`,
+            [productId, variantId, tag, seq, unitCode, unitBarcode]
+          );
+        }
       }
 
       await client.query(
@@ -510,7 +693,9 @@ async function main() {
         (select count(*)::int from product_variants) as variants,
         (select count(*)::int from product_items where status = 'to_sell') as sellable_items,
         (select count(*)::int from product_images) as images,
-        (select count(*)::int from products where stock_quantity > 0) as in_stock_products
+        (select count(*)::int from products where stock_quantity > 0) as in_stock_products,
+        (select count(*)::int from shops) as shops,
+        (select count(*)::int from suppliers) as suppliers
     `);
     console.log("After:", after.rows[0]);
 

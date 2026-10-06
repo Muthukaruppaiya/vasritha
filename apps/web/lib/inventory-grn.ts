@@ -7,6 +7,7 @@ import {
 } from "./product-units";
 import { skipEnsureIfRelationExists } from "./schema-bootstrap";
 import type { GrnPrintDetail } from "./print-grn";
+import { ensureCompanySettingsSchema } from "./company-settings";
 import { ensureSuppliersSchema, getSupplierById, supplierLabel } from "./suppliers";
 
 export type { GrnPrintDetail };
@@ -46,45 +47,46 @@ let schemaReady = false;
 
 export async function ensureInventoryGrnSchema() {
   if (schemaReady) return;
-  if (await skipEnsureIfRelationExists("public.inventory_grns")) {
-    schemaReady = true;
-    return;
-  }
+
+  const grnsReady = await skipEnsureIfRelationExists("public.inventory_grns");
 
   // FK target — create suppliers first when GRN tables are missing.
   await ensureSuppliersSchema();
 
-  await query(`
-    create table if not exists public.inventory_grns (
-      id uuid primary key default gen_random_uuid(),
-      grn_number text not null unique,
-      status text not null default 'pending_approval'
-        check (status in ('pending_approval', 'approved', 'cancelled')),
-      supplier_id uuid references public.suppliers(id),
-      bill_no text,
-      invoice_amount numeric(12,2),
-      lines_total numeric(12,2) not null default 0,
-      note text,
-      created_by uuid,
-      approved_by uuid,
-      approved_at timestamptz,
-      created_at timestamptz not null default now(),
-      updated_at timestamptz not null default now()
-    )
-  `);
+  if (!grnsReady) {
+    await query(`
+      create table if not exists public.inventory_grns (
+        id uuid primary key default gen_random_uuid(),
+        grn_number text not null unique,
+        status text not null default 'pending_approval'
+          check (status in ('pending_approval', 'approved', 'cancelled')),
+        supplier_id uuid references public.suppliers(id),
+        bill_no text,
+        invoice_amount numeric(12,2),
+        lines_total numeric(12,2) not null default 0,
+        note text,
+        created_by uuid,
+        approved_by uuid,
+        approved_at timestamptz,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now()
+      )
+    `);
 
-  await query(`
-    create table if not exists public.inventory_grn_lines (
-      id uuid primary key default gen_random_uuid(),
-      grn_id uuid not null references public.inventory_grns(id) on delete cascade,
-      product_variant_id uuid not null references public.product_variants(id),
-      quantity integer not null check (quantity > 0),
-      purchase_price numeric(12,2) not null check (purchase_price >= 0),
-      line_total numeric(12,2) not null check (line_total >= 0),
-      sort_order integer not null default 0
-    )
-  `);
+    await query(`
+      create table if not exists public.inventory_grn_lines (
+        id uuid primary key default gen_random_uuid(),
+        grn_id uuid not null references public.inventory_grns(id) on delete cascade,
+        product_variant_id uuid not null references public.product_variants(id),
+        quantity integer not null check (quantity > 0),
+        purchase_price numeric(12,2) not null check (purchase_price >= 0),
+        line_total numeric(12,2) not null check (line_total >= 0),
+        sort_order integer not null default 0
+      )
+    `);
+  }
 
+  // Always keep columns in sync — table may exist from an older patch.
   await query(`
     alter table public.inventory_grns
       add column if not exists shop_id uuid references public.shops(id)
@@ -642,6 +644,7 @@ export async function approveGrnOnce(input: {
 
 export async function getGrnPrintDetail(grnId: string): Promise<GrnPrintDetail | null> {
   await ensureInventoryGrnSchema();
+  await ensureCompanySettingsSchema();
   const grn = await queryOne<{
     id: string;
     grn_number: string;

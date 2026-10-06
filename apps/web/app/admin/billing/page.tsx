@@ -94,6 +94,7 @@ type InvoiceOrder = {
     product_name: string;
     variant_name: string | null;
     sku: string | null;
+    category_name?: string | null;
     hsn_code?: string | null;
     gst_rate?: number | string | null;
     unit_price: number;

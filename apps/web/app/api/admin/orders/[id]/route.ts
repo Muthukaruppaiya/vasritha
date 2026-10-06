@@ -78,6 +78,7 @@ export async function GET(
       product_name: string;
       variant_name: string | null;
       sku: string | null;
+      category_name: string | null;
       hsn_code: string | null;
       gst_rate: string | number | null;
       unit_price: string;
@@ -86,6 +87,7 @@ export async function GET(
       returned_qty: number;
     }>(
       `select oi.id, oi.product_id, oi.variant_id, oi.product_name, oi.variant_name, oi.sku,
+              coalesce(sc.name, c.name) as category_name,
               oi.hsn_code, oi.gst_rate, oi.unit_price, oi.quantity, oi.line_total,
               coalesce((
                 select sum(ri.quantity)::int
@@ -95,6 +97,9 @@ export async function GET(
                   and r.status <> 'rejected'
               ), 0) as returned_qty
        from order_items oi
+       left join products p on p.id = oi.product_id
+       left join categories c on c.id = p.category_id
+       left join subcategories sc on sc.id = p.subcategory_id
        where oi.order_id = $1
        order by oi.product_name asc`,
       [id]
@@ -149,6 +154,7 @@ export async function GET(
       ...item,
       id: item.id,
       variant_id: item.variant_id,
+      category_name: item.category_name || null,
       hsn_code: item.hsn_code || null,
       gst_rate: normalizeGstRate(item.gst_rate, 5),
       unit_price: Number(item.unit_price),

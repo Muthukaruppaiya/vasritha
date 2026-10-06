@@ -132,63 +132,53 @@ function BarcodesPageInner() {
     setActionError("");
     setMessage("");
     try {
-      const byProduct = new Map<string, BarcodeItem[]>();
-      for (const item of items) {
-        const list = byProduct.get(item.product_id) || [];
-        list.push(item);
-        byProduct.set(item.product_id, list);
-      }
-
       const labelSize = layoutToLabelSize(labelLayout);
-      let printed = 0;
-      for (const [productId, group] of byProduct) {
-        const first = group[0];
-        await printProductStickers({
-          layout: labelLayout,
+      const first = items[0];
+
+      // One print job for the whole selection (continuous roll / single dialog).
+      await printProductStickers({
+        layout: labelLayout,
+        labelSize,
+        price: first.price,
+        meta: {
+          productName: first.product_name,
+          shortName: first.short_name || undefined,
+          categoryName: first.category_name || undefined,
+          sku: first.sku,
+          color: first.color,
+          tag: first.tag,
+          hsnCode: first.hsn_code || undefined,
+          compareAtPrice: first.compare_at_price
+        },
+        items: items.map((item) => ({
+          id: item.id,
+          unit_code: item.unit_code,
+          barcode: item.barcode,
+          tag: item.tag,
+          seq: item.seq,
+          price: item.price,
+          sizeLabel: item.color,
           labelSize,
-          price: first.price,
-          meta: {
-            productName: first.product_name,
-            shortName: first.short_name || undefined,
-            categoryName: first.category_name || undefined,
-            sku: first.sku,
-            color: first.color,
-            tag: first.tag,
-            hsnCode: first.hsn_code || undefined,
-            compareAtPrice: first.compare_at_price
-          },
-          items: group.map((item) => ({
-            id: item.id,
-            unit_code: item.unit_code,
-            barcode: item.barcode,
-            tag: item.tag,
-            seq: item.seq,
-            price: item.price,
-            sizeLabel: item.color,
-            labelSize,
-            productName: item.product_name,
-            shortName: item.short_name || undefined,
-            categoryName: item.category_name || undefined,
-            sku: item.sku,
-            color: item.color,
-            hsnCode: item.hsn_code || undefined,
-            compareAtPrice: item.compare_at_price
-          }))
-        });
+          productName: item.product_name,
+          shortName: item.short_name || undefined,
+          categoryName: item.category_name || undefined,
+          sku: item.sku,
+          color: item.color,
+          hsnCode: item.hsn_code || undefined,
+          compareAtPrice: item.compare_at_price
+        }))
+      });
 
-        const mark = await adminFetch("/api/admin/barcodes", {
-          method: "PATCH",
-          json: {
-            itemIds: group.map((item) => item.id),
-            label_printed: true
-          }
-        });
-        if (mark.error) throw new Error(mark.error);
-        printed += group.length;
-        void productId;
-      }
+      const mark = await adminFetch("/api/admin/barcodes", {
+        method: "PATCH",
+        json: {
+          itemIds: items.map((item) => item.id),
+          label_printed: true
+        }
+      });
+      if (mark.error) throw new Error(mark.error);
 
-      setMessage(`Printed ${printed} barcode sticker${printed === 1 ? "" : "s"}.`);
+      setMessage(`Printed ${items.length} barcode sticker${items.length === 1 ? "" : "s"}.`);
       setSelected(new Set());
       await reload();
     } catch (err) {

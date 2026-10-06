@@ -7875,6 +7875,28 @@ body:has(.admin-login) .whatsapp-float {
   }
 }
 
+.grn-detail-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px 16px;
+  margin-bottom: 14px;
+}
+.grn-detail-meta > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.grn-detail-meta strong {
+  font-size: 0.95rem;
+  word-break: break-word;
+}
+.grn-detail-note {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: #faf6f1;
+  border-radius: 8px;
+}
+
 .grn-toolbar {
   display: grid;
   gap: 12px;
@@ -10612,37 +10634,38 @@ body:has(.pos-screen) .admin-topbar-title {
   gap: 8px;
 }
 
-/* Textile shop bill — 3" (80mm) thermal roll; Go Colors–style monospace */
+/* Textile shop bill — 3" (80mm) thermal roll; bold monospace for clear heat print */
 .invoice-bill,
 .invoice-bill--shop {
   --bill-font: "Courier New", Courier, ui-monospace, Menlo, Consolas, monospace;
   box-sizing: border-box;
-  width: min(70mm, 100%);
-  max-width: 70mm;
+  width: min(72mm, 100%);
+  max-width: 72mm;
   height: auto;
   margin: 0 auto;
-  padding: 2.5mm 3mm 3.5mm;
+  padding: 3mm 2.5mm 3.5mm;
   background: #fff;
-  color: #111;
+  color: #000;
   border: 1px solid #ddd;
   border-radius: 2px;
   box-shadow: 0 6px 16px rgb(0 0 0 / 6%);
-  font: 400 11px/1.28 var(--bill-font);
+  font: 700 12px/1.25 var(--bill-font);
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: unset;
+  font-smooth: never;
+  text-rendering: geometricPrecision;
   overflow: hidden;
   word-break: break-word;
   overflow-wrap: anywhere;
 }
 .invoice-bill-logo {
-  display: block;
-  width: 28px;
-  height: 28px;
-  margin: 0 auto 4px;
-  object-fit: contain;
+  display: none !important;
 }
 .invoice-bill-shop-head {
   display: block;
-  padding-bottom: 6px;
-  border-bottom: 1px dashed #222;
+  padding-bottom: 5px;
+  margin-bottom: 2px;
+  border-bottom: 1px dashed #000;
   text-align: center;
 }
 .invoice-bill-shop-title {
@@ -10650,17 +10673,18 @@ body:has(.pos-screen) .admin-topbar-title {
 }
 .invoice-bill-shop-title strong {
   display: block;
-  font: 700 13px/1.15 var(--bill-font);
-  letter-spacing: 0;
+  font: 700 15px/1.15 var(--bill-font);
+  letter-spacing: 0.02em;
   text-transform: uppercase;
-  color: #111;
+  color: #000;
 }
 .invoice-bill-shop-title span {
   display: block;
   margin-top: 2px;
-  color: #222;
-  font-size: 10px;
-  line-height: 1.25;
+  color: #000;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
 }
 .invoice-bill-shop-address {
   margin-top: 3px !important;
@@ -10670,13 +10694,16 @@ body:has(.pos-screen) .admin-topbar-title {
 }
 .invoice-bill-shop-title em {
   display: block;
-  margin-top: 4px;
+  margin-top: 5px;
+  padding-top: 2px;
   font-style: normal;
   font-size: 12px;
   font-weight: 700;
-  color: #111;
+  color: #000;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .invoice-bill-shop-seller {
   display: none;
@@ -10686,19 +10713,20 @@ body:has(.pos-screen) .admin-topbar-title {
   display: grid;
   grid-template-columns: 1fr;
   gap: 2px;
-  margin-top: 6px;
+  margin-top: 5px;
 }
 .invoice-bill-shop-meta--compact {
   display: block;
-  margin-top: 6px;
-  padding-bottom: 6px;
-  border-bottom: 1px dashed #222;
+  margin-top: 5px;
+  padding: 4px 0 5px;
+  border-bottom: 1px dashed #000;
 }
 .invoice-bill-shop-meta--compact p {
-  margin: 0;
-  font-size: 11px;
+  margin: 0 0 2px;
+  font-size: 11.5px;
+  font-weight: 700;
   line-height: 1.3;
-  color: #111;
+  color: #000;
 }
 .invoice-bill-shop-meta > div,
 .invoice-bill-shop-customer > div {
@@ -10709,23 +10737,23 @@ body:has(.pos-screen) .admin-topbar-title {
 .invoice-bill-shop-meta span,
 .invoice-bill-shop-customer span,
 .invoice-bill-shop-ship > span {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0;
   text-transform: none;
-  color: #333;
+  color: #000;
 }
 .invoice-bill-shop-meta b,
 .invoice-bill-shop-customer b {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
-  color: #111;
+  color: #000;
   word-break: break-word;
 }
 .invoice-bill-shop-ship {
   margin-top: 6px;
   padding-top: 6px;
-  border-top: 1px dashed #222;
+  border-top: 1px dashed #000;
 }
 .invoice-bill-shop-ship b {
   display: block;
@@ -10733,38 +10761,42 @@ body:has(.pos-screen) .admin-topbar-title {
 }
 .invoice-bill-shop-ship p {
   margin: 1px 0;
-  font-size: 10px;
-  color: #111;
+  font-size: 11px;
+  font-weight: 700;
+  color: #000;
 }
 .invoice-bill-table,
 .invoice-bill-table--shop {
   width: 100%;
   table-layout: fixed;
   border-collapse: collapse;
-  margin: 6px 0;
+  margin: 5px 0;
 }
 .invoice-bill-table th,
 .invoice-bill-table td {
-  padding: 3px 2px;
-  border-bottom: 1px dashed #999;
+  padding: 4px 2px;
+  border-bottom: 1px dashed #000;
   vertical-align: top;
-  font-size: 11px;
+  font-size: 11.5px;
+  font-weight: 700;
   line-height: 1.25;
+  color: #000;
 }
 .invoice-bill-table thead th {
   background: transparent;
-  color: #111;
-  font: 700 10px/1.2 var(--bill-font);
+  color: #000;
+  font: 700 11px/1.2 var(--bill-font);
   letter-spacing: 0;
   text-transform: none;
-  border-bottom: 1px solid #111;
+  border-bottom: 1.5px solid #000;
+  padding-bottom: 4px;
 }
 .invoice-bill-table thead th small {
   display: block;
   margin-top: 1px;
-  font-size: 9px;
-  font-weight: 400;
-  color: #333;
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #000;
 }
 .invoice-bill-table .is-no {
   width: 14px;
@@ -10786,13 +10818,13 @@ body:has(.pos-screen) .admin-topbar-title {
   font-variant-numeric: tabular-nums;
   padding-left: 2px;
 }
-.invoice-bill-table .is-qty { width: 22px; }
-.invoice-bill-table .is-rate { width: 52px; }
-.invoice-bill-table .is-amt { width: 56px; font-weight: 700; }
+.invoice-bill-table .is-qty { width: 24px; }
+.invoice-bill-table .is-rate { width: 54px; }
+.invoice-bill-table .is-amt { width: 58px; font-weight: 700; }
 .invoice-bill-table td.is-item b {
   display: block;
   font-weight: 700;
-  color: #111;
+  color: #000;
   white-space: normal;
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -10800,27 +10832,31 @@ body:has(.pos-screen) .admin-topbar-title {
 }
 .invoice-bill-table td.is-item span {
   display: block;
-  margin-top: 1px;
-  font-size: 9px;
-  color: #222;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #000;
   white-space: normal;
   overflow-wrap: anywhere;
   word-break: break-word;
-  line-height: 1.2;
+  line-height: 1.25;
 }
 .invoice-bill-shop-totals {
   margin-left: auto;
   width: 100%;
-  border-top: 1px dashed #222;
+  border-top: 1px dashed #000;
   padding-top: 4px;
+  margin-top: 2px;
 }
 .invoice-bill-shop-totals > div {
   display: flex;
   justify-content: space-between;
-  gap: 8px;
-  padding: 1px 0;
-  font-size: 11px;
-  color: #111;
+  gap: 6px;
+  padding: 2px 0;
+  font-size: 11.5px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: #000;
 }
 .invoice-bill-shop-totals b {
   font-family: inherit;
@@ -10830,26 +10866,27 @@ body:has(.pos-screen) .admin-topbar-title {
 }
 .invoice-bill-shop-totals .is-grand {
   margin-top: 3px;
-  padding-top: 4px;
-  border-top: 1px solid #111;
+  padding-top: 5px;
+  border-top: 2px solid #000;
   font-weight: 700;
-  color: #111;
+  color: #000;
 }
 .invoice-bill-shop-totals .is-grand b {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 700;
 }
 .invoice-bill-shop-foot {
-  margin-top: 8px;
-  padding-top: 6px;
-  border-top: 1px dashed #222;
+  margin-top: 6px;
+  padding-top: 5px;
+  border-top: 1px dashed #000;
   text-align: left;
 }
 .invoice-bill-shop-foot p {
   margin: 2px 0;
   font-size: 10px;
+  font-weight: 700;
   line-height: 1.3;
-  color: #111;
+  color: #000;
 }
 .invoice-bill-shop-code {
   display: none;
@@ -12002,11 +12039,7 @@ body:has(.pos-screen) .admin-topbar-title {
   gap: 2px;
 }
 .tvs-receipt-logo {
-  width: 42px;
-  height: 42px;
-  object-fit: contain;
-  margin-bottom: 4px;
-  filter: grayscale(1) contrast(1.2);
+  display: none !important;
 }
 .tvs-receipt-brand strong {
   font-size: 16px;
@@ -12247,17 +12280,20 @@ body:has(.pos-screen) .admin-topbar-title {
     display: block !important;
     visibility: visible !important;
     box-sizing: border-box !important;
-    width: 68mm !important;
-    max-width: 68mm !important;
+    width: 72mm !important;
+    max-width: 72mm !important;
     height: auto !important;
     margin: 0 auto !important;
-    padding: 1.5mm 2mm 2.5mm !important;
+    padding: 3mm 2.5mm 3.5mm !important;
     border: 0 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
     background: #fff !important;
     color: #000 !important;
-    font-family: "Courier New", Courier, monospace !important;
+    font: 700 12px/1.2 "Courier New", Courier, monospace !important;
+    -webkit-font-smoothing: none !important;
+    font-smooth: never !important;
+    text-rendering: geometricPrecision !important;
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
     page-break-inside: avoid;
@@ -12272,6 +12308,8 @@ body:has(.pos-screen) .admin-topbar-title {
     box-shadow: none !important;
     text-shadow: none !important;
     font-family: inherit !important;
+    font-weight: 700 !important;
+    -webkit-font-smoothing: none !important;
   }
 
   .invoice-bill-head,
@@ -12283,20 +12321,67 @@ body:has(.pos-screen) .admin-topbar-title {
   .invoice-bill-shop-head {
     display: block !important;
     text-align: center !important;
+    padding-bottom: 3px !important;
   }
 
   .invoice-bill-logo {
-    display: block !important;
-    width: 26px !important;
-    height: 26px !important;
-    margin: 0 auto 3px !important;
+    display: none !important;
+  }
+
+  .invoice-bill-shop-title strong {
+    font-size: 15px !important;
+    line-height: 1.1 !important;
+    font-weight: 700 !important;
+  }
+
+  .invoice-bill-shop-title span {
+    font-size: 11px !important;
+    line-height: 1.2 !important;
+    margin-top: 1px !important;
+    font-weight: 700 !important;
+  }
+
+  .invoice-bill-shop-title em {
+    font-size: 12px !important;
   }
 
   .invoice-bill-shop-address {
     display: block !important;
-    font-size: 9px !important;
-    line-height: 1.25 !important;
+    font-size: 11px !important;
+    line-height: 1.2 !important;
     white-space: normal !important;
+  }
+
+  .invoice-bill-shop-meta--compact p {
+    font-size: 11.5px !important;
+    line-height: 1.2 !important;
+  }
+
+  .invoice-bill-table th,
+  .invoice-bill-table td {
+    font-size: 11.5px !important;
+    line-height: 1.15 !important;
+    padding: 2px 1px !important;
+  }
+
+  .invoice-bill-table thead th {
+    font-size: 11px !important;
+  }
+
+  .invoice-bill-table td.is-item span {
+    font-size: 10px !important;
+  }
+
+  .invoice-bill-shop-totals > div {
+    font-size: 11.5px !important;
+  }
+
+  .invoice-bill-shop-totals .is-grand b {
+    font-size: 15px !important;
+  }
+
+  .invoice-bill-shop-foot p {
+    font-size: 10px !important;
   }
 
   .invoice-bill-shop-meta--compact {
@@ -12340,7 +12425,7 @@ body:has(.pos-screen) .admin-topbar-title {
     border-bottom: 1px dashed #666 !important;
     color: #000 !important;
     background: transparent !important;
-    padding: 2px 1px !important;
+    padding: 4px 2px !important;
   }
 
   .invoice-bill-table thead th {
@@ -12366,7 +12451,7 @@ body:has(.pos-screen) .admin-topbar-title {
   }
 
   .invoice-bill-shop-foot p {
-    font-size: 9px !important;
+    font-size: 10px !important;
     text-align: left !important;
   }
 
@@ -12379,7 +12464,7 @@ body:has(.pos-screen) .admin-topbar-title {
   }
 
   .invoice-bill-logo {
-    filter: grayscale(1) contrast(1.2) !important;
+    display: none !important;
   }
 
   /* Hidden print stack for online orders */

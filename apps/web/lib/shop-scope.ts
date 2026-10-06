@@ -77,6 +77,8 @@ async function runEnsureShopStockSchema() {
 }
 
 export async function ensureShopStockSchema() {
+  // Always keep shops FK columns current (shop_id on movements/items may lag).
+  await ensureShopsSchema();
   if (await skipEnsureIfRelationExists("public.shop_variant_stock")) return;
   if (!shopStockSchemaReady) {
     shopStockSchemaReady = runEnsureShopStockSchema().catch((error) => {

@@ -7,6 +7,7 @@ export type ThermalReceiptItem = {
   product_name: string;
   variant_name: string | null;
   sku: string | null;
+  category_name?: string | null;
   hsn_code?: string | null;
   gst_rate?: number | string | null;
   unit_price: number;
@@ -96,7 +97,6 @@ export function ThermalReceipt({ data, id = "tvs-l46-receipt" }: Props) {
   return (
     <article className="tvs-receipt" id={id}>
       <header className="tvs-receipt-brand">
-        <img src="/vasritha-logo.svg" alt="Vasritha" className="tvs-receipt-logo" />
         <strong>VASRITHA</strong>
         <span>Timeless Elegance</span>
         <span className="tvs-receipt-store">

@@ -1,4 +1,5 @@
 import { query, queryOne } from "./db/pool";
+import { ensureCompanySettingsSchema } from "./company-settings";
 import { skipEnsureIfRelationExists } from "./schema-bootstrap";
 
 export type ShopRow = {
@@ -20,36 +21,41 @@ export type ShopRow = {
 };
 
 export async function ensureShopsSchema() {
-  if (await skipEnsureIfRelationExists("public.shops")) return;
-  await query(`
-    create table if not exists public.shops (
-      id uuid primary key default gen_random_uuid(),
-      code text not null,
-      name text not null,
-      address text,
-      phone text,
-      email text,
-      state text,
-      state_code text,
-      gstin text,
-      is_active boolean not null default true,
-      is_default boolean not null default false,
-      notes text,
-      created_at timestamptz not null default now(),
-      updated_at timestamptz not null default now(),
-      constraint shops_code_nonempty check (length(trim(code)) > 0),
-      constraint shops_name_nonempty check (length(trim(name)) > 0)
-    )
-  `);
-  await query(`
-    create unique index if not exists shops_code_unique_idx
-      on public.shops (lower(code))
-  `);
-  await query(`
-    create unique index if not exists shops_one_default_idx
-      on public.shops ((1))
-      where is_default
-  `);
+  const shopsReady = await skipEnsureIfRelationExists("public.shops");
+  await ensureCompanySettingsSchema();
+  if (!shopsReady) {
+    await query(`
+      create table if not exists public.shops (
+        id uuid primary key default gen_random_uuid(),
+        code text not null,
+        name text not null,
+        address text,
+        phone text,
+        email text,
+        state text,
+        state_code text,
+        gstin text,
+        is_active boolean not null default true,
+        is_default boolean not null default false,
+        notes text,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now(),
+        constraint shops_code_nonempty check (length(trim(code)) > 0),
+        constraint shops_name_nonempty check (length(trim(name)) > 0)
+      )
+    `);
+    await query(`
+      create unique index if not exists shops_code_unique_idx
+        on public.shops (lower(code))
+    `);
+    await query(`
+      create unique index if not exists shops_one_default_idx
+        on public.shops ((1))
+        where is_default
+    `);
+  }
+
+  // Always keep FK columns in sync — shops table may exist from an older patch.
   await query(`
     alter table public.orders
       add column if not exists shop_id uuid references public.shops(id)

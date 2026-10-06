@@ -6,6 +6,7 @@ import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   ClipboardCheck,
+  FilePlus2,
   PackagePlus,
   Plus,
   Printer,
@@ -98,6 +99,7 @@ function GrnEntryPageInner() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
   const [draftBanner, setDraftBanner] = useState("");
+  const [pendingDraft, setPendingDraft] = useState<GrnDraft | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [docUploading, setDocUploading] = useState(false);
 
@@ -114,16 +116,41 @@ function GrnEntryPageInner() {
         saveGrnDraft(next);
       }
       setInward(next);
+      setPendingDraft(null);
       setDraftBanner("Draft restored — continue your GRN.");
     } else if (prefillVariant) {
       setInward(blankGrnDraft(prefillVariant));
+      setPendingDraft(null);
     } else if (draft) {
-      setInward(draft);
-      setDraftBanner("Resumed saved GRN draft.");
+      // Do not auto-fill the form — offer continue vs new
+      setInward(blankGrnDraft());
+      setPendingDraft(draft);
+      setDraftBanner("");
+    } else {
+      setInward(blankGrnDraft());
+      setPendingDraft(null);
     }
     setHydrated(true);
   }, [resumeGrn, resumeVariant, prefillVariant]);
 
+  const startNewGrn = () => {
+    clearGrnDraft();
+    setInward(blankGrnDraft());
+    setPendingDraft(null);
+    setFormError("");
+    setDraftBanner("Started a new GRN. Previous draft cleared.");
+    setSkuFilter("");
+    if (resumeGrn || resumeVariant || prefillVariant) {
+      router.replace("/admin/inventory/grn");
+    }
+  };
+
+  const continueDraft = () => {
+    if (!pendingDraft) return;
+    setInward(pendingDraft);
+    setPendingDraft(null);
+    setDraftBanner("Continuing saved GRN draft.");
+  };
   const skuSelectOptions = useMemo(() => {
     const list = data?.stock || [];
     const q = skuFilter.trim().toLowerCase();
@@ -301,6 +328,16 @@ function GrnEntryPageInner() {
         description="Enter supplier inward. Submit for manager approval, or submit & approve if you have rights."
         actions={
           <>
+            <button
+              type="button"
+              className="admin-icon-tip admin-action-btn--primary"
+              onClick={startNewGrn}
+              data-tooltip="Clear draft and start blank GRN"
+              aria-label="New GRN"
+            >
+              <FilePlus2 size={16} strokeWidth={2} />
+              <span>New GRN</span>
+            </button>
             <Link className="admin-icon-tip" href="/admin/inventory">
               <ArrowLeft size={16} strokeWidth={2} />
               <span>Back to inventory</span>
@@ -328,6 +365,21 @@ function GrnEntryPageInner() {
       {error && <AdminAlert>{error}</AdminAlert>}
       {formError && <AdminAlert>{formError}</AdminAlert>}
       {draftBanner && <AdminAlert tone="ok">{draftBanner}</AdminAlert>}
+      {pendingDraft ? (
+        <AdminAlert tone="ok">
+          A saved GRN draft was found
+          {pendingDraft.savedAt
+            ? ` (saved ${new Date(pendingDraft.savedAt).toLocaleString()})`
+            : ""}
+          .{" "}
+          <button type="button" className="admin-ghost-btn" onClick={continueDraft}>
+            Continue draft
+          </button>{" "}
+          <button type="button" className="admin-ghost-btn" onClick={startNewGrn}>
+            Discard &amp; start new
+          </button>
+        </AdminAlert>
+      ) : null}
 
       <form className="grn-page" onSubmit={onSubmit}>
         <AdminPanel title="Supplier & invoice">
@@ -584,6 +636,9 @@ function GrnEntryPageInner() {
             </strong>
           </div>
           <div className="grn-footer-actions">
+            <button type="button" className="btn admin-ghost-btn" onClick={startNewGrn}>
+              New GRN
+            </button>
             <Link className="btn admin-ghost-btn" href="/admin/inventory">
               Cancel
             </Link>

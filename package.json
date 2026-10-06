@@ -19,6 +19,7 @@
     "db:patch:pos": "node --env-file=apps/web/.env.local scripts/patch-pos-billing.mjs",
     "db:patch:roles": "node --env-file=apps/web/.env.local scripts/patch-roles-rights.mjs",
     "db:patch:company": "node --env-file=apps/web/.env.local scripts/patch-company-details.mjs",
+    "db:patch:schema-gaps": "node --env-file=apps/web/.env.local scripts/patch-schema-gaps.mjs",
     "db:patch:reviews": "node --env-file=apps/web/.env.local scripts/patch-reviews.mjs",
     "db:patch:short-name": "node --env-file=apps/web/.env.local scripts/patch-products-short-name.mjs",
     "db:patch:branding": "node --env-file=apps/web/.env.local scripts/patch-branding-assets.mjs",

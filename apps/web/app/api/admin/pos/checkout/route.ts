@@ -233,6 +233,7 @@ export async function POST(request: NextRequest) {
       product_name: string;
       variant_name: string | null;
       sku: string | null;
+      category_name: string | null;
       hsn_code: string | null;
       gst_rate: number;
       unit_price: number;
@@ -254,9 +255,14 @@ export async function POST(request: NextRequest) {
         status: string;
         hsn_code: string | null;
         gst_rate: string | number | null;
+        category_name: string | null;
       }>(
-        `select id, name, price, stock_quantity, sku, status, hsn_code, gst_rate
-         from products where id = $1`,
+        `select p.id, p.name, p.price, p.stock_quantity, p.sku, p.status, p.hsn_code, p.gst_rate,
+                coalesce(sc.name, c.name) as category_name
+         from products p
+         left join categories c on c.id = p.category_id
+         left join subcategories sc on sc.id = p.subcategory_id
+         where p.id = $1`,
         [line.productId]
       );
       if (!product || product.status !== "active") {
@@ -336,6 +342,7 @@ export async function POST(request: NextRequest) {
         product_name: product.name,
         variant_name: variantName,
         sku,
+        category_name: product.category_name ? String(product.category_name).trim() || null : null,
         hsn_code: hsnCode,
         gst_rate: gstRate,
         unit_price: unitPrice,

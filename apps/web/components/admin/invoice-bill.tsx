@@ -58,12 +58,6 @@ export function InvoiceBill({ data, id = "vasritha-invoice-bill" }: Props) {
   return (
     <article className="invoice-bill invoice-bill--shop" id={id}>
       <header className="invoice-bill-shop-head">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/vasritha-logo-circle.png"
-          alt=""
-          className="invoice-bill-logo"
-        />
         <div className="invoice-bill-shop-title">
           <strong>{storeName}</strong>
           {storeAddress ? <span className="invoice-bill-shop-address">{storeAddress}</span> : null}
@@ -105,7 +99,7 @@ export function InvoiceBill({ data, id = "vasritha-invoice-bill" }: Props) {
           <tr>
             <th className="is-item">
               Code
-              <small>HSN / Tax</small>
+              <small>Category / Tax</small>
             </th>
             <th className="is-qty">Qty</th>
             <th className="is-rate">Rate</th>
@@ -116,18 +110,25 @@ export function InvoiceBill({ data, id = "vasritha-invoice-bill" }: Props) {
           {lines.length ? (
             lines.map((item, index) => {
               const code = item.sku || "—";
+              const category = String(item.category_name || "").trim();
               const hsn = item.hsn_code || "";
               const rate =
                 item.gst_rate != null && item.gst_rate !== ""
                   ? `GST${Number(item.gst_rate)}%`
                   : "";
-              const meta = [hsn ? `HSN ${hsn}` : "", rate].filter(Boolean).join(" · ");
+              const meta = [
+                category,
+                hsn ? `HSN ${hsn}` : "",
+                rate
+              ]
+                .filter(Boolean)
+                .join(" · ");
 
               return (
                 <tr key={`${item.product_id}-${index}`}>
                   <td className="is-item">
                     <b>{clip(code, 28)}</b>
-                    {meta ? <span>{clip(meta, 32)}</span> : null}
+                    {meta ? <span>{clip(meta, 40)}</span> : null}
                   </td>
                   <td className="is-qty">{item.quantity}</td>
                   <td className="is-rate">{formatMoney(item.unit_price)}</td>

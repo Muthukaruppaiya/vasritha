@@ -1,4 +1,5 @@
 import { query, queryOne } from "./db/pool";
+import { ensureCompanySettingsSchema } from "./company-settings";
 import { ensureShopsSchema } from "./shops";
 import { round2, splitInclusiveGst } from "./gst-math";
 
@@ -36,6 +37,7 @@ let gstSchemaReady = false;
 
 export async function ensureGstSchema() {
   if (gstSchemaReady) return;
+  await ensureCompanySettingsSchema();
   await query(`
     alter table public.products
       add column if not exists hsn_code text,
@@ -45,12 +47,6 @@ export async function ensureGstSchema() {
     alter table public.order_items
       add column if not exists hsn_code text,
       add column if not exists gst_rate numeric(5,2)
-  `);
-  await query(`
-    alter table public.site_settings
-      add column if not exists company_state text,
-      add column if not exists company_state_code text,
-      add column if not exists prices_inclusive_of_gst boolean not null default true
   `);
   gstSchemaReady = true;
 }
