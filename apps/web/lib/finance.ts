@@ -1,5 +1,5 @@
 import { query, queryOne } from "./db/pool";
-import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
+import { skipEnsureIfRelationExists } from "./schema-bootstrap";
 import { CATEGORY_LABELS } from "./finance-labels";
 
 export { CATEGORY_LABELS } from "./finance-labels";
@@ -72,7 +72,11 @@ export const OPEX_CATEGORIES: FinanceCategory[] = [
 let schemaReady = false;
 
 export async function ensureFinanceSchema() {
-  if (schemaReady || skipRuntimeSchemaEnsure()) return;
+  if (schemaReady) return;
+  if (await skipEnsureIfRelationExists("public.finance_payment_entries")) {
+    schemaReady = true;
+    return;
+  }
 
   await query(`
     create table if not exists public.finance_payment_entries (
@@ -230,7 +234,7 @@ async function nextEntryNo(direction: FinanceDirection) {
 
 function mapProviderMethod(provider: string): FinanceMethod {
   if (provider === "razorpay") return "razorpay";
-  if (provider === "cash" || provider === "pos_cash") return "cash";
+  if (provider === "cash" || provider === "pos_cash" || provider === "pos_credit") return "cash";
   if (provider === "upi") return "upi";
   if (provider === "card") return "card";
   if (provider === "bank") return "bank";
@@ -273,7 +277,6 @@ export async function syncOrderPaymentsIntoFinance(limit = 200) {
      join orders o on o.id = p.order_id
      left join customers c on c.id = o.customer_id
      where p.status = 'paid'
-       and o.payment_status = 'paid'
        and not exists (
          select 1 from finance_payment_entries f where f.payment_id = p.id
        )

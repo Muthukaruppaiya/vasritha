@@ -2,12 +2,13 @@ import { createHash, randomBytes } from "crypto";
 import { query, queryOne } from "./db/pool";
 import bcrypt from "bcryptjs";
 import { sendMail } from "./mail";
-import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
+import { skipEnsureIfRelationExists } from "./schema-bootstrap";
 
 let schemaReady = false;
 
 export async function ensurePasswordResetSchema() {
-  if (schemaReady || skipRuntimeSchemaEnsure()) {
+  if (schemaReady) return;
+  if (await skipEnsureIfRelationExists("public.password_reset_tokens")) {
     schemaReady = true;
     return;
   }

@@ -15,6 +15,9 @@ export type AdminSessionUser = {
   permissions?: string[];
   primaryRole: string | null;
   primaryRoleName: string | null;
+  shopId?: string | null;
+  shopName?: string | null;
+  shopCode?: string | null;
 };
 
 export function getAdminToken() {

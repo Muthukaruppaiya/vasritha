@@ -203,6 +203,15 @@ export function ProductDetailModal({
             {data?.short_name && data.short_name !== data.name ? (
               <p className="muted">{data.short_name}</p>
             ) : null}
+            {data?.sku ? (
+              <p className="muted">
+                Product code: <strong>{data.sku}</strong>
+              </p>
+            ) : data?.barcode ? (
+              <p className="muted">
+                Product code: <strong>{data.barcode}</strong>
+              </p>
+            ) : null}
           </div>
           <button type="button" className="admin-modal-close" aria-label="Close" onClick={onClose}>
             <X size={18} />
@@ -294,8 +303,12 @@ export function ProductDetailModal({
                     </dd>
                   </div>
                   <div>
-                    <dt>SKU / family code</dt>
+                    <dt>Product code</dt>
                     <dd>{data.sku || "—"}</dd>
+                  </div>
+                  <div>
+                    <dt>Family barcode</dt>
+                    <dd>{data.barcode || "—"}</dd>
                   </div>
                   <div>
                     <dt>Connecting tag</dt>

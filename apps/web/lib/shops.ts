@@ -1,5 +1,5 @@
 import { query, queryOne } from "./db/pool";
-import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
+import { skipEnsureIfRelationExists } from "./schema-bootstrap";
 
 export type ShopRow = {
   id: string;
@@ -20,7 +20,7 @@ export type ShopRow = {
 };
 
 export async function ensureShopsSchema() {
-  if (skipRuntimeSchemaEnsure()) return;
+  if (await skipEnsureIfRelationExists("public.shops")) return;
   await query(`
     create table if not exists public.shops (
       id uuid primary key default gen_random_uuid(),

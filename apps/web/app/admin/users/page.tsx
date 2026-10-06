@@ -13,6 +13,14 @@ import {
 import { AdminFormModal } from "../../../components/admin/admin-form-modal";
 import { adminFetch, formatDate } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
+import {
+  firstError,
+  normalizePhone10,
+  validateEmail,
+  validatePassword,
+  validatePhone10,
+  validateRequired
+} from "../../../lib/validation";
 
 type RoleOption = {
   id: string;
@@ -22,22 +30,41 @@ type RoleOption = {
   is_system: boolean;
 };
 
+type ShopOption = {
+  id: string;
+  code: string;
+  name: string;
+  is_active: boolean;
+  is_default: boolean;
+};
+
 type AdminUser = {
   id: string;
   full_name: string;
   email: string;
   phone: string | null;
+  shop_id: string | null;
+  shop_name: string | null;
+  shop_code: string | null;
   created_at: string;
   primaryRoleName: string;
   roles: Array<{ code: string; name: string }>;
 };
+
+const STORE_BOUND_ROLES = new Set([
+  "billing_staff",
+  "inventory_staff",
+  "packing_shipping_staff",
+  "customer_support_staff"
+]);
 
 const blankForm = () => ({
   fullName: "",
   email: "",
   phone: "",
   password: "",
-  roleCode: "manager"
+  roleCode: "manager",
+  shopId: ""
 });
 
 export default function AdminUsersPage() {
@@ -58,14 +85,20 @@ export default function AdminUsersPage() {
   );
   const { data, error, loading, reload } = useAdminQuery<AdminUser[]>(path);
   const { data: roles } = useAdminQuery<RoleOption[]>("/api/admin/roles");
+  const { data: shops } = useAdminQuery<ShopOption[]>("/api/admin/shops?active=1");
 
   const staffRoles = (roles || []).filter((role) => role.code !== "customer");
+  const activeShops = (shops || []).filter((shop) => shop.is_active);
+  const needsShop = STORE_BOUND_ROLES.has(form.roleCode);
 
   const openCreate = () => {
     setEditing(null);
+    const defaultShop =
+      activeShops.find((shop) => shop.is_default)?.id || activeShops[0]?.id || "";
     setForm({
       ...blankForm(),
-      roleCode: staffRoles[0]?.code || "manager"
+      roleCode: staffRoles[0]?.code || "manager",
+      shopId: defaultShop
     });
     setFormError("");
     setModalOpen(true);
@@ -79,7 +112,8 @@ export default function AdminUsersPage() {
       email: user.email,
       phone: user.phone || "",
       password: "",
-      roleCode: staffOnlyRoles[0]?.code || staffRoles[0]?.code || "manager"
+      roleCode: staffOnlyRoles[0]?.code || staffRoles[0]?.code || "manager",
+      shopId: user.shop_id || ""
     });
     setFormError("");
     setModalOpen(true);
@@ -92,15 +126,40 @@ export default function AdminUsersPage() {
     setActionError("");
     setActionMessage("");
 
+    if (STORE_BOUND_ROLES.has(form.roleCode) && !form.shopId) {
+      setSaving(false);
+      setFormError("Select a store for this staff role.");
+      return;
+    }
+
+    const phone = normalizePhone10(form.phone);
+    const fieldError = firstError(
+      validateRequired(form.fullName, "Full name"),
+      validateEmail(form.email, { required: true }),
+      validatePhone10(form.phone, { required: false }),
+      editing
+        ? validatePassword(form.password, { required: false })
+        : validatePassword(form.password, { required: true }),
+      validateRequired(form.roleCode, "Role")
+    );
+    if (fieldError) {
+      setSaving(false);
+      setFormError(fieldError);
+      return;
+    }
+
+    const shopId = form.shopId || null;
+
     if (editing) {
       const result = await adminFetch("/api/admin/users", {
         method: "PATCH",
         json: {
           userId: editing.id,
-          fullName: form.fullName,
-          email: form.email,
-          phone: form.phone || null,
+          fullName: form.fullName.trim(),
+          email: form.email.trim(),
+          phone: phone || null,
           roleCode: form.roleCode,
+          shopId,
           ...(form.password.trim() ? { password: form.password.trim() } : {})
         }
       });
@@ -119,11 +178,12 @@ export default function AdminUsersPage() {
     const result = await adminFetch("/api/admin/users", {
       method: "POST",
       json: {
-        fullName: form.fullName,
-        email: form.email,
-        phone: form.phone || undefined,
+        fullName: form.fullName.trim(),
+        email: form.email.trim(),
+        phone: phone || undefined,
         password: form.password,
-        roleCode: form.roleCode
+        roleCode: form.roleCode,
+        shopId
       }
     });
     setSaving(false);
@@ -170,7 +230,7 @@ export default function AdminUsersPage() {
       <AdminPageHeader
         eyebrow="Access"
         title="Users"
-        description="Create, edit, and remove staff accounts. Assign roles for the admin panel."
+        description="Create staff accounts, assign a role and store. Store-bound users only see that shop’s stock and bills."
         actions={
           <button type="button" className="btn" onClick={openCreate}>
             <Plus size={15} />
@@ -189,7 +249,7 @@ export default function AdminUsersPage() {
         <label className="admin-grow">
           <span>Search</span>
           <input
-            placeholder="Name, email or phone"
+            placeholder="Name, email, phone or store"
             value={q}
             onChange={(e) => setQ(e.target.value)}
           />
@@ -216,6 +276,7 @@ export default function AdminUsersPage() {
                   <th>Name</th>
                   <th>Email</th>
                   <th>Phone</th>
+                  <th>Store</th>
                   <th>Role</th>
                   <th>Joined</th>
                   <th>Actions</th>
@@ -234,6 +295,18 @@ export default function AdminUsersPage() {
                       </td>
                       <td>{user.email}</td>
                       <td>{user.phone || "—"}</td>
+                      <td>
+                        {user.shop_name ? (
+                          <>
+                            <b>{user.shop_name}</b>
+                            {user.shop_code ? (
+                              <div className="muted admin-sub">{user.shop_code}</div>
+                            ) : null}
+                          </>
+                        ) : (
+                          <span className="muted">All stores</span>
+                        )}
+                      </td>
                       <td>
                         <div className="admin-row-actions">
                           {displayRoles.map((role) => (
@@ -311,10 +384,15 @@ export default function AdminUsersPage() {
           />
         </label>
         <label>
-          <span>Phone</span>
+          <span>Phone (10 digits)</span>
           <input
+            inputMode="numeric"
+            maxLength={10}
+            placeholder="9876543210"
             value={form.phone}
-            onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, phone: e.target.value.replace(/\D/g, "").slice(0, 10) }))
+            }
           />
         </label>
         <label>
@@ -328,7 +406,7 @@ export default function AdminUsersPage() {
             onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
           />
         </label>
-        <label className="admin-span-2">
+        <label>
           <span>Role</span>
           <select
             required
@@ -341,6 +419,25 @@ export default function AdminUsersPage() {
               </option>
             ))}
           </select>
+        </label>
+        <label>
+          <span>Store {needsShop ? "" : "(optional — all stores if empty)"}</span>
+          <select
+            required={needsShop}
+            value={form.shopId}
+            onChange={(e) => setForm((f) => ({ ...f, shopId: e.target.value }))}
+          >
+            {!needsShop ? <option value="">All stores</option> : null}
+            {needsShop && !form.shopId ? <option value="">Select store</option> : null}
+            {activeShops.map((shop) => (
+              <option key={shop.id} value={shop.id}>
+                {shop.name} ({shop.code})
+              </option>
+            ))}
+          </select>
+          <small className="admin-field-hint">
+            Store staff only see and update stock, POS, and orders for this store.
+          </small>
         </label>
       </AdminFormModal>
     </>

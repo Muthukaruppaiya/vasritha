@@ -13,6 +13,14 @@ import {
   validatePan,
   type SupplierRow
 } from "../../../../lib/suppliers";
+import {
+  firstError,
+  normalizeEmail,
+  normalizePhone10,
+  validateEmail,
+  validatePhone10,
+  validatePincode
+} from "../../../../lib/validation";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -63,10 +71,16 @@ export async function POST(request: NextRequest) {
 
   const gstin = normalizeGstin(body.gstin);
   const pan = normalizePan(body.pan);
-  const gstErr = validateGstin(gstin);
-  if (gstErr) return fail(gstErr);
-  const panErr = validatePan(pan);
-  if (panErr) return fail(panErr);
+  const phone = body.phone ? normalizePhone10(body.phone) : "";
+  const email = body.email ? normalizeEmail(body.email) : "";
+  const fieldError = firstError(
+    validatePhone10(body.phone, { required: false }),
+    validateEmail(body.email, { required: false }),
+    validatePincode(body.pincode, { required: false }),
+    validateGstin(gstin),
+    validatePan(pan)
+  );
+  if (fieldError) return fail(fieldError);
 
   if (gstin) {
     const dupGst = await queryOne<{ id: string }>(
@@ -94,8 +108,8 @@ export async function POST(request: NextRequest) {
       String(body.name).trim(),
       body.trade_name ? String(body.trade_name).trim() : null,
       body.contact_person ? String(body.contact_person).trim() : null,
-      body.phone ? String(body.phone).trim() : null,
-      body.email ? String(body.email).trim() : null,
+      phone || null,
+      email || null,
       body.address ? String(body.address).trim() : null,
       body.city ? String(body.city).trim() : null,
       body.state ? String(body.state).trim() : null,

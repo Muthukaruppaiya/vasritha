@@ -1,6 +1,5 @@
 import { query, queryOne } from "./db/pool";
 import { classifyHost } from "./hosts";
-import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
 
 export type LoginSecurityConfig = {
   enabled: boolean;
@@ -18,7 +17,6 @@ export type StaffLoginClient = "staff" | "pos" | "website" | "unknown";
 let schemaReady: Promise<void> | null = null;
 
 export async function ensureLoginSecuritySchema() {
-  if (skipRuntimeSchemaEnsure()) return;
   if (!schemaReady) {
     schemaReady = (async () => {
       await query(`
@@ -50,7 +48,10 @@ export async function ensureLoginSecuritySchema() {
         create index if not exists staff_login_devices_status_idx
           on public.staff_login_devices (status)
       `);
-    })();
+    })().catch((error) => {
+      schemaReady = null;
+      throw error;
+    });
   }
   await schemaReady;
 }

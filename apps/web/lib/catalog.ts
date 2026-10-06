@@ -2,17 +2,12 @@ import { query, queryOne } from "./db/pool";
 import { resolveMediaUrl } from "./product-image-storage";
 import { categoryImage } from "./category-images";
 import { ensureProductRestockSchema } from "./order-courier";
-import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
 
 export { categoryImage } from "./category-images";
 
 let categoriesSchemaReady: Promise<void> | null = null;
 
 export async function ensureCategoriesSchema() {
-  if (skipRuntimeSchemaEnsure()) {
-    await ensureProductRestockSchema();
-    return;
-  }
   // Idempotent ALTER — run once per process, then cache.
   if (!categoriesSchemaReady) {
     categoriesSchemaReady = query(`
@@ -21,7 +16,12 @@ export async function ensureCategoriesSchema() {
         add column if not exists shipping_charge numeric(12,2) not null default 0,
         add column if not exists shipping_is_free boolean not null default false,
         add column if not exists shipping_rate_active boolean not null default false
-    `).then(() => undefined);
+    `)
+      .then(() => undefined)
+      .catch((error) => {
+        categoriesSchemaReady = null;
+        throw error;
+      });
   }
   await categoriesSchemaReady;
   await ensureProductRestockSchema();

@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { FormEvent, Suspense, useMemo, useState } from "react";
+import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import {
   ArrowDownToLine,
+  ClipboardCheck,
   PackagePlus,
   Pencil,
   Printer,
@@ -21,8 +22,14 @@ import {
   AdminPanel
 } from "../../../components/admin/admin-ui";
 import { AdminFormModal } from "../../../components/admin/admin-form-modal";
-import { adminFetch, formatDate } from "../../../lib/admin-api";
+import { adminFetch, formatDate, getAdminUser } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
+import {
+  LABEL_LAYOUT_OPTIONS,
+  type LabelLayout
+} from "../../../lib/print-stickers";
+
+const LABEL_LAYOUT_KEY = "vasritha_label_layout";
 
 type StockRow = {
   variant_id: string;
@@ -61,9 +68,16 @@ type InventoryData = {
     inStock: number;
     lowStock: number;
     outOfStock: number;
+    shopId?: string;
   };
   lowStockThreshold?: number;
+  shopId?: string;
+  total?: number;
+  limit?: number;
+  offset?: number;
 };
+
+const PAGE_SIZE = 50;
 
 const blankAdjust = (variantId = "") => ({
   productVariantId: variantId,
@@ -100,9 +114,58 @@ function AdminInventoryPageInner() {
   const focusProduct = searchParams.get("product") || "";
   const grnPosted = searchParams.get("grn") === "posted";
 
-  const queryPath = focusProduct
-    ? `/api/admin/inventory?product=${encodeURIComponent(focusProduct)}`
-    : "/api/admin/inventory";
+  const sessionShopId = getAdminUser()?.shopId || null;
+
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [stockFilter, setStockFilter] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [subcategoryFilter, setSubcategoryFilter] = useState("");
+  const [page, setPage] = useState(0);
+  const [labelLayout, setLabelLayout] = useState<LabelLayout>("set2");
+  const [adjustOpen, setAdjustOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [adjust, setAdjust] = useState(blankAdjust);
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => window.clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => {
+    const raw = window.localStorage.getItem(LABEL_LAYOUT_KEY);
+    if (raw === "set3" || raw === "set2") setLabelLayout(raw);
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(LABEL_LAYOUT_KEY, labelLayout);
+  }, [labelLayout]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [debouncedSearch, stockFilter, categoryFilter, subcategoryFilter, focusProduct]);
+
+  const queryPath = useMemo(() => {
+    const params = new URLSearchParams();
+    if (focusProduct) params.set("product", focusProduct);
+    if (sessionShopId) params.set("shopId", sessionShopId);
+    if (debouncedSearch) params.set("q", debouncedSearch);
+    if (stockFilter) params.set("stockLevel", stockFilter);
+    if (categoryFilter) params.set("categoryId", categoryFilter);
+    if (subcategoryFilter) params.set("subcategoryId", subcategoryFilter);
+    params.set("limit", String(PAGE_SIZE));
+    params.set("offset", String(page * PAGE_SIZE));
+    return `/api/admin/inventory?${params.toString()}`;
+  }, [
+    focusProduct,
+    sessionShopId,
+    debouncedSearch,
+    stockFilter,
+    categoryFilter,
+    subcategoryFilter,
+    page
+  ]);
 
   const { data, loading, error, reload } = useAdminQuery<InventoryData>(queryPath);
   const { data: categories } = useAdminQuery<
@@ -113,45 +176,10 @@ function AdminInventoryPageInner() {
     }>
   >("/api/admin/categories");
 
-  const [search, setSearch] = useState("");
-  const [stockFilter, setStockFilter] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("");
-  const [subcategoryFilter, setSubcategoryFilter] = useState("");
-  const [adjustOpen, setAdjustOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState("");
-  const [adjust, setAdjust] = useState(blankAdjust);
-
   const low = data?.lowStockThreshold ?? 10;
-
-  const stockOptions = useMemo(() => {
-    let list = data?.stock || [];
-    const q = search.trim().toLowerCase();
-    if (q) {
-      list = list.filter((row) => {
-        const hay = [
-          row.product_name,
-          row.sku,
-          row.variant_name,
-          row.category_name,
-          row.subcategory_name,
-          row.hsn_code
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
-        return hay.includes(q);
-      });
-    }
-    if (categoryFilter) list = list.filter((row) => row.category_id === categoryFilter);
-    if (subcategoryFilter) list = list.filter((row) => row.subcategory_id === subcategoryFilter);
-    if (stockFilter === "in") list = list.filter((row) => row.stock_quantity > low);
-    if (stockFilter === "low") {
-      list = list.filter((row) => row.stock_quantity > 0 && row.stock_quantity <= low);
-    }
-    if (stockFilter === "out") list = list.filter((row) => row.stock_quantity <= 0);
-    return list;
-  }, [data?.stock, search, categoryFilter, subcategoryFilter, stockFilter, low]);
+  const stockOptions = data?.stock || [];
+  const total = data?.total ?? stockOptions.length;
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const openAdjust = (variantId = "") => {
     setAdjust(blankAdjust(variantId));
@@ -169,7 +197,8 @@ function AdminInventoryPageInner() {
         productVariantId: adjust.productVariantId,
         type: adjust.type,
         quantity: Number(adjust.quantity),
-        note: adjust.note || undefined
+        note: adjust.note || undefined,
+        shopId: sessionShopId || data?.shopId || undefined
       }
     });
     setSaving(false);
@@ -189,7 +218,7 @@ function AdminInventoryPageInner() {
       <AdminPageHeader
         eyebrow="Stock operations"
         title="Inventory"
-        description="Review on-hand stock here. Receive supplier goods on the GRN page — stock updates after approval."
+        description="Review on-hand stock here. Enter GRNs separately, then approve them to increase stock."
         actions={
           <>
             <Link
@@ -204,15 +233,37 @@ function AdminInventoryPageInner() {
             <Link
               className="admin-icon-tip admin-action-btn--primary"
               href="/admin/inventory/grn"
-              data-tooltip="Receive stock (GRN)"
-              aria-label="Receive stock"
+              data-tooltip="GRN entry"
+              aria-label="GRN entry"
             >
               <ArrowDownToLine size={16} strokeWidth={2} />
-              <span>Receive stock</span>
+              <span>GRN entry</span>
             </Link>
             <Link
               className="admin-icon-tip"
-              href="/admin/barcodes"
+              href="/admin/inventory/approvals"
+              data-tooltip="GRN approvals"
+              aria-label="GRN approvals"
+            >
+              <ClipboardCheck size={16} strokeWidth={2} />
+              <span>GRN approvals</span>
+            </Link>
+            <label className="inv-label-type" title="Barcode label layout for printing">
+              <span>Label</span>
+              <select
+                value={labelLayout}
+                onChange={(e) => setLabelLayout(e.target.value as LabelLayout)}
+              >
+                {LABEL_LAYOUT_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Link
+              className="admin-icon-tip"
+              href={`/admin/barcodes?label=${encodeURIComponent(labelLayout)}`}
               data-tooltip="Print barcodes"
               aria-label="Print barcodes"
             >
@@ -248,9 +299,11 @@ function AdminInventoryPageInner() {
         <div className="inv-flow-step is-current">
           <span className="inv-flow-num">2</span>
           <div>
-            <strong>GRN / Inventory</strong>
+            <strong>GRN entry → approvals</strong>
             <p>
-              Open <Link href="/admin/inventory/grn">Receive stock</Link> to submit GRN for approval.
+              <Link href="/admin/inventory/grn">Enter GRN</Link>
+              {" · "}
+              <Link href="/admin/inventory/approvals">Approve</Link> to release stock.
             </p>
           </div>
         </div>
@@ -372,15 +425,17 @@ function AdminInventoryPageInner() {
 
         {!loading && !stockOptions.length && (
           <AdminEmpty
-            title={data?.stock?.length ? "No matching stock rows" : "No products to track yet"}
+            title={total === 0 && !debouncedSearch && !stockFilter && !categoryFilter
+              ? "No products to track yet"
+              : "No matching stock rows"}
             body={
-              data?.stock?.length
-                ? "Try clearing filters."
-                : "Create a product in Product Master first, then receive stock on the GRN page."
+              total === 0 && !debouncedSearch && !stockFilter && !categoryFilter
+                ? "Create a product in Product Master first, then receive stock on the GRN page."
+                : "Try clearing filters or searching by SKU / product name."
             }
           />
         )}
-        {!loading && !data?.stock?.length ? (
+        {!loading && !summary?.skuCount ? (
           <div className="inv-empty-actions">
             <Link className="btn" href="/admin/products">
               Go to Product Master
@@ -390,6 +445,9 @@ function AdminInventoryPageInner() {
 
         {stockOptions.length > 0 && (
           <div className="admin-table-wrap">
+            <div className="inv-page-meta muted">
+              Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
+            </div>
             <table className="admin-table admin-table--zebra">
               <thead>
                 <tr>
@@ -470,12 +528,44 @@ function AdminInventoryPageInner() {
                           <Pencil size={15} strokeWidth={2} />
                           <span>Edit</span>
                         </Link>
+                        <Link
+                          className="admin-action-btn"
+                          href={`/admin/barcodes?product=${encodeURIComponent(row.product_id)}&label=${encodeURIComponent(labelLayout)}`}
+                          data-tooltip="Print barcodes"
+                          aria-label={`Print barcodes for ${row.product_name}`}
+                        >
+                          <Printer size={15} strokeWidth={2} />
+                          <span>Labels</span>
+                        </Link>
                       </div>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            {pageCount > 1 ? (
+              <div className="inv-pagination">
+                <button
+                  type="button"
+                  className="btn admin-ghost-btn"
+                  disabled={page <= 0 || loading}
+                  onClick={() => setPage((p) => Math.max(0, p - 1))}
+                >
+                  Previous
+                </button>
+                <span className="muted">
+                  Page {page + 1} / {pageCount}
+                </span>
+                <button
+                  type="button"
+                  className="btn admin-ghost-btn"
+                  disabled={page + 1 >= pageCount || loading}
+                  onClick={() => setPage((p) => p + 1)}
+                >
+                  Next
+                </button>
+              </div>
+            ) : null}
           </div>
         )}
       </AdminPanel>

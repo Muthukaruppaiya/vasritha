@@ -6,8 +6,21 @@ import QRCode from "qrcode";
 import { Check, Printer, QrCode, RefreshCw, Save, Trash2, Upload, X } from "lucide-react";
 import { AdminAlert, slugify } from "./admin-ui";
 import { adminFetch, getAdminToken, getAdminUser } from "../../lib/admin-api";
+import {
+  ALLOWED_GST_RATES,
+  COMMON_GARMENT_HSN,
+  GARMENT_SALE_VALUE_THRESHOLD,
+  isReadymadeGarmentHsn,
+  resolveSaleGstRate
+} from "../../lib/gst-math";
 import { buildProductUploadPageUrl } from "../../lib/product-upload-url";
-import { printProductStickers } from "../../lib/print-stickers";
+import { LABEL_LAYOUT_OPTIONS, labelSizeToLayout, printProductStickers } from "../../lib/print-stickers";
+import {
+  firstError,
+  validateHsn,
+  validatePositiveMoney,
+  validateRequired
+} from "../../lib/validation";
 
 export type ProductFormCategory = {
   id: string;
@@ -124,6 +137,23 @@ export function ProductFormModal({
     setUnits([]);
     setJustCreated(false);
   }, [open, initial, initialImages, initialInternalImages]);
+
+  // Readymade garments (HSN 61/62): GST follows sale value per piece (₹2,500 slab).
+  useEffect(() => {
+    if (!open || !isReadymadeGarmentHsn(form.hsn_code)) return;
+    const price = Number(form.price);
+    if (!Number.isFinite(price) || price < 0) return;
+    const next = String(
+      resolveSaleGstRate({
+        hsnCode: form.hsn_code,
+        saleValuePerPiece: price,
+        fallbackRate: form.gst_rate
+      })
+    );
+    if (next !== form.gst_rate) {
+      setForm((f) => ({ ...f, gst_rate: next }));
+    }
+  }, [open, form.hsn_code, form.price, form.gst_rate]);
 
   useEffect(() => {
     if (!open || !form.image_upload_token) {
@@ -299,6 +329,7 @@ export function ProductFormModal({
         if (!code) throw new Error("Enter a product code before printing.");
         await printProductStickers({
           price: form.price,
+          layout: labelSizeToLayout(form.label_size),
           labelSize: form.label_size,
           meta: stickerMeta,
           items: [{ unit_code: form.sku || code, barcode: code, sizeLabel: form.color }]
@@ -322,6 +353,7 @@ export function ProductFormModal({
       }
       await printProductStickers({
         price: form.price,
+        layout: labelSizeToLayout(form.label_size),
         labelSize: form.label_size,
         meta: stickerMeta,
         items: chosen.map((row) => ({
@@ -374,8 +406,22 @@ export function ProductFormModal({
     setSaving(true);
     setError("");
 
-    if (!form.color.trim()) {
-      setError("Enter a colour for this product");
+    const gstRate = Number(form.gst_rate || 5);
+    const fieldError = firstError(
+      validateRequired(form.name, "Product name"),
+      validateRequired(form.category_id, "Category"),
+      validateRequired(form.color, "Colour"),
+      validatePositiveMoney(form.price, { required: true, label: "Price" }),
+      form.compare_at_price
+        ? validatePositiveMoney(form.compare_at_price, { required: false, label: "Compare-at price" })
+        : null,
+      validateHsn(form.hsn_code, { required: false }),
+      (ALLOWED_GST_RATES as readonly number[]).includes(gstRate)
+        ? null
+        : "GST rate must be 0, 3, 5, 9, 12, or 18"
+    );
+    if (fieldError) {
+      setError(fieldError);
       setSaving(false);
       return;
     }
@@ -395,7 +441,11 @@ export function ProductFormModal({
       price: Number(form.price),
       compare_at_price: form.compare_at_price ? Number(form.compare_at_price) : null,
       hsn_code: form.hsn_code.trim() || null,
-      gst_rate: Number(form.gst_rate || 5),
+      gst_rate: resolveSaleGstRate({
+        hsnCode: form.hsn_code,
+        saleValuePerPiece: Number(form.price),
+        fallbackRate: form.gst_rate
+      }),
       stock_quantity: Number(form.stock_quantity || 0),
       status:
         !canApproveProducts && (form.status === "rejected" || form.status === "active")
@@ -612,12 +662,26 @@ export function ProductFormModal({
                 onChange={(e) =>
                   setForm((f) => ({ ...f, hsn_code: e.target.value.replace(/\D/g, "").slice(0, 8) }))
                 }
-                placeholder="e.g. 5407"
+                placeholder="e.g. 6109"
                 inputMode="numeric"
                 maxLength={8}
               />
+              <div className="admin-chip-row" style={{ marginTop: 6 }}>
+                {COMMON_GARMENT_HSN.map((item) => (
+                  <button
+                    key={item.code}
+                    type="button"
+                    className={`admin-chip-btn${form.hsn_code === item.code ? " is-active" : ""}`}
+                    title={item.label}
+                    onClick={() => setForm((f) => ({ ...f, hsn_code: item.code }))}
+                  >
+                    {item.code}
+                  </button>
+                ))}
+              </div>
               <small className="admin-field-hint">
-                GST HSN (4–8 digits). Common textile: 5007 silk, 5208 cotton, 5407 synthetic, 6214 scarf.
+                Readymade garments: chapter 61 knitted / 62 woven. Other textile: 5007 silk, 5208 cotton,
+                5407 synthetic.
               </small>
             </label>
 
@@ -626,14 +690,20 @@ export function ProductFormModal({
               <select
                 value={form.gst_rate}
                 onChange={(e) => setForm((f) => ({ ...f, gst_rate: e.target.value }))}
+                disabled={isReadymadeGarmentHsn(form.hsn_code)}
               >
                 <option value="0">0%</option>
                 <option value="3">3%</option>
                 <option value="5">5%</option>
                 <option value="9">9%</option>
+                <option value="12">12%</option>
                 <option value="18">18%</option>
               </select>
-              <small className="admin-field-hint">Retail price is treated as GST-inclusive.</small>
+              <small className="admin-field-hint">
+                {isReadymadeGarmentHsn(form.hsn_code)
+                  ? `Garment HSN 61/62: auto ${form.gst_rate || 5}% (5% if sale ≤ ₹${GARMENT_SALE_VALUE_THRESHOLD.toLocaleString("en-IN")}/piece, else 18%). Price is GST-inclusive.`
+                  : "Retail price is treated as GST-inclusive. For garments use HSN 61xx/62xx to apply the ₹2,500 slab."}
+              </small>
             </label>
 
             <label>
@@ -660,15 +730,18 @@ export function ProductFormModal({
             </label>
 
             <label>
-              <span>Label size</span>
+              <span>Label type</span>
               <select
                 value={form.label_size}
                 onChange={(e) =>
                   setForm((f) => ({ ...f, label_size: e.target.value as "accessory" | "dress" }))
                 }
               >
-                <option value="dress">Dress / saree (standard)</option>
-                <option value="accessory">Accessory (small printer)</option>
+                {LABEL_LAYOUT_OPTIONS.map((opt) => (
+                  <option key={opt.code} value={opt.code}>
+                    {opt.label} ({opt.hint})
+                  </option>
+                ))}
               </select>
             </label>
 
@@ -800,7 +873,7 @@ export function ProductFormModal({
               />
               <small className="admin-field-hint">
                 {form.id
-                  ? "Do not edit qty here — open Inventory → Receive stock (GRN) to add pieces."
+                  ? "Do not edit qty here — open Inventory → GRN entry to add pieces."
                   : "Optional first inward. Later stock always goes through Inventory → Receive (GRN)."}
               </small>
             </label>
@@ -1055,7 +1128,11 @@ export function ProductFormModal({
               </button>
             </div>
             <small className="admin-field-hint">
-              Uses {form.label_size === "accessory" ? "small accessory" : "standard dress"} sticker size. Allow the print dialog — it no longer needs a popup window.
+              Uses{" "}
+              {form.label_size === "accessory"
+                ? "3-set (35×22 mm, 3 per row)"
+                : "2-set (50×25 mm, 2 per row)"}
+              . Allow the print dialog — it no longer needs a popup window.
             </small>
             <svg ref={barcodeRef} className="admin-barcode-live" />
             {units.length ? (

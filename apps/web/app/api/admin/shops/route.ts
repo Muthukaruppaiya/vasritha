@@ -10,19 +10,24 @@ import {
 } from "../../../../lib/shops";
 import { stateCodeFromGstin } from "../../../../lib/gst";
 import { ensureBrandsSchema, resolveBrandId } from "../../../../lib/brands";
+import { resolveShopScope } from "../../../../lib/shop-scope";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const activeOnly = searchParams.get("active") === "1";
 
   // POS cashiers can list active shops; full list needs settings
-  const { error } = activeOnly
+  const auth = activeOnly
     ? await requireAnyPermission(request, ["settings:business", "pos:create", "stock:operate"])
     : await requirePermission(request, "settings:business");
-  if (error) return error;
+  if (auth.error || !auth.ctx) return auth.error;
 
   await ensureShopsSchema();
   const data = await listShops({ activeOnly });
+  const scope = await resolveShopScope(auth.ctx, null);
+  if (scope.mode === "one") {
+    return ok(data.filter((shop) => shop.id === scope.shopId));
+  }
   return ok(data);
 }
 

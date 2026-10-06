@@ -33,6 +33,7 @@ import {
   ArrowDownToLine,
   ArrowUpRight,
   BookOpen,
+  ClipboardCheck,
   Landmark,
   Printer,
   Wallet,
@@ -107,7 +108,8 @@ const navModules: NavModule[] = [
       { label: "Product Master", href: "/admin/products", icon: Package },
       { label: "Categories", href: "/admin/categories", icon: Tags },
       { label: "Inventory", href: "/admin/inventory", icon: Warehouse },
-      { label: "Receive stock (GRN)", href: "/admin/inventory/grn", icon: ArrowDownToLine },
+      { label: "GRN entry", href: "/admin/inventory/grn", icon: ArrowDownToLine },
+      { label: "GRN approvals", href: "/admin/inventory/approvals", icon: ClipboardCheck },
       { label: "Print barcodes", href: "/admin/barcodes", icon: Printer },
       { label: "Supplier Master", href: "/admin/suppliers", icon: Truck }
     ]
@@ -119,6 +121,7 @@ const navModules: NavModule[] = [
     children: [
       { label: "Online Orders", href: "/admin/orders", icon: ShoppingBag },
       { label: "Store POS", href: "/admin/billing", icon: Receipt },
+      { label: "Credit dues", href: "/admin/billing/dues", icon: Wallet },
       { label: "Exchanges", href: "/admin/returns", icon: RotateCcw },
       { label: "Gift vouchers", href: "/admin/coupons", icon: TicketPercent },
       { label: "Loyalty", href: "/admin/loyalty", icon: Sparkles }

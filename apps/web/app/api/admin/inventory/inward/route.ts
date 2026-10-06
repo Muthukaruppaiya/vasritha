@@ -4,9 +4,9 @@ import { hasPermission } from "../../../../../lib/auth/rbac";
 import {
   approveGrnOnce,
   createPendingGrn,
-  ensureInventoryGrnSchema,
   parseAndValidateGrnBody
 } from "../../../../../lib/inventory-grn";
+import { requireScopedShopId } from "../../../../../lib/shop-scope";
 
 /**
  * GRN / stock inward submit.
@@ -21,8 +21,6 @@ export async function POST(request: NextRequest) {
   ]);
   if (error || !ctx) return error;
 
-  await ensureInventoryGrnSchema();
-
   const body = (await request.json().catch(() => null)) as {
     supplier?: string;
     supplierId?: string;
@@ -32,6 +30,7 @@ export async function POST(request: NextRequest) {
     invoiceDate?: string;
     documentPath?: string;
     approveNow?: boolean;
+    shopId?: string | null;
     lines?: Array<{ productVariantId?: string; quantity?: number; purchasePrice?: number }>;
   } | null;
 
@@ -39,6 +38,13 @@ export async function POST(request: NextRequest) {
 
   const parsed = await parseAndValidateGrnBody(body);
   if (!parsed.ok) return fail(parsed.error);
+
+  let shopId: string;
+  try {
+    shopId = (await requireScopedShopId(ctx, body.shopId || null)).shopId;
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : "No active shop");
+  }
 
   const wantApproveNow = Boolean(body.approveNow);
   const canApprove = hasPermission(ctx.roles, "stock:approve");
@@ -49,7 +55,8 @@ export async function POST(request: NextRequest) {
   try {
     const grn = await createPendingGrn({
       userId: ctx.userId,
-      payload: parsed.data
+      payload: parsed.data,
+      shopId
     });
 
     await writeAuditLog({
@@ -70,7 +77,7 @@ export async function POST(request: NextRequest) {
 
     let approved: Awaited<ReturnType<typeof approveGrnOnce>> | null = null;
     if (wantApproveNow && canApprove) {
-      approved = await approveGrnOnce({ grnId: grn.id, userId: ctx.userId });
+      approved = await approveGrnOnce({ grnId: grn.id, userId: ctx.userId, shopId });
       if (approved.ok) {
         await writeAuditLog({
           actorUserId: ctx.userId,

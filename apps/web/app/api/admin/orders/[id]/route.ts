@@ -9,18 +9,19 @@ import {
   summariseInclusiveLines
 } from "../../../../../lib/gst";
 import { ensureOrderCourierSchema } from "../../../../../lib/order-courier";
+import { resolveShopScope } from "../../../../../lib/shop-scope";
 
 export async function GET(
   request: NextRequest,
   context: { params: Promise<{ id: string }> }
 ) {
-  const { error } = await requireAnyPermission(request, [
+  const { error, ctx } = await requireAnyPermission(request, [
     "orders:view",
     "orders:manage",
     "pos:create",
     "invoices:print"
   ]);
-  if (error) return error;
+  if (error || !ctx) return error;
 
   await ensureGstSchema();
   await ensureOrderCourierSchema();
@@ -64,9 +65,16 @@ export async function GET(
   );
   if (!order) return fail("Order not found", 404);
 
+  const scope = await resolveShopScope(ctx, null);
+  if (scope.mode === "one" && order.shop_id && order.shop_id !== scope.shopId) {
+    return fail("Order not found", 404);
+  }
+
   const [items, shippingAddress, payment, seller] = await Promise.all([
     query<{
+      id: string;
       product_id: string;
+      variant_id: string | null;
       product_name: string;
       variant_name: string | null;
       sku: string | null;
@@ -75,10 +83,20 @@ export async function GET(
       unit_price: string;
       quantity: number;
       line_total: string;
+      returned_qty: number;
     }>(
-      `select product_id, product_name, variant_name, sku, hsn_code, gst_rate,
-              unit_price, quantity, line_total
-       from order_items where order_id = $1 order by product_name asc`,
+      `select oi.id, oi.product_id, oi.variant_id, oi.product_name, oi.variant_name, oi.sku,
+              oi.hsn_code, oi.gst_rate, oi.unit_price, oi.quantity, oi.line_total,
+              coalesce((
+                select sum(ri.quantity)::int
+                from return_items ri
+                join order_returns r on r.id = ri.return_id
+                where ri.order_item_id = oi.id
+                  and r.status <> 'rejected'
+              ), 0) as returned_qty
+       from order_items oi
+       where oi.order_id = $1
+       order by oi.product_name asc`,
       [id]
     ),
     order.shipping_address_id
@@ -124,13 +142,21 @@ export async function GET(
     );
   }
 
-  const mappedItems = items.map((item) => ({
-    ...item,
-    hsn_code: item.hsn_code || null,
-    gst_rate: normalizeGstRate(item.gst_rate, 5),
-    unit_price: Number(item.unit_price),
-    line_total: Number(item.line_total)
-  }));
+  const mappedItems = items.map((item) => {
+    const qty = Number(item.quantity);
+    const returned = Number(item.returned_qty || 0);
+    return {
+      ...item,
+      id: item.id,
+      variant_id: item.variant_id,
+      hsn_code: item.hsn_code || null,
+      gst_rate: normalizeGstRate(item.gst_rate, 5),
+      unit_price: Number(item.unit_price),
+      line_total: Number(item.line_total),
+      returned_qty: returned,
+      remaining_qty: Math.max(0, qty - returned)
+    };
+  });
 
   const shipState = address?.state || null;
   const sellerCode = seller.state_code || stateCodeFromGstin(seller.gstin);

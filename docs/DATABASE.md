@@ -203,7 +203,7 @@ Boolean on `products`, not a separate status enum value, so approval lifecycle (
 - `public.stock_status` enum is reserved for future UI stock badges; on-hand qty remains numeric on variants/items.
 - Typed enums in optimize v1 (`coupon_status`, `return_status`, `inventory_movement_type`, `channel_type`) are available for progressive column migration without breaking current text/`check` columns.
 - Runtime `ensure*Schema()` helpers in the app are a safety net for hosted DBs; **source of truth for review is `schema.sql` + `optimize_v*.sql`**.
-- With `SKIP_RUNTIME_SCHEMA_ENSURE=true` (recommended locally after optimize), those helpers no-op so storefront/admin stay fast.
+- With `SKIP_RUNTIME_SCHEMA_ENSURE=true` (recommended locally after optimize), those helpers skip DDL when the target table already exists. If a table is missing (optimize never finished), they still create it so pages do not 500 with `42P01`.
 
 ---
 

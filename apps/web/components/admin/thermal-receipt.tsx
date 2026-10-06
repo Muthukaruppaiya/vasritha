@@ -22,12 +22,16 @@ export type ThermalReceiptData = {
   tax_amount?: string | number;
   shipping_amount?: string | number;
   total_amount: string | number;
+  amount_paid?: string | number | null;
+  balance_due?: string | number | null;
   payment_status: string;
   status: string;
   channel: "pos" | "online" | string;
   customer_name?: string | null;
   customer_phone?: string | null;
   customer_email?: string | null;
+  cashier_name?: string | null;
+  cashier_id?: string | null;
   loyalty_points_earned?: number | null;
   loyalty_balance_after?: number | null;
   loyalty_prompt?: string | null;

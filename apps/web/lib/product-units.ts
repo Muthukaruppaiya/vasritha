@@ -1,6 +1,6 @@
 import type { QueryResultRow } from "pg";
 import { query, queryOne, withTransaction } from "./db/pool";
-import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
+import { skipEnsureIfRelationExists } from "./schema-bootstrap";
 
 export type UnitStatus = "to_sell" | "sold" | "returned" | "damaged" | "reserved";
 export type LabelSize = "accessory" | "dress";
@@ -9,6 +9,7 @@ export type ProductItem = {
   id: string;
   product_id: string;
   variant_id: string;
+  shop_id?: string | null;
   tag: string;
   seq: number;
   unit_code: string;
@@ -153,7 +154,7 @@ async function runEnsureProductUnitsSchema() {
 }
 
 export async function ensureProductUnitsSchema() {
-  if (skipRuntimeSchemaEnsure()) return;
+  if (await skipEnsureIfRelationExists("public.product_items")) return;
   if (!productUnitsSchemaReady) {
     productUnitsSchemaReady = runEnsureProductUnitsSchema().catch((error) => {
       productUnitsSchemaReady = null;
@@ -171,6 +172,7 @@ export async function createProductUnits(
     tag: string;
     sku: string;
     count: number;
+    shopId?: string | null;
   }
 ) {
   const count = Math.max(0, Math.trunc(input.count));
@@ -183,36 +185,112 @@ export async function createProductUnits(
   let seq = Number(maxRow?.max || 0);
   const compact = compactBarcodeBase(input.sku);
   const tag = (input.tag || input.sku).trim().toUpperCase();
-  const created: ProductItem[] = [];
 
-  for (let i = 0; i < count; i += 1) {
-    seq += 1;
-    const padded = String(seq).padStart(4, "0");
-    const unitCode = `${input.sku}-${padded}`.toUpperCase();
-    const barcode = `${compact}${padded}`;
-    const row = await db.queryOne<ProductItem>(
+  // Insert in chunks so large GRN qty doesn't do thousands of round-trips.
+  const CHUNK = 100;
+  const created: ProductItem[] = [];
+  let remaining = count;
+  while (remaining > 0) {
+    const n = Math.min(CHUNK, remaining);
+    const valueSql: string[] = [];
+    const params: unknown[] = [];
+    let p = 1;
+    for (let i = 0; i < n; i += 1) {
+      seq += 1;
+      const padded = String(seq).padStart(4, "0");
+      valueSql.push(
+        `($${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++}, 'to_sell')`
+      );
+      params.push(
+        input.productId,
+        input.variantId,
+        input.shopId || null,
+        tag,
+        seq,
+        `${input.sku}-${padded}`.toUpperCase(),
+        `${compact}${padded}`
+      );
+    }
+    const rows = await db.query<ProductItem>(
       `insert into product_items
-         (product_id, variant_id, tag, seq, unit_code, barcode, status)
-       values ($1, $2, $3, $4, $5, $6, 'to_sell')
+         (product_id, variant_id, shop_id, tag, seq, unit_code, barcode, status)
+       values ${valueSql.join(", ")}
        returning *`,
-      [input.productId, input.variantId, tag, seq, unitCode, barcode]
+      params
     );
-    if (row) created.push(row);
+    created.push(...rows);
+    remaining -= n;
   }
 
   return created;
 }
 
-export async function syncSellableStock(db: Db, variantId: string) {
+/** Sync shop_variant_stock for one shop+variant, then roll up global variant qty. */
+export async function syncSellableStock(
+  db: Db,
+  variantId: string,
+  shopId?: string | null
+) {
+  if (shopId) {
+    await db.query(
+      `insert into shop_variant_stock (shop_id, variant_id, stock_quantity, updated_at)
+       values (
+         $1, $2,
+         (select count(*)::int from product_items
+          where variant_id = $2 and shop_id = $1 and status = 'to_sell'),
+         now()
+       )
+       on conflict (shop_id, variant_id) do update
+         set stock_quantity = excluded.stock_quantity,
+             updated_at = now()`,
+      [shopId, variantId]
+    );
+  } else {
+    // Rebuild all shop rows for this variant from pieces.
+    await db.query(
+      `delete from shop_variant_stock where variant_id = $1`,
+      [variantId]
+    );
+    await db.query(
+      `insert into shop_variant_stock (shop_id, variant_id, stock_quantity, updated_at)
+       select shop_id, variant_id, count(*)::int, now()
+       from product_items
+       where variant_id = $1 and status = 'to_sell' and shop_id is not null
+       group by shop_id, variant_id`,
+      [variantId]
+    );
+  }
+
   await db.query(
     `update product_variants
-     set stock_quantity = (
+     set stock_quantity = coalesce((
+       select sum(s.stock_quantity)::int from shop_variant_stock s where s.variant_id = $1
+     ), (
        select count(*)::int from product_items
        where variant_id = $1 and status = 'to_sell'
-     )
+     ))
      where id = $1`,
     [variantId]
   );
+}
+
+export async function getShopVariantStock(
+  db: Db,
+  variantId: string,
+  shopId: string
+) {
+  const row = await db.queryOne<{ stock_quantity: number }>(
+    `select stock_quantity from shop_variant_stock
+     where shop_id = $1 and variant_id = $2`,
+    [shopId, variantId]
+  );
+  if (row) return Number(row.stock_quantity);
+  const counted = await db.queryOne<{ c: number }>(
+    `select count(*)::int as c from product_items
+     where variant_id = $1 and shop_id = $2 and status = 'to_sell'`,
+    [variantId, shopId]
+  );
+  return Number(counted?.c || 0);
 }
 
 export async function recordPriceHistory(productId: string, price: number) {
@@ -254,8 +332,19 @@ export async function markItemsSold(db: Db, itemIds: string[], orderId: string, 
 export async function allocateSellableItems(
   db: Db,
   variantId: string,
-  quantity: number
+  quantity: number,
+  shopId?: string | null
 ) {
+  if (shopId) {
+    return db.query<ProductItem>(
+      `select * from product_items
+       where variant_id = $1 and status = 'to_sell' and shop_id = $3
+       order by seq asc
+       limit $2
+       for update`,
+      [variantId, quantity, shopId]
+    );
+  }
   return db.query<ProductItem>(
     `select * from product_items
      where variant_id = $1 and status = 'to_sell'
@@ -266,12 +355,13 @@ export async function allocateSellableItems(
   );
 }
 
-export async function lookupUnitByCode(code: string) {
+export async function lookupUnitByCode(code: string, shopId?: string | null) {
   const exact = code.trim().toUpperCase();
   return queryOne<{
     item_id: string;
     product_id: string;
     variant_id: string;
+    shop_id: string | null;
     name: string;
     unit_code: string;
     barcode: string;
@@ -283,6 +373,7 @@ export async function lookupUnitByCode(code: string) {
        i.id as item_id,
        i.product_id,
        i.variant_id,
+       i.shop_id,
        p.name,
        i.unit_code,
        i.barcode,
@@ -302,8 +393,9 @@ export async function lookupUnitByCode(code: string) {
      where i.status = 'to_sell'
        and p.status = 'active'
        and (upper(i.barcode) = $1 or upper(i.unit_code) = $1)
+       and ($2::uuid is null or i.shop_id = $2::uuid)
      limit 1`,
-    [exact]
+    [exact, shopId || null]
   );
 }
 
@@ -313,10 +405,11 @@ export async function createUnitsAndSync(input: {
   tag: string;
   sku: string;
   count: number;
+  shopId?: string | null;
 }) {
   return withTransaction(async (db) => {
     const items = await createProductUnits(db, input);
-    await syncSellableStock(db, input.variantId);
+    await syncSellableStock(db, input.variantId, input.shopId);
     return items;
   });
 }

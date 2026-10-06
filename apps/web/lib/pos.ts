@@ -1,13 +1,13 @@
 import { query, queryOne } from "./db/pool";
 import { resolveMediaUrl } from "./product-image-storage";
 import { lookupUnitByCode } from "./product-units";
-import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
-
 export const WALK_IN_EMAIL = "pos@vasritha.local";
 export const WALK_IN_NAME = "Walk-in Customer";
 
+let posSchemaReady = false;
+
 export async function ensurePosSchema() {
-  if (skipRuntimeSchemaEnsure()) return;
+  if (posSchemaReady) return;
   await query(`
     alter table public.orders
       add column if not exists discount_amount numeric(12,2) not null default 0
@@ -28,6 +28,7 @@ export async function ensurePosSchema() {
     alter table public.orders
       add column if not exists pos_customer_email text
   `);
+  posSchemaReady = true;
 }
 
 /** Normalize Indian mobile: digits only, strip leading 91 if 12 digits. */
@@ -99,14 +100,17 @@ export type PosSellable = {
   imageSrc: string | null;
 };
 
-export async function lookupSellable(q: string): Promise<PosSellable[]> {
+export async function lookupSellable(
+  q: string,
+  shopId?: string | null
+): Promise<PosSellable[]> {
   const term = q.trim();
   if (!term) return [];
 
   const exact = term.toUpperCase();
   const like = `%${term}%`;
 
-  const unit = await lookupUnitByCode(exact).catch(() => null);
+  const unit = await lookupUnitByCode(exact, shopId).catch(() => null);
   if (unit) {
     return [
       {
@@ -123,6 +127,13 @@ export async function lookupSellable(q: string): Promise<PosSellable[]> {
       }
     ];
   }
+
+  const stockExpr = shopId
+    ? `coalesce((
+         select s.stock_quantity from shop_variant_stock s
+         where s.variant_id = pv.id and s.shop_id = $2
+       ), 0)`
+    : `pv.stock_quantity`;
 
   // Prefer exact barcode / SKU matches first.
   const exactRows = await query<{
@@ -152,7 +163,7 @@ export async function lookupSellable(q: string): Promise<PosSellable[]> {
        p.price as product_price,
        pv.price as variant_price,
        p.stock_quantity as product_stock,
-       pv.stock_quantity as variant_stock,
+       ${stockExpr} as variant_stock,
        (
          select pi.storage_path from product_images pi
          where pi.product_id = p.id
@@ -172,7 +183,7 @@ export async function lookupSellable(q: string): Promise<PosSellable[]> {
        )
      order by p.name asc, pv.name asc nulls first
      limit 20`,
-    [exact]
+    shopId ? [exact, shopId] : [exact]
   );
 
   if (exactRows.length) {
@@ -206,7 +217,7 @@ export async function lookupSellable(q: string): Promise<PosSellable[]> {
        p.price as product_price,
        pv.price as variant_price,
        p.stock_quantity as product_stock,
-       pv.stock_quantity as variant_stock,
+       ${stockExpr} as variant_stock,
        (
          select pi.storage_path from product_images pi
          where pi.product_id = p.id
@@ -228,7 +239,7 @@ export async function lookupSellable(q: string): Promise<PosSellable[]> {
        )
      order by p.name asc, pv.name asc nulls first
      limit 20`,
-    [like]
+    shopId ? [like, shopId] : [like]
   );
 
   return fuzzy.map(mapSellable);

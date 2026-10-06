@@ -19,6 +19,7 @@ import {
   Printer,
   RotateCcw,
   Search,
+  Trash2,
   Upload,
   Warehouse,
   XCircle
@@ -122,6 +123,7 @@ function AdminProductsPageInner() {
   const focusId = searchParams.get("focus") || "";
   const fromGrn = searchParams.get("fromGrn") === "1";
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [subcategoryFilter, setSubcategoryFilter] = useState("");
@@ -149,7 +151,20 @@ function AdminProductsPageInner() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const focusOpened = useRef(false);
 
-  const { data: products, error, loading, reload } = useAdminQuery<Product[]>("/api/admin/products");
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
+    return () => window.clearTimeout(t);
+  }, [search]);
+
+  const productsPath = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set("limit", "50");
+    if (debouncedSearch) params.set("q", debouncedSearch);
+    if (statusFilter) params.set("status", statusFilter);
+    return `/api/admin/products?${params.toString()}`;
+  }, [debouncedSearch, statusFilter]);
+
+  const { data: products, error, loading, reload } = useAdminQuery<Product[]>(productsPath);
   const { data: categories } = useAdminQuery<Category[]>("/api/admin/categories");
   const canApproveProducts = Boolean(
     getAdminUser()?.permissions?.includes("products:approve") ||
@@ -435,6 +450,46 @@ function AdminProductsPageInner() {
     await reload();
   };
 
+  const deleteProduct = async (id: string, name: string) => {
+    const okConfirm = window.confirm(
+      `Permanently delete “${name}”?\n\nThis cannot be undone. Products with sales history cannot be deleted — archive them instead.`
+    );
+    if (!okConfirm) return;
+    const result = await adminFetch(`/api/admin/products/${id}`, { method: "DELETE" });
+    if (result.error) {
+      window.alert(result.error);
+      return;
+    }
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    await reload();
+  };
+
+  const bulkDeleteProducts = async () => {
+    if (!selected.size) return;
+    const okConfirm = window.confirm(
+      `Permanently delete ${selected.size} selected product(s)?\n\nItems with sales history will be skipped.`
+    );
+    if (!okConfirm) return;
+    setBulkBusy(true);
+    let failed = 0;
+    for (const id of Array.from(selected)) {
+      const result = await adminFetch(`/api/admin/products/${id}`, { method: "DELETE" });
+      if (result.error) failed += 1;
+    }
+    setBulkBusy(false);
+    clearSelection();
+    await reload();
+    if (failed) {
+      window.alert(
+        `${failed} product(s) could not be deleted (likely sales history). Archive those instead.`
+      );
+    }
+  };
+
   const bulkUpdateStatus = async (nextStatus: string) => {
     if (!selected.size) return;
     setBulkBusy(true);
@@ -599,8 +654,8 @@ function AdminProductsPageInner() {
         <Link className="inv-flow-step inv-flow-step--link" href="/admin/inventory/grn">
           <span className="inv-flow-num">2</span>
           <div>
-            <strong>Receive stock</strong>
-            <p>GRN / inward quantities.</p>
+            <strong>GRN entry</strong>
+            <p>Enter inward, then approve separately.</p>
           </div>
         </Link>
         <div className="inv-flow-arrow" aria-hidden>
@@ -883,6 +938,15 @@ function AdminProductsPageInner() {
             <button type="button" disabled={bulkBusy} onClick={() => void bulkUpdateStatus("archived")}>
               <Archive size={14} />
               Archive
+            </button>
+            <button
+              type="button"
+              className="is-danger"
+              disabled={bulkBusy}
+              onClick={() => void bulkDeleteProducts()}
+            >
+              <Trash2 size={14} />
+              Delete
             </button>
             <button type="button" className="admin-bulk-clear" onClick={clearSelection}>
               Clear
@@ -1195,7 +1259,6 @@ function AdminProductsPageInner() {
                                 <button
                                   type="button"
                                   role="menuitem"
-                                  className="is-danger"
                                   onClick={() => {
                                     setMenuOpenId(null);
                                     void updateStatus(product.id, "archived");
@@ -1205,6 +1268,18 @@ function AdminProductsPageInner() {
                                   Archive
                                 </button>
                               ) : null}
+                              <button
+                                type="button"
+                                role="menuitem"
+                                className="is-danger"
+                                onClick={() => {
+                                  setMenuOpenId(null);
+                                  void deleteProduct(product.id, product.name);
+                                }}
+                              >
+                                <Trash2 size={14} />
+                                Delete permanently
+                              </button>
                             </div>
                           ) : null}
                         </div>

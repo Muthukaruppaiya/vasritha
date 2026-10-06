@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 import { query, queryOne } from "./db/pool";
 import { normalizePosPhone } from "./pos";
-import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
+import { skipEnsureIfRelationExists } from "./schema-bootstrap";
 
 const require = createRequire(import.meta.url);
 const bcrypt = require("bcryptjs") as typeof import("bcryptjs");
@@ -49,7 +49,7 @@ export type LoyaltySnapshot = {
 };
 
 export async function ensureLoyaltySchema() {
-  if (skipRuntimeSchemaEnsure()) return;
+  if (await skipEnsureIfRelationExists("public.loyalty_rules")) return;
   await query(`
     alter table public.customers
       add column if not exists loyalty_points integer not null default 0
@@ -402,6 +402,28 @@ export async function evaluateLoyaltyForCustomer(input: {
   };
 }
 
+async function userHasStaffRole(userId: string) {
+  const row = await queryOne<{ ok: number }>(
+    `select 1 as ok
+     from user_roles ur
+     join roles r on r.id = ur.role_id
+     where ur.user_id = $1
+       and r.code <> 'customer'
+     limit 1`,
+    [userId]
+  );
+  return Boolean(row);
+}
+
+async function ensureCustomerRole(userId: string) {
+  await query(
+    `insert into user_roles (user_id, role_id)
+     select $1, id from roles where code = 'customer'
+     on conflict do nothing`,
+    [userId]
+  );
+}
+
 /** Find or create a real customer for POS / shared loyalty (centralized by phone). */
 export async function resolveOrCreateCustomerByPhone(input: {
   name: string;
@@ -410,49 +432,119 @@ export async function resolveOrCreateCustomerByPhone(input: {
 }) {
   await ensureLoyaltySchema();
   const phone = normalizePosPhone(input.phone);
-  const name = String(input.name || "").trim() || "Customer";
-  const email =
-    (input.email && String(input.email).trim()) ||
-    `pos.${phone}@customer.vasritha.local`;
+  if (phone.length !== 10) {
+    throw new Error("Enter a valid 10-digit mobile number");
+  }
 
+  const name = String(input.name || "").trim() || "Customer";
+  const providedEmail = String(input.email || "").trim().toLowerCase() || null;
+  const loginEmail = `pos.${phone}@customer.vasritha.local`;
+
+  async function profileEmailFor(ownerId?: string | null) {
+    if (!providedEmail) return loginEmail;
+    const taken = await queryOne<{ id: string }>(
+      `select id from customers
+       where lower(email) = lower($1)
+         and ($2::uuid is null or id <> $2)
+       limit 1`,
+      [providedEmail, ownerId || null]
+    );
+    if (taken) return loginEmail;
+    const userTaken = await queryOne<{ id: string }>(
+      `select id from users
+       where lower(email) = lower($1)
+         and ($2::uuid is null or id <> $2)
+       limit 1`,
+      [providedEmail, ownerId || null]
+    );
+    return userTaken ? loginEmail : providedEmail;
+  }
+
+  // Prefer an existing shopper profile with this phone (never reuse staff accounts).
   const byPhone = await queryOne<{ id: string }>(
-    `select id from customers
-     where regexp_replace(coalesce(phone, ''), '\\D', '', 'g') like '%' || $1
-        or phone = $1
-     order by created_at asc
+    `select c.id
+     from customers c
+     where regexp_replace(coalesce(c.phone, ''), '\\D', '', 'g') like '%' || $1
+        or c.phone = $1
+     order by
+       case when exists (
+         select 1 from user_roles ur
+         join roles r on r.id = ur.role_id
+         where ur.user_id = c.id and r.code <> 'customer'
+       ) then 1 else 0 end,
+       c.created_at asc
      limit 1`,
     [phone]
   );
-  if (byPhone) {
+
+  if (byPhone && !(await userHasStaffRole(byPhone.id))) {
+    const profileEmail = await profileEmailFor(byPhone.id);
     await query(
       `update customers
-       set full_name = case when coalesce(full_name, '') = '' then $2 else full_name end,
-           phone = coalesce(nullif(phone, ''), $3),
-           email = case
-             when email like 'pos.%@customer.vasritha.local' and $4 not like 'pos.%@customer.vasritha.local'
-               then $4
-             else email
-           end
+       set full_name = $2,
+           phone = $3,
+           email = $4
        where id = $1`,
-      [byPhone.id, name, phone, email]
+      [byPhone.id, name, phone, profileEmail]
     );
     await query(
-      `update users set full_name = $2, phone = coalesce(phone, $3) where id = $1`,
+      `update users
+       set full_name = $2,
+           phone = $3
+       where id = $1`,
       [byPhone.id, name, phone]
     );
+    await ensureCustomerRole(byPhone.id);
     return byPhone.id;
   }
 
-  const byEmail = await queryOne<{ id: string }>(
-    `select id from customers where lower(email) = lower($1)`,
-    [email]
+  // Reuse prior POS profile by login email (same phone).
+  const byLogin = await queryOne<{ id: string }>(
+    `select id from users where lower(email) = lower($1)`,
+    [loginEmail]
   );
-  if (byEmail) {
+  if (byLogin && !(await userHasStaffRole(byLogin.id))) {
+    const profileEmail = await profileEmailFor(byLogin.id);
     await query(
-      `update customers set phone = coalesce(phone, $2), full_name = $3 where id = $1`,
-      [byEmail.id, phone, name]
+      `insert into customers (id, full_name, email, phone)
+       values ($1, $2, $3, $4)
+       on conflict (id) do update
+         set full_name = excluded.full_name,
+             phone = excluded.phone,
+             email = excluded.email`,
+      [byLogin.id, name, profileEmail, phone]
     );
-    return byEmail.id;
+    await query(
+      `update users set full_name = $2, phone = $3 where id = $1`,
+      [byLogin.id, name, phone]
+    );
+    await ensureCustomerRole(byLogin.id);
+    return byLogin.id;
+  }
+
+  // If provided email belongs to a pure customer (not staff), update that profile's phone.
+  if (providedEmail) {
+    const byEmail = await queryOne<{ id: string }>(
+      `select id from users where lower(email) = lower($1)`,
+      [providedEmail]
+    );
+    if (byEmail && !(await userHasStaffRole(byEmail.id))) {
+      await query(
+        `insert into customers (id, full_name, email, phone)
+         values ($1, $2, $3, $4)
+         on conflict (id) do update
+           set full_name = excluded.full_name,
+               phone = excluded.phone,
+               email = excluded.email`,
+        [byEmail.id, name, providedEmail, phone]
+      );
+      await query(
+        `update users set full_name = $2, phone = $3 where id = $1`,
+        [byEmail.id, name, phone]
+      );
+      await ensureCustomerRole(byEmail.id);
+      return byEmail.id;
+    }
   }
 
   const passwordHash = await bcrypt.hash(`pos-${phone}-${Date.now()}`, 8);
@@ -460,24 +552,21 @@ export async function resolveOrCreateCustomerByPhone(input: {
     `insert into users (email, password_hash, full_name, phone)
      values ($1, $2, $3, $4)
      returning id`,
-    [email, passwordHash, name, phone]
+    [loginEmail, passwordHash, name, phone]
   );
   if (!user) throw new Error("Could not create customer user");
 
+  const profileEmail = await profileEmailFor(user.id);
   await query(
     `insert into customers (id, full_name, email, phone)
      values ($1, $2, $3, $4)
      on conflict (id) do update
        set full_name = excluded.full_name,
-           phone = coalesce(customers.phone, excluded.phone)`,
-    [user.id, name, email, phone]
+           phone = excluded.phone,
+           email = excluded.email`,
+    [user.id, name, profileEmail, phone]
   );
-  await query(
-    `insert into user_roles (user_id, role_id)
-     select $1, id from roles where code = 'customer'
-     on conflict do nothing`,
-    [user.id]
-  );
+  await ensureCustomerRole(user.id);
   return user.id;
 }
 

@@ -1,6 +1,5 @@
 import { ensureCategoriesSchema } from "./catalog";
 import { query, queryOne } from "./db/pool";
-import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
 
 export type CategoryShippingCombineMode = "max" | "sum";
 
@@ -50,10 +49,9 @@ export type ShippingQuote = {
 let schemaReady = false;
 
 export async function ensureShippingSchema() {
-  if (schemaReady || skipRuntimeSchemaEnsure()) {
-    schemaReady = true;
-    return;
-  }
+  // Always ADD COLUMN IF NOT EXISTS once per process — skip flag must not
+  // leave site_settings missing columns used by Settings PATCH.
+  if (schemaReady) return;
   await query(`
     alter table public.site_settings
       add column if not exists default_shipping_fee numeric(12,2) not null default 0,

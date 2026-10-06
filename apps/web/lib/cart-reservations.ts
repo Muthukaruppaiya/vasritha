@@ -1,7 +1,24 @@
 import type { QueryResultRow } from "pg";
 import { query, queryOne, withTransaction } from "./db/pool";
-import { ensureProductUnitsSchema, syncSellableStock } from "./product-units";
-import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
+import {
+  ensureProductUnitsSchema,
+  getShopVariantStock,
+  syncSellableStock
+} from "./product-units";
+import { skipEnsureIfRelationExists } from "./schema-bootstrap";
+import { getDefaultShop } from "./shops";
+
+/** Website / online cart draws from the default (MAIN) shop stock pool. */
+async function resolveOnlineShopId(db?: Db): Promise<string | null> {
+  if (db) {
+    const row = await db.queryOne<{ id: string }>(
+      `select id from shops where is_default = true and is_active = true limit 1`
+    );
+    if (row?.id) return row.id;
+  }
+  const shop = await getDefaultShop();
+  return shop?.id ?? null;
+}
 
 export const CART_HOLD_MINUTES = 30;
 
@@ -27,7 +44,7 @@ export type StockReservation = {
 };
 
 export async function ensureCartReservationsSchema() {
-  if (skipRuntimeSchemaEnsure()) return;
+  if (await skipEnsureIfRelationExists("public.stock_reservations")) return;
   await ensureProductUnitsSchema();
 
   await query(`
@@ -206,25 +223,42 @@ export async function getAvailableStock(
     return Math.max(0, Number(product?.stock_quantity || 0));
   }
 
+  const shopId = await resolveOnlineShopId();
   const unitCount = await queryOne<{ c: number }>(
-    `select count(*)::int as c from product_items where variant_id = $1`,
-    [resolvedVariantId]
+    shopId
+      ? `select count(*)::int as c from product_items
+         where variant_id = $1 and shop_id = $2`
+      : `select count(*)::int as c from product_items where variant_id = $1`,
+    shopId ? [resolvedVariantId, shopId] : [resolvedVariantId]
   );
 
   if (Number(unitCount?.c || 0) > 0) {
     const sellable = await queryOne<{ c: number }>(
-      `select count(*)::int as c from product_items
-       where variant_id = $1 and status = 'to_sell'`,
-      [resolvedVariantId]
+      shopId
+        ? `select count(*)::int as c from product_items
+           where variant_id = $1 and shop_id = $2 and status = 'to_sell'`
+        : `select count(*)::int as c from product_items
+           where variant_id = $1 and status = 'to_sell'`,
+      shopId ? [resolvedVariantId, shopId] : [resolvedVariantId]
     );
     return Math.max(0, Number(sellable?.c || 0));
   }
 
-  const variant = await queryOne<{ stock_quantity: number }>(
-    `select stock_quantity from product_variants where id = $1`,
-    [resolvedVariantId]
-  );
-  const onHand = Math.max(0, Number(variant?.stock_quantity || 0));
+  let onHand = 0;
+  if (shopId) {
+    const shopStock = await queryOne<{ stock_quantity: number }>(
+      `select stock_quantity from shop_variant_stock
+       where shop_id = $1 and variant_id = $2`,
+      [shopId, resolvedVariantId]
+    );
+    onHand = Math.max(0, Number(shopStock?.stock_quantity || 0));
+  } else {
+    const variant = await queryOne<{ stock_quantity: number }>(
+      `select stock_quantity from product_variants where id = $1`,
+      [resolvedVariantId]
+    );
+    onHand = Math.max(0, Number(variant?.stock_quantity || 0));
+  }
 
   const held = await queryOne<{ qty: string }>(
     `select coalesce(sum(quantity), 0)::text as qty
@@ -346,20 +380,30 @@ export async function setReservationQuantity(input: {
       throw new Error(`Only ${free} left available (your bag already holds ${currentQty})`);
     }
 
+    const shopId = await resolveOnlineShopId(db);
     const unitTotal = await db.queryOne<{ c: number }>(
-      `select count(*)::int as c from product_items where variant_id = $1`,
-      [variantId]
+      shopId
+        ? `select count(*)::int as c from product_items
+           where variant_id = $1 and shop_id = $2`
+        : `select count(*)::int as c from product_items where variant_id = $1`,
+      shopId ? [variantId, shopId] : [variantId]
     );
     const expires = holdExpiry();
 
     if (Number(unitTotal?.c || 0) > 0) {
       const pieces = await db.query<{ id: string }>(
-        `select id from product_items
-         where variant_id = $1 and status = 'to_sell'
-         order by seq asc
-         limit $2
-         for update skip locked`,
-        [variantId, need]
+        shopId
+          ? `select id from product_items
+             where variant_id = $1 and shop_id = $2 and status = 'to_sell'
+             order by seq asc
+             limit $3
+             for update skip locked`
+          : `select id from product_items
+             where variant_id = $1 and status = 'to_sell'
+             order by seq asc
+             limit $2
+             for update skip locked`,
+        shopId ? [variantId, shopId, need] : [variantId, need]
       );
       if (pieces.length < need) {
         throw new Error(`Only ${pieces.length + currentQty} pieces available`);
@@ -383,7 +427,7 @@ export async function setReservationQuantity(input: {
           ]
         );
       }
-      await syncSellableStock(db, variantId);
+      await syncSellableStock(db, variantId, shopId);
     } else {
       // Quantity stock: one aggregate row per session line preferred
       const qtyRow = existing.find((row) => !row.product_item_id);
@@ -434,23 +478,40 @@ export async function setReservationQuantity(input: {
 }
 
 async function availableInTx(db: Db, variantId: string, sessionKey: string) {
+  const shopId = await resolveOnlineShopId(db);
   const unitCount = await db.queryOne<{ c: number }>(
-    `select count(*)::int as c from product_items where variant_id = $1`,
-    [variantId]
+    shopId
+      ? `select count(*)::int as c from product_items
+         where variant_id = $1 and shop_id = $2`
+      : `select count(*)::int as c from product_items where variant_id = $1`,
+    shopId ? [variantId, shopId] : [variantId]
   );
   if (Number(unitCount?.c || 0) > 0) {
     const sellable = await db.queryOne<{ c: number }>(
-      `select count(*)::int as c from product_items
-       where variant_id = $1 and status = 'to_sell'`,
-      [variantId]
+      shopId
+        ? `select count(*)::int as c from product_items
+           where variant_id = $1 and shop_id = $2 and status = 'to_sell'`
+        : `select count(*)::int as c from product_items
+           where variant_id = $1 and status = 'to_sell'`,
+      shopId ? [variantId, shopId] : [variantId]
     );
     return Math.max(0, Number(sellable?.c || 0));
   }
-  const variant = await db.queryOne<{ stock_quantity: number }>(
-    `select stock_quantity from product_variants where id = $1`,
-    [variantId]
-  );
-  const onHand = Math.max(0, Number(variant?.stock_quantity || 0));
+  let onHand = 0;
+  if (shopId) {
+    const shopStock = await db.queryOne<{ stock_quantity: number }>(
+      `select stock_quantity from shop_variant_stock
+       where shop_id = $1 and variant_id = $2`,
+      [shopId, variantId]
+    );
+    onHand = Math.max(0, Number(shopStock?.stock_quantity || 0));
+  } else {
+    const variant = await db.queryOne<{ stock_quantity: number }>(
+      `select stock_quantity from product_variants where id = $1`,
+      [variantId]
+    );
+    onHand = Math.max(0, Number(variant?.stock_quantity || 0));
+  }
   const held = await db.queryOne<{ qty: string }>(
     `select coalesce(sum(quantity), 0)::text as qty
      from stock_reservations
@@ -601,7 +662,8 @@ export async function consumeReservationsForOrder(input: {
         await db.query(`delete from stock_reservations where id = any($1::uuid[])`, [
           pieceHolds.map((row) => row.id)
         ]);
-        await syncSellableStock(db, variantId);
+        const shopId = await resolveOnlineShopId(db);
+        await syncSellableStock(db, variantId, shopId);
       }
 
       const remainingQty = line.quantity - pieceIds.length;
@@ -624,12 +686,26 @@ export async function consumeReservationsForOrder(input: {
           }
         }
 
-        await db.query(
-          `update product_variants
-           set stock_quantity = greatest(0, stock_quantity - $2)
-           where id = $1`,
-          [variantId, remainingQty]
-        );
+        const shopId = await resolveOnlineShopId(db);
+        if (shopId) {
+          const shopStock = await getShopVariantStock(db, variantId, shopId);
+          await db.query(
+            `insert into shop_variant_stock (shop_id, variant_id, stock_quantity, updated_at)
+             values ($1, $2, $3, now())
+             on conflict (shop_id, variant_id) do update
+               set stock_quantity = greatest(0, shop_variant_stock.stock_quantity - $4),
+                   updated_at = now()`,
+            [shopId, variantId, Math.max(0, shopStock - remainingQty), remainingQty]
+          );
+          await syncSellableStock(db, variantId, shopId);
+        } else {
+          await db.query(
+            `update product_variants
+             set stock_quantity = greatest(0, stock_quantity - $2)
+             where id = $1`,
+            [variantId, remainingQty]
+          );
+        }
         await db.query(
           `update products
            set stock_quantity = (

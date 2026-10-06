@@ -90,18 +90,29 @@ export async function PATCH(request: NextRequest) {
   }
   updates.push("updated_at = now()");
 
-  values.push(existing.id);
-  const data = await queryOne(
-    `update site_settings set ${updates.join(", ")} where id = $${values.length} returning *`,
-    values
-  );
+  if (updates.length === 1) {
+    // Only updated_at — nothing from ALLOWED_FIELDS was present.
+    const data = await queryOne(`select * from site_settings where id = $1`, [existing.id]);
+    return ok(data);
+  }
 
-  await writeAuditLog({
-    actorUserId: ctx.userId,
-    action: "update",
-    entityType: "site_settings",
-    entityId: existing.id,
-    after: data
-  });
-  return ok(data);
+  values.push(existing.id);
+  try {
+    const data = await queryOne(
+      `update site_settings set ${updates.join(", ")} where id = $${values.length} returning *`,
+      values
+    );
+
+    await writeAuditLog({
+      actorUserId: ctx.userId,
+      action: "update",
+      entityType: "site_settings",
+      entityId: existing.id,
+      after: data
+    });
+    return ok(data);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Settings update failed";
+    return fail(message, 500);
+  }
 }

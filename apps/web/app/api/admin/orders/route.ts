@@ -8,17 +8,18 @@ import {
   ORDER_FULFILLMENT_STATUSES,
   orderStatusLabel
 } from "../../../../lib/order-status";
+import { resolveShopScope } from "../../../../lib/shop-scope";
 
 const FULFILLMENT_STATUSES = new Set<string>(ORDER_FULFILLMENT_STATUSES);
 
 export async function GET(request: NextRequest) {
-  const { error } = await requireAnyPermission(request, [
+  const { error, ctx } = await requireAnyPermission(request, [
     "orders:view",
     "orders:manage",
     "orders:fulfill",
     "pos:create"
   ]);
-  if (error) return error;
+  if (error || !ctx) return error;
 
   await ensureOrderCourierSchema();
 
@@ -26,12 +27,15 @@ export async function GET(request: NextRequest) {
   const status = searchParams.get("status");
   const channel = searchParams.get("channel");
   const paymentStatus = searchParams.get("paymentStatus");
+  const preferredShop = searchParams.get("shopId");
+  const scope = await resolveShopScope(ctx, preferredShop);
+  const shopId = scope.mode === "one" ? scope.shopId : preferredShop || null;
 
   const data = await query(
     `select o.id, o.order_number, o.customer_id, o.status, o.payment_status, o.subtotal,
             coalesce(o.discount_amount, 0) as discount_amount,
             o.tax_amount, o.shipping_amount, o.total_amount,
-            coalesce(o.channel, 'online') as channel, o.created_at,
+            coalesce(o.channel, 'online') as channel, o.shop_id, o.created_at,
             o.courier_name, o.courier_awb, o.courier_note,
             coalesce(nullif(o.pos_customer_name, ''), c.full_name) as customer_name,
             coalesce(nullif(o.pos_customer_email, ''), c.email) as customer_email,
@@ -41,9 +45,10 @@ export async function GET(request: NextRequest) {
      where ($1::text is null or o.status::text = $1)
        and ($2::text is null or coalesce(o.channel, 'online') = $2)
        and ($3::text is null or o.payment_status::text = $3)
+       and ($4::uuid is null or o.shop_id = $4)
      order by o.created_at desc
      limit 100`,
-    [status, channel, paymentStatus]
+    [status, channel, paymentStatus, shopId]
   );
   return ok(data);
 }
@@ -82,11 +87,16 @@ export async function PATCH(request: NextRequest) {
 
     if (error || !ctx) return error;
 
-    const before = await queryOne<{ id: string; status: string }>(
-      `select id, status from orders where id = $1`,
+    const before = await queryOne<{ id: string; status: string; shop_id: string | null }>(
+      `select id, status, shop_id from orders where id = $1`,
       [body.orderId]
     );
     if (!before) return fail("Order not found", 404);
+
+    const scope = await resolveShopScope(ctx, null);
+    if (scope.mode === "one" && before.shop_id && before.shop_id !== scope.shopId) {
+      return fail("Order not found", 404);
+    }
 
     const fromStatus = String(before.status || "").toLowerCase();
     if (!isAllowedOrderTransition(fromStatus, nextStatus)) {
@@ -131,8 +141,20 @@ export async function PATCH(request: NextRequest) {
   ]);
   if (error || !ctx) return error;
 
-  const before = await queryOne(`select * from orders where id = $1`, [body.orderId]);
+  const before = await queryOne<{ shop_id?: string | null }>(
+    `select * from orders where id = $1`,
+    [body.orderId]
+  );
   if (!before) return fail("Order not found", 404);
+
+  const courierScope = await resolveShopScope(ctx, null);
+  if (
+    courierScope.mode === "one" &&
+    before.shop_id &&
+    before.shop_id !== courierScope.shopId
+  ) {
+    return fail("Order not found", 404);
+  }
 
   const data = await queryOne(
     `update orders

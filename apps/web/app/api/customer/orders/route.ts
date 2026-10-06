@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { fail, ok, requirePermission } from "../../../../lib/auth/api";
 import { computeCouponDiscount } from "../../../../lib/coupon-discount";
 import { query, queryOne } from "../../../../lib/db/pool";
-import { ensureGstSchema, normalizeGstRate, summariseInclusiveLines } from "../../../../lib/gst";
+import { ensureGstSchema, resolveSaleGstRate, summariseInclusiveLines } from "../../../../lib/gst";
 import { getPurchasableStock } from "../../../../lib/cart-reservations";
 import { ensureBrandsSchema, resolveBrandId } from "../../../../lib/brands";
 import { quoteShipping } from "../../../../lib/shipping";
@@ -153,7 +153,6 @@ export async function POST(request: NextRequest) {
     let sku: string | null = product.sku;
     let variantId: string | null = line.variantId ?? null;
     const hsnCode = product.hsn_code ? String(product.hsn_code).trim() || null : null;
-    const gstRate = normalizeGstRate(product.gst_rate, 5);
 
     if (variantId) {
       const variant = await queryOne<{
@@ -203,6 +202,11 @@ export async function POST(request: NextRequest) {
     }
 
     const lineTotal = unitPrice * quantity;
+    const gstRate = resolveSaleGstRate({
+      hsnCode,
+      saleValuePerPiece: unitPrice,
+      fallbackRate: product.gst_rate
+    });
     subtotal += lineTotal;
 
     orderItems.push({

@@ -12,7 +12,7 @@ import {
   statusTone
 } from "./admin-ui";
 import { InvoiceBill, type InvoiceBillData } from "./invoice-bill";
-import { adminFetch, formatDate, formatMoney } from "../../lib/admin-api";
+import { adminFetch, formatDate, formatMoney, getAdminUser } from "../../lib/admin-api";
 import { useAdminQuery } from "../../hooks/use-admin-query";
 
 type InvoiceRow = {
@@ -46,6 +46,8 @@ export function InvoiceDirectory({
     const params = new URLSearchParams();
     params.set("channel", channel);
     if (channel === "pos") params.set("paymentStatus", "paid");
+    const boundShopId = getAdminUser()?.shopId;
+    if (boundShopId) params.set("shopId", boundShopId);
     return `/api/admin/orders?${params.toString()}`;
   }, [channel]);
 

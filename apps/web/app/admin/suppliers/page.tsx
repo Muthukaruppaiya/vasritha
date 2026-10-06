@@ -13,6 +13,16 @@ import {
 import { AdminFormModal } from "../../../components/admin/admin-form-modal";
 import { adminFetch } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
+import {
+  firstError,
+  normalizePhone10,
+  validateEmail,
+  validateGstin,
+  validatePan,
+  validatePhone10,
+  validatePincode,
+  validateRequired
+} from "../../../lib/validation";
 
 type Supplier = {
   id: string;
@@ -131,20 +141,37 @@ export default function AdminSuppliersPage() {
     setActionError("");
     setMessage("");
 
+    const phone = normalizePhone10(form.phone);
+    const gstin = form.gstin.trim().toUpperCase() || null;
+    const pan = form.pan.trim().toUpperCase() || null;
+    const fieldError = firstError(
+      validateRequired(form.name, "Supplier name"),
+      validatePhone10(form.phone, { required: false }),
+      validateEmail(form.email, { required: false }),
+      validatePincode(form.pincode, { required: false }),
+      validateGstin(gstin),
+      validatePan(pan)
+    );
+    if (fieldError) {
+      setSaving(false);
+      setActionError(fieldError);
+      return;
+    }
+
     const payload = {
       ...(editing ? { code: form.code.trim().toUpperCase() } : {}),
       name: form.name.trim(),
       trade_name: form.trade_name.trim() || null,
       contact_person: form.contact_person.trim() || null,
-      phone: form.phone.trim() || null,
+      phone: phone || null,
       email: form.email.trim() || null,
       address: form.address.trim() || null,
       city: form.city.trim() || null,
       state: form.state.trim() || null,
       state_code: form.state_code.trim() || null,
       pincode: form.pincode.trim() || null,
-      gstin: form.gstin.trim().toUpperCase() || null,
-      pan: form.pan.trim().toUpperCase() || null,
+      gstin,
+      pan,
       bank_name: form.bank_name.trim() || null,
       bank_account: form.bank_account.trim() || null,
       bank_ifsc: form.bank_ifsc.trim().toUpperCase() || null,
@@ -339,11 +366,15 @@ export default function AdminSuppliersPage() {
           />
         </label>
         <label>
-          <span>Phone</span>
+          <span>Phone (10 digits)</span>
           <input
+            inputMode="numeric"
+            maxLength={10}
             value={form.phone}
-            onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-            placeholder="10-digit mobile"
+            onChange={(e) =>
+              setForm((f) => ({ ...f, phone: e.target.value.replace(/\D/g, "").slice(0, 10) }))
+            }
+            placeholder="9876543210"
           />
         </label>
         <label>
@@ -352,6 +383,7 @@ export default function AdminSuppliersPage() {
             type="email"
             value={form.email}
             onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+            placeholder="vendor@example.com"
           />
         </label>
         <label className="admin-span-2">
@@ -366,10 +398,14 @@ export default function AdminSuppliersPage() {
           <input value={form.city} onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))} />
         </label>
         <label>
-          <span>Pincode</span>
+          <span>PIN code (6 digits)</span>
           <input
+            inputMode="numeric"
+            maxLength={6}
             value={form.pincode}
-            onChange={(e) => setForm((f) => ({ ...f, pincode: e.target.value }))}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, pincode: e.target.value.replace(/\D/g, "").slice(0, 6) }))
+            }
           />
         </label>
         <label>

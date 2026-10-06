@@ -5,8 +5,11 @@ import {
   ensureProductUnitsSchema,
   syncSellableStock
 } from "./product-units";
-import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
+import { skipEnsureIfRelationExists } from "./schema-bootstrap";
+import type { GrnPrintDetail } from "./print-grn";
 import { ensureSuppliersSchema, getSupplierById, supplierLabel } from "./suppliers";
+
+export type { GrnPrintDetail };
 
 export const GRN_STATUSES = ["pending_approval", "approved", "cancelled"] as const;
 export type GrnStatus = (typeof GRN_STATUSES)[number];
@@ -42,10 +45,14 @@ type Db = {
 let schemaReady = false;
 
 export async function ensureInventoryGrnSchema() {
-  if (schemaReady || skipRuntimeSchemaEnsure()) {
+  if (schemaReady) return;
+  if (await skipEnsureIfRelationExists("public.inventory_grns")) {
     schemaReady = true;
     return;
   }
+
+  // FK target — create suppliers first when GRN tables are missing.
+  await ensureSuppliersSchema();
 
   await query(`
     create table if not exists public.inventory_grns (
@@ -78,6 +85,15 @@ export async function ensureInventoryGrnSchema() {
     )
   `);
 
+  await query(`
+    alter table public.inventory_grns
+      add column if not exists shop_id uuid references public.shops(id)
+  `);
+  await query(`
+    create index if not exists inventory_grns_shop_id_idx
+      on public.inventory_grns (shop_id)
+      where shop_id is not null
+  `);
   await query(`
     create index if not exists inventory_grns_status_created_idx
       on public.inventory_grns (status, created_at desc)
@@ -230,6 +246,7 @@ export async function applyApprovedGrnStock(
     grnId: string;
     userId: string;
     payload: ParsedGrnPayload;
+    shopId: string;
   }
 ) {
   await ensureProductUnitsSchema();
@@ -268,15 +285,17 @@ export async function applyApprovedGrnStock(
       variantId: variant.id,
       tag: tagged?.tag || tagged?.sku || variant.sku,
       sku: tagged?.sku || variant.sku,
-      count: qty
+      count: qty,
+      shopId: input.shopId
     });
     createdItems.push(...(items as unknown as Record<string, unknown>[]));
 
-    await syncSellableStock(db, variant.id);
+    await syncSellableStock(db, variant.id, input.shopId);
 
     const stockRow = await db.queryOne<{ stock_quantity: number }>(
-      `select stock_quantity from product_variants where id = $1`,
-      [variant.id]
+      `select coalesce(stock_quantity, 0)::int as stock_quantity
+       from shop_variant_stock where shop_id = $1 and variant_id = $2`,
+      [input.shopId, variant.id]
     );
 
     await db.query(
@@ -301,8 +320,8 @@ export async function applyApprovedGrnStock(
 
     const movement = await db.queryOne(
       `insert into inventory_movements
-         (product_variant_id, type, quantity, reference_type, reference_id, note, created_by, supplier_id)
-       values ($1, 'purchase', $2, 'grn', $3, $4, $5, $6)
+         (product_variant_id, type, quantity, reference_type, reference_id, note, created_by, supplier_id, shop_id)
+       values ($1, 'purchase', $2, 'grn', $3, $4, $5, $6, $7)
        returning *`,
       [
         line.productVariantId,
@@ -310,7 +329,8 @@ export async function applyApprovedGrnStock(
         input.grnId,
         lineNote,
         input.userId,
-        input.payload.supplierId
+        input.payload.supplierId,
+        input.shopId
       ]
     );
 
@@ -330,6 +350,7 @@ export async function applyApprovedGrnStock(
 export async function createPendingGrn(input: {
   userId: string;
   payload: ParsedGrnPayload;
+  shopId?: string | null;
 }): Promise<{ id: string; grn_number: string; status: GrnStatus }> {
   await ensureInventoryGrnSchema();
 
@@ -350,12 +371,23 @@ export async function createPendingGrn(input: {
   }
 
   return withTransaction(async (db) => {
+    const variantIds = [...new Set(input.payload.lines.map((l) => l.productVariantId))];
+    const found = await db.query<{ id: string }>(
+      `select id from product_variants where id = any($1::uuid[])`,
+      [variantIds]
+    );
+    if (found.length !== variantIds.length) {
+      const ok = new Set(found.map((r) => r.id));
+      const missing = variantIds.find((id) => !ok.has(id));
+      throw new Error(`Variant not found: ${missing}`);
+    }
+
     const grnNumber = nextGrnNumber();
     const grn = await db.queryOne<{ id: string; grn_number: string; status: GrnStatus }>(
       `insert into inventory_grns (
          grn_number, status, supplier_id, bill_no, invoice_amount, invoice_date, document_path,
-         lines_total, note, created_by
-       ) values ($1, 'pending_approval', $2, $3, $4, $5, $6, $7, $8, $9)
+         lines_total, note, created_by, shop_id
+       ) values ($1, 'pending_approval', $2, $3, $4, $5, $6, $7, $8, $9, $10)
        returning id, grn_number, status`,
       [
         grnNumber,
@@ -366,27 +398,34 @@ export async function createPendingGrn(input: {
         input.payload.documentPath,
         input.payload.linesTotal,
         input.payload.note,
-        input.userId
+        input.userId,
+        input.shopId || null
       ]
     );
     if (!grn) throw new Error("Could not create GRN");
 
-    let sort = 0;
-    for (const line of input.payload.lines) {
-      const variant = await db.queryOne<{ id: string }>(
-        `select id from product_variants where id = $1`,
-        [line.productVariantId]
-      );
-      if (!variant) throw new Error(`Variant not found: ${line.productVariantId}`);
-
+    const valueSql: string[] = [];
+    const params: unknown[] = [];
+    let p = 1;
+    input.payload.lines.forEach((line, sort) => {
       const lineTotal = Math.round(line.quantity * line.purchasePrice * 100) / 100;
-      await db.query(
-        `insert into inventory_grn_lines (
-           grn_id, product_variant_id, quantity, purchase_price, line_total, sort_order
-         ) values ($1, $2, $3, $4, $5, $6)`,
-        [grn.id, line.productVariantId, line.quantity, line.purchasePrice, lineTotal, sort++]
+      valueSql.push(`($${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++})`);
+      params.push(
+        grn.id,
+        line.productVariantId,
+        line.quantity,
+        line.purchasePrice,
+        lineTotal,
+        sort
       );
-    }
+    });
+
+    await db.query(
+      `insert into inventory_grn_lines (
+         grn_id, product_variant_id, quantity, purchase_price, line_total, sort_order
+       ) values ${valueSql.join(", ")}`,
+      params
+    );
 
     return grn;
   });
@@ -478,6 +517,7 @@ export async function loadGrnPayload(
 export async function approveGrnOnce(input: {
   grnId: string;
   userId: string;
+  shopId?: string | null;
 }): Promise<
   | { ok: true; grn_number: string; units: number; movements: number }
   | { ok: false; error: string; grn_number?: string }
@@ -490,9 +530,11 @@ export async function approveGrnOnce(input: {
         id: string;
         grn_number: string;
         status: string;
-      }>(`select id, grn_number, status from inventory_grns where id = $1 for update`, [
-        input.grnId
-      ]);
+        shop_id: string | null;
+      }>(
+        `select id, grn_number, status, shop_id from inventory_grns where id = $1 for update`,
+        [input.grnId]
+      );
       if (!locked) return { kind: "missing" as const };
       if (locked.status === "approved") {
         return { kind: "already" as const, grn_number: locked.grn_number };
@@ -526,10 +568,34 @@ export async function approveGrnOnce(input: {
         return { kind: "invalid" as const, grn_number: locked.grn_number, status: "empty" };
       }
 
+      const shopId =
+        input.shopId ||
+        locked.shop_id ||
+        (
+          await db.queryOne<{ id: string }>(
+            `select id from shops where is_default = true and is_active = true limit 1`
+          )
+        )?.id;
+      if (!shopId) {
+        return {
+          kind: "invalid" as const,
+          grn_number: locked.grn_number,
+          status: "no_shop"
+        };
+      }
+
+      if (!locked.shop_id) {
+        await db.query(`update inventory_grns set shop_id = $2 where id = $1`, [
+          locked.id,
+          shopId
+        ]);
+      }
+
       const applied = await applyApprovedGrnStock(db, {
         grnId: locked.id,
         userId: input.userId,
-        payload: loaded.payload
+        payload: loaded.payload,
+        shopId
       });
 
       await db.query(
@@ -574,19 +640,129 @@ export async function approveGrnOnce(input: {
   }
 }
 
+export async function getGrnPrintDetail(grnId: string): Promise<GrnPrintDetail | null> {
+  await ensureInventoryGrnSchema();
+  const grn = await queryOne<{
+    id: string;
+    grn_number: string;
+    status: string;
+    bill_no: string | null;
+    invoice_amount: string | number | null;
+    invoice_date: string | null;
+    document_path: string | null;
+    lines_total: string | number;
+    note: string | null;
+    created_at: string;
+    approved_at: string | null;
+    supplier_id: string | null;
+    supplier_code: string | null;
+    supplier_name: string | null;
+    trade_name: string | null;
+    gstin: string | null;
+    pan: string | null;
+    phone: string | null;
+    address: string | null;
+    city: string | null;
+    state: string | null;
+    state_code: string | null;
+  }>(
+    `select g.id, g.grn_number, g.status, g.bill_no, g.invoice_amount, g.invoice_date,
+            g.document_path, g.lines_total, g.note, g.created_at, g.approved_at, g.supplier_id,
+            s.code as supplier_code, s.name as supplier_name, s.trade_name, s.gstin, s.pan,
+            s.phone, s.address, s.city, s.state, s.state_code
+     from inventory_grns g
+     left join suppliers s on s.id = g.supplier_id
+     where g.id = $1`,
+    [grnId]
+  );
+  if (!grn) return null;
+
+  const lines = await query<{
+    product_name: string;
+    sku: string | null;
+    variant_name: string | null;
+    quantity: number;
+    purchase_price: string | number;
+    line_total: string | number;
+  }>(
+    `select p.name as product_name, coalesce(p.sku, v.sku) as sku, v.name as variant_name,
+            l.quantity, l.purchase_price, l.line_total
+     from inventory_grn_lines l
+     join product_variants v on v.id = l.product_variant_id
+     join products p on p.id = v.product_id
+     where l.grn_id = $1
+     order by l.sort_order asc`,
+    [grnId]
+  );
+
+  const company = await queryOne<{
+    company_legal_name: string | null;
+    site_name: string | null;
+    company_address: string | null;
+    company_gstin: string | null;
+    support_phone: string | null;
+  }>(
+    `select company_legal_name, site_name, company_address, company_gstin, support_phone
+     from site_settings limit 1`
+  );
+
+  return {
+    id: grn.id,
+    grn_number: grn.grn_number,
+    status: grn.status,
+    bill_no: grn.bill_no,
+    invoice_amount: Number(grn.invoice_amount || 0),
+    invoice_date: grn.invoice_date,
+    document_path: grn.document_path,
+    lines_total: Number(grn.lines_total || 0),
+    note: grn.note,
+    created_at: grn.created_at,
+    approved_at: grn.approved_at,
+    supplier: {
+      id: grn.supplier_id,
+      code: grn.supplier_code,
+      name: grn.supplier_name,
+      trade_name: grn.trade_name,
+      gstin: grn.gstin,
+      pan: grn.pan,
+      phone: grn.phone,
+      address: grn.address,
+      city: grn.city,
+      state: grn.state,
+      state_code: grn.state_code
+    },
+    company: {
+      name: company?.company_legal_name || company?.site_name || "VASRITHA BOUTIQUE",
+      address: company?.company_address || null,
+      gstin: company?.company_gstin || null,
+      phone: company?.support_phone || null
+    },
+    lines: lines.map((l) => ({
+      product_name: l.product_name,
+      sku: l.sku,
+      variant_name: l.variant_name,
+      quantity: Number(l.quantity),
+      purchase_price: Number(l.purchase_price),
+      line_total: Number(l.line_total)
+    }))
+  };
+}
+
 export async function listGrns(filters: {
   status?: string | null;
   supplierId?: string | null;
+  shopId?: string | null;
   limit?: number;
 }) {
   await ensureInventoryGrnSchema();
   const status = filters.status?.trim() || null;
   const supplierId = filters.supplierId?.trim() || null;
+  const shopId = filters.shopId?.trim() || null;
   const limit = Math.min(200, Math.max(1, filters.limit || 50));
 
   return query(
     `select g.id, g.grn_number, g.status, g.supplier_id, g.bill_no, g.invoice_amount,
-            g.invoice_date, g.document_path,
+            g.invoice_date, g.document_path, g.shop_id,
             g.lines_total, g.note, g.created_by, g.approved_by, g.approved_at, g.created_at,
             s.name as supplier_name, s.code as supplier_code,
             (select count(*)::int from inventory_grn_lines l where l.grn_id = g.id) as line_count
@@ -594,8 +770,9 @@ export async function listGrns(filters: {
      left join suppliers s on s.id = g.supplier_id
      where ($1::text is null or g.status = $1)
        and ($2::uuid is null or g.supplier_id = $2)
+       and ($3::uuid is null or g.shop_id = $3)
      order by g.created_at desc
-     limit $3`,
-    [status, supplierId, limit]
+     limit $4`,
+    [status, supplierId, shopId, limit]
   );
 }

@@ -4,6 +4,7 @@ import { getUserRoles, signAccessToken, verifyUser } from "../../../../lib/db/au
 import { AppRole, highestRole, permissionsForRoles, ROLE_META } from "../../../../lib/auth/rbac";
 import { assertStaffLoginSecurity } from "../../../../lib/login-security";
 import { recordLoginEvent } from "../../../../lib/login-events";
+import { getUserShopProfile } from "../../../../lib/shop-scope";
 
 /** In-store staff sessions expire after 5 minutes of idle time (JWT matches). */
 const STAFF_SESSION_SECONDS = 5 * 60;
@@ -94,6 +95,8 @@ export async function POST(request: NextRequest) {
     roles: typedRoles
   });
 
+  const shopProfile = staff ? await getUserShopProfile(user.id) : null;
+
   return ok({
     user: {
       id: user.id,
@@ -102,7 +105,10 @@ export async function POST(request: NextRequest) {
       roles: typedRoles,
       permissions: [...permissionsForRoles(typedRoles)],
       primaryRole: primary,
-      primaryRoleName: primary ? ROLE_META[primary].name : null
+      primaryRoleName: primary ? ROLE_META[primary].name : null,
+      shopId: shopProfile?.shop_id ?? null,
+      shopName: shopProfile?.shop_name ?? null,
+      shopCode: shopProfile?.shop_code ?? null
     },
     session: {
       access_token: accessToken,

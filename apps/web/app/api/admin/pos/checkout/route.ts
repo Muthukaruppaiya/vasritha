@@ -1,13 +1,11 @@
 import { NextRequest } from "next/server";
 import { fail, ok, requirePermission, writeAuditLog } from "../../../../../lib/auth/api";
 import { withTransaction } from "../../../../../lib/db/pool";
-import {
-  ensurePosSchema,
-  getWalkInCustomerId,
-  validatePosCustomer
-} from "../../../../../lib/pos";
+import { ensurePosSchema, validatePosCustomer } from "../../../../../lib/pos";
 import {
   allocateSellableItems,
+  createProductUnits,
+  getShopVariantStock,
   markItemsSold,
   syncSellableStock
 } from "../../../../../lib/product-units";
@@ -16,16 +14,18 @@ import { query, queryOne } from "../../../../../lib/db/pool";
 import {
   ensureGstSchema,
   getSellerGstProfile,
-  normalizeGstRate,
+  resolveSaleGstRate,
   summariseInclusiveLines
 } from "../../../../../lib/gst";
-import { ensureShopsSchema, resolveShopId, getShopById } from "../../../../../lib/shops";
+import { ensureShopsSchema, getShopById } from "../../../../../lib/shops";
 import { ensureBrandsSchema, resolveBrandId } from "../../../../../lib/brands";
 import {
   ensureLoyaltySchema,
   earnLoyaltyForPaidOrder,
   resolveOrCreateCustomerByPhone
 } from "../../../../../lib/loyalty";
+import { requireScopedShopId } from "../../../../../lib/shop-scope";
+import { ensureExchangePolicySchema } from "../../../../../lib/exchange-policy";
 
 type CheckoutLine = {
   productId: string;
@@ -34,15 +34,27 @@ type CheckoutLine = {
   quantity: number;
 };
 
+type ExchangeLine = {
+  orderItemId: string;
+  quantity: number;
+};
+
 type CheckoutBody = {
   items?: CheckoutLine[];
   discountType?: "percentage" | "fixed";
   discountValue?: number;
-  paymentMethod?: "cash" | "razorpay";
+  paymentMethod?: "cash" | "razorpay" | "credit";
+  /** Amount received now when paymentMethod is credit (0 … bill total). */
+  amountPaid?: number;
   customerName?: string;
   customerPhone?: string;
   customerEmail?: string;
   shopId?: string;
+  /** In-store exchange against a prior paid POS invoice. */
+  exchange?: {
+    orderId: string;
+    items: ExchangeLine[];
+  } | null;
 };
 
 type Db = {
@@ -65,7 +77,8 @@ async function deductStock(
     item_id?: string | null;
   }>,
   actorUserId: string,
-  orderId: string
+  orderId: string,
+  shopId: string
 ) {
   for (const item of items) {
     if (!item.variant_id) {
@@ -79,24 +92,31 @@ async function deductStock(
         `select id from product_items
          where id = $1
            and variant_id = $2
+           and shop_id = $3
            and status = 'to_sell'`,
-        [item.item_id, item.variant_id]
+        [item.item_id, item.variant_id, shopId]
       );
       if (!unit) {
-        throw new Error("Scanned piece is not available for this product");
+        throw new Error("Scanned piece is not available for this store");
       }
       unitIds = [unit.id];
     } else {
       const tracked = await db.queryOne<{ c: number }>(
-        `select count(*)::int as c from product_items where variant_id = $1`,
-        [item.variant_id]
+        `select count(*)::int as c from product_items
+         where variant_id = $1 and shop_id = $2`,
+        [item.variant_id, shopId]
       );
       const usesUniquePieces = Number(tracked?.c || 0) > 0;
 
       if (usesUniquePieces) {
-        const allocated = await allocateSellableItems(db, item.variant_id, item.quantity);
+        const allocated = await allocateSellableItems(
+          db,
+          item.variant_id,
+          item.quantity,
+          shopId
+        );
         if (allocated.length < item.quantity) {
-          throw new Error("Insufficient unique pieces for a line item");
+          throw new Error("Insufficient unique pieces for this store");
         }
         unitIds = allocated.map((row) => row.id);
       }
@@ -104,7 +124,7 @@ async function deductStock(
 
     if (unitIds.length) {
       await markItemsSold(db, unitIds, orderId, item.variant_id);
-      await syncSellableStock(db, item.variant_id);
+      await syncSellableStock(db, item.variant_id, shopId);
       await db.query(
         `update products p
          set stock_quantity = coalesce((
@@ -114,29 +134,34 @@ async function deductStock(
         [item.product_id]
       );
     } else {
-      // Catalogue/seed stock without unique barcodes — reduce quantity only.
-      const updated = await db.queryOne<{ id: string }>(
-        `update product_variants
-         set stock_quantity = stock_quantity - $2
-         where id = $1 and stock_quantity >= $2
-         returning id`,
-        [item.variant_id, item.quantity]
-      );
-      if (!updated) {
-        throw new Error("Insufficient stock for a line item");
+      const shopStock = await getShopVariantStock(db, item.variant_id, shopId);
+      if (shopStock < item.quantity) {
+        throw new Error("Insufficient stock for this store");
       }
       await db.query(
-        `update products
-         set stock_quantity = greatest(0, stock_quantity - $2)
-         where id = $1`,
-        [item.product_id, item.quantity]
+        `insert into shop_variant_stock (shop_id, variant_id, stock_quantity, updated_at)
+         values ($1, $2, $3, now())
+         on conflict (shop_id, variant_id) do update
+           set stock_quantity = greatest(0, shop_variant_stock.stock_quantity - $4),
+               updated_at = now()`,
+        [shopId, item.variant_id, Math.max(0, shopStock - item.quantity), item.quantity]
+      );
+      await syncSellableStock(db, item.variant_id, shopId);
+      await db.query(
+        `update products p
+         set stock_quantity = coalesce((
+           select sum(pv.stock_quantity)::int from product_variants pv where pv.product_id = p.id
+         ), 0)
+         where p.id = $1`,
+        [item.product_id]
       );
     }
 
     await db.query(
-      `insert into inventory_movements (product_variant_id, type, quantity, reference_type, reference_id, created_by)
-       values ($1, 'sale', $2, 'order', $3, $4)`,
-      [item.variant_id, item.quantity, orderId, actorUserId]
+      `insert into inventory_movements
+         (product_variant_id, type, quantity, reference_type, reference_id, created_by, shop_id)
+       values ($1, 'sale', $2, 'order', $3, $4, $5)`,
+      [item.variant_id, item.quantity, orderId, actorUserId, shopId]
     );
   }
 }
@@ -153,10 +178,22 @@ export async function POST(request: NextRequest) {
 
   const body = (await request.json().catch(() => null)) as CheckoutBody | null;
   const items = body?.items || [];
-  if (!items.length) return fail("Cart is empty");
+  if (!items.length) return fail("Cart is empty — add the new exchange items");
 
-  const shopId = await resolveShopId(body?.shopId ? String(body.shopId) : null);
-  if (!shopId) return fail("No active shop configured. Add a shop under System → Shops.");
+  const exchangeReq =
+    body?.exchange?.orderId && body.exchange.items?.length ? body.exchange : null;
+  if (exchangeReq) await ensureExchangePolicySchema();
+
+  let shopId: string;
+  try {
+    const scoped = await requireScopedShopId(
+      ctx,
+      body?.shopId ? String(body.shopId) : null
+    );
+    shopId = scoped.shopId;
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : "No active shop configured");
+  }
 
   const shop = await getShopById(shopId);
   const brandId = await resolveBrandId(shop?.brand_id || null);
@@ -168,17 +205,25 @@ export async function POST(request: NextRequest) {
   });
   if ("error" in customer) return fail(customer.error);
 
-  const paymentMethod = body?.paymentMethod === "razorpay" ? "razorpay" : "cash";
+  const paymentMethod =
+    body?.paymentMethod === "razorpay"
+      ? "razorpay"
+      : body?.paymentMethod === "credit"
+        ? "credit"
+        : "cash";
   const discountType = body?.discountType === "percentage" ? "percentage" : "fixed";
   const discountValue = Math.max(0, Number(body?.discountValue || 0));
 
   try {
-    // Central customer by phone (website + store share the same profile).
+    // Central customer by phone — always save into customer master for POS billing.
     let customerId: string;
     try {
       customerId = await resolveOrCreateCustomerByPhone(customer);
-    } catch {
-      customerId = await getWalkInCustomerId();
+    } catch (err) {
+      console.error("POS customer save failed:", err);
+      throw err instanceof Error
+        ? err
+        : new Error("Could not save customer details for this bill");
     }
 
     const orderItems: Array<{
@@ -224,7 +269,6 @@ export async function POST(request: NextRequest) {
       let variantId: string | null = line.variantId || null;
       let stock = Number(product.stock_quantity);
       const hsnCode = product.hsn_code ? String(product.hsn_code).trim() || null : null;
-      const gstRate = normalizeGstRate(product.gst_rate, 5);
 
       if (variantId) {
         const variant = await queryOne<{
@@ -232,25 +276,23 @@ export async function POST(request: NextRequest) {
           name: string;
           sku: string;
           price: string;
-          stock_quantity: number;
         }>(
-          `select id, name, sku, price, stock_quantity from product_variants where id = $1 and product_id = $2`,
+          `select id, name, sku, price from product_variants where id = $1 and product_id = $2`,
           [variantId, product.id]
         );
         if (!variant) return fail(`Variant not found: ${variantId}`, 404);
         unitPrice = Number(variant.price);
         variantName = variant.name;
         sku = variant.sku;
-        stock = Number(variant.stock_quantity);
+        stock = await getShopVariantStock({ query, queryOne }, variant.id, shopId);
       } else {
         const firstVariant = await queryOne<{
           id: string;
           name: string;
           sku: string;
           price: string;
-          stock_quantity: number;
         }>(
-          `select id, name, sku, price, stock_quantity from product_variants where product_id = $1 order by name asc limit 1`,
+          `select id, name, sku, price from product_variants where product_id = $1 order by name asc limit 1`,
           [product.id]
         );
         if (firstVariant) {
@@ -258,26 +300,34 @@ export async function POST(request: NextRequest) {
           unitPrice = Number(firstVariant.price);
           variantName = firstVariant.name;
           sku = firstVariant.sku;
-          stock = Number(firstVariant.stock_quantity);
+          stock = await getShopVariantStock({ query, queryOne }, firstVariant.id, shopId);
         }
       }
 
       if (itemId && variantId) {
         const unit = await queryOne<{ id: string }>(
           `select id from product_items
-           where id = $1 and variant_id = $2 and status = 'to_sell'`,
-          [itemId, variantId]
+           where id = $1 and variant_id = $2 and shop_id = $3 and status = 'to_sell'`,
+          [itemId, variantId, shopId]
         );
         if (!unit) {
-          return fail(`Scanned piece is not available for ${product.name}`, 400);
+          return fail(`Scanned piece is not available for ${product.name} at this store`, 400);
         }
       }
 
       if (stock < quantity) {
-        return fail(`Insufficient stock for ${product.name} (available ${stock})`, 400);
+        return fail(
+          `Insufficient stock for ${product.name} at this store (available ${stock})`,
+          400
+        );
       }
 
       const lineTotal = unitPrice * quantity;
+      const gstRate = resolveSaleGstRate({
+        hsnCode,
+        saleValuePerPiece: unitPrice,
+        fallbackRate: product.gst_rate
+      });
       subtotal += lineTotal;
       orderItems.push({
         product_id: product.id,
@@ -302,6 +352,97 @@ export async function POST(request: NextRequest) {
           : Math.min(subtotal, discountValue);
     }
     discountAmount = Math.round(discountAmount * 100) / 100;
+
+    // Validate exchange + compute return credit (no cash refund if credit > new total).
+    let exchangeCredit = 0;
+    let exchangeLines: Array<{
+      orderItemId: string;
+      quantity: number;
+      unitPrice: number;
+      productId: string | null;
+      variantId: string | null;
+      productName: string;
+      sku: string | null;
+    }> = [];
+
+    if (exchangeReq) {
+      const source = await queryOne<{
+        id: string;
+        order_number: string;
+        payment_status: string;
+        channel: string | null;
+        shop_id: string | null;
+        status: string;
+      }>(
+        `select id, order_number, payment_status, channel, shop_id, status::text as status
+         from orders where id = $1`,
+        [exchangeReq.orderId]
+      );
+      if (!source) return fail("Original invoice not found", 404);
+      if (source.payment_status !== "paid") return fail("Original invoice is not paid", 400);
+      if (source.channel !== "pos") return fail("Only store (POS) invoices can be exchanged here", 400);
+      if (source.shop_id && source.shop_id !== shopId) {
+        return fail("Invoice belongs to another shop", 400);
+      }
+
+      for (const row of exchangeReq.items) {
+        const orderItemId = String(row.orderItemId || "").trim();
+        const qty = Math.max(1, Math.floor(Number(row.quantity) || 0));
+        if (!orderItemId) return fail("Exchange item id required", 400);
+        const line = await queryOne<{
+          id: string;
+          order_id: string;
+          product_id: string | null;
+          variant_id: string | null;
+          product_name: string;
+          sku: string | null;
+          unit_price: string | number;
+          quantity: number;
+        }>(
+          `select id, order_id, product_id, variant_id, product_name, sku, unit_price, quantity
+           from order_items where id = $1`,
+          [orderItemId]
+        );
+        if (!line || line.order_id !== source.id) {
+          return fail("Exchange item is not on the selected invoice", 400);
+        }
+        const already = await queryOne<{ returned: string }>(
+          `select coalesce(sum(ri.quantity), 0)::text as returned
+           from return_items ri
+           join order_returns r on r.id = ri.return_id
+           where ri.order_item_id = $1 and r.status <> 'rejected'`,
+          [orderItemId]
+        );
+        const remaining = Number(line.quantity) - Number(already?.returned || 0);
+        if (qty > remaining) {
+          return fail(
+            `Exchange qty exceeds remaining for ${line.product_name} (left ${remaining})`,
+            400
+          );
+        }
+        const unitPrice = Number(line.unit_price);
+        exchangeCredit += unitPrice * qty;
+        exchangeLines.push({
+          orderItemId,
+          quantity: qty,
+          unitPrice,
+          productId: line.product_id,
+          variantId: line.variant_id,
+          productName: line.product_name,
+          sku: line.sku
+        });
+      }
+      exchangeCredit = Math.round(exchangeCredit * 100) / 100;
+    }
+
+    // Fold exchange credit into discount for payable (capped at new-items subtotal).
+    const cashierDiscount = discountAmount;
+    const totalDiscount = Math.min(
+      subtotal,
+      Math.round((cashierDiscount + exchangeCredit) * 100) / 100
+    );
+    discountAmount = totalDiscount;
+
     const taxSummary = summariseInclusiveLines(
       orderItems.map((item) => ({ line_total: item.line_total, gst_rate: item.gst_rate })),
       discountAmount,
@@ -310,7 +451,22 @@ export async function POST(request: NextRequest) {
     const total = taxSummary.payable;
 
     const orderNumber = `POS-${Date.now().toString().slice(-8)}`;
-    const paid = paymentMethod === "cash";
+    // Cash = full pay now. Credit = partial/zero now, balance later. Razorpay = pending until verify.
+    let amountPaid = total;
+    if (paymentMethod === "credit") {
+      const raw = Number(body?.amountPaid);
+      if (!Number.isFinite(raw) || raw < 0) {
+        return fail("Enter how much the customer is paying now (can be 0)", 400);
+      }
+      amountPaid = Math.round(Math.min(total, Math.max(0, raw)) * 100) / 100;
+    } else if (paymentMethod === "razorpay") {
+      amountPaid = 0;
+    }
+    const fullyPaid = amountPaid + 0.001 >= total;
+    const settleNow = paymentMethod === "cash" || paymentMethod === "credit";
+    const orderStatus = settleNow ? "confirmed" : "pending";
+    const paymentStatus = settleNow && fullyPaid ? "paid" : "pending";
+    const balanceDue = Math.round(Math.max(0, total - amountPaid) * 100) / 100;
 
     const checkoutResult = await withTransaction(async (db) => {
       const order = await db.queryOne<{
@@ -339,8 +495,8 @@ export async function POST(request: NextRequest) {
         [
           orderNumber,
           customerId,
-          paid ? "confirmed" : "pending",
-          paid ? "paid" : "pending",
+          orderStatus,
+          paymentStatus,
           subtotal,
           discountAmount,
           taxSummary.gst,
@@ -377,12 +533,87 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      if (paid) {
+      if (exchangeReq && exchangeLines.length) {
+        const returnNumber = `EXC-${Date.now().toString().slice(-8)}`;
+        const ret = await db.queryOne<{ id: string }>(
+          `insert into order_returns (
+             order_id, return_number, status, reason, request_type, refund_amount, admin_notes
+           ) values ($1, $2, 'exchanged', $3, 'exchange', 0, $4)
+           returning id`,
+          [
+            exchangeReq.orderId,
+            returnNumber,
+            `POS exchange → ${order.order_number}`,
+            `Return credit ₹${exchangeCredit.toFixed(2)} · New bill ${order.order_number} · Collect ₹${total.toFixed(2)}`
+          ]
+        );
+        if (!ret) throw new Error("Could not create exchange record");
+
+        for (const line of exchangeLines) {
+          await db.query(
+            `insert into return_items (return_id, order_item_id, quantity, reason)
+             values ($1, $2, $3, $4)`,
+            [ret.id, line.orderItemId, line.quantity, "POS counter exchange"]
+          );
+
+          if (line.variantId && line.productId) {
+            const tracked = await db.queryOne<{ c: number }>(
+              `select count(*)::int as c from product_items
+               where variant_id = $1 and shop_id = $2`,
+              [line.variantId, shopId]
+            );
+            if (Number(tracked?.c || 0) > 0) {
+              await createProductUnits(db, {
+                productId: line.productId,
+                variantId: line.variantId,
+                tag: line.sku || "EXC",
+                sku: line.sku || "EXC",
+                count: line.quantity,
+                shopId
+              });
+              await syncSellableStock(db, line.variantId, shopId);
+            } else {
+              await db.query(
+                `insert into shop_variant_stock (shop_id, variant_id, stock_quantity, updated_at)
+                 values ($1, $2, $3, now())
+                 on conflict (shop_id, variant_id) do update
+                   set stock_quantity = shop_variant_stock.stock_quantity + excluded.stock_quantity,
+                       updated_at = now()`,
+                [shopId, line.variantId, line.quantity]
+              );
+              await syncSellableStock(db, line.variantId, shopId);
+            }
+            await db.query(
+              `insert into inventory_movements
+                 (product_variant_id, type, quantity, reference_type, reference_id, note, created_by, shop_id)
+               values ($1, 'return', $2, 'exchange', $3, $4, $5, $6)`,
+              [
+                line.variantId,
+                line.quantity,
+                ret.id,
+                `POS exchange return · ${line.productName}`,
+                ctx.userId,
+                shopId
+              ]
+            ).catch(() => undefined);
+          }
+        }
+      }
+
+      if (settleNow && amountPaid > 0) {
         await db.query(
           `insert into payments (order_id, provider, provider_payment_id, amount, status)
-           values ($1, 'cash', $2, $3, 'paid')`,
-          [order.id, `cash_${Date.now()}`, total]
+           values ($1, $2, $3, $4, 'paid')`,
+          [
+            order.id,
+            paymentMethod === "credit" ? "pos_credit" : "cash",
+            `${paymentMethod}_${Date.now()}`,
+            amountPaid
+          ]
         );
+      }
+
+      if (settleNow) {
         await deductStock(
           db,
           orderItems.map((item) => ({
@@ -392,7 +623,8 @@ export async function POST(request: NextRequest) {
             item_id: item.item_id
           })),
           ctx.userId,
-          order.id
+          order.id,
+          shopId
         );
       }
 
@@ -408,7 +640,7 @@ export async function POST(request: NextRequest) {
       currency: string;
     } | null = null;
 
-    if (!paid) {
+    if (paymentMethod === "razorpay") {
       const keyId = process.env.RAZORPAY_KEY_ID;
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
 
@@ -477,6 +709,8 @@ export async function POST(request: NextRequest) {
       after: {
         paymentMethod,
         total,
+        amountPaid,
+        balanceDue,
         discountAmount,
         customerName: customer.name,
         customerPhone: customer.phone,
@@ -485,11 +719,26 @@ export async function POST(request: NextRequest) {
     });
 
     let loyalty: Awaited<ReturnType<typeof earnLoyaltyForPaidOrder>> = null;
-    if (paid) {
+    if (paymentStatus === "paid") {
       loyalty = await earnLoyaltyForPaidOrder(checkoutResult.id);
     }
 
+    try {
+      const { syncOrderPaymentsIntoFinance } = await import("../../../../../lib/finance");
+      await syncOrderPaymentsIntoFinance(20);
+    } catch {
+      /* finance sync is best-effort */
+    }
+
     const seller = await getSellerGstProfile(shopId);
+    const cashier = await queryOne<{ full_name: string | null; email: string | null }>(
+      `select full_name, email from users where id = $1`,
+      [ctx.userId]
+    );
+    const cashierName =
+      (cashier?.full_name && String(cashier.full_name).trim()) ||
+      (cashier?.email ? String(cashier.email).split("@")[0] : null) ||
+      "Cashier";
 
     return ok(
       {
@@ -498,11 +747,15 @@ export async function POST(request: NextRequest) {
           customer_name: checkoutResult.pos_customer_name,
           customer_phone: checkoutResult.pos_customer_phone,
           customer_email: checkoutResult.pos_customer_email,
+          cashier_name: cashierName,
+          cashier_id: ctx.userId,
           loyalty_points_earned: loyalty?.points_earned ?? 0,
           loyalty_balance_after: loyalty?.balance_after ?? null,
           loyalty_prompt: loyalty?.prompt ?? null,
           tax_amount: taxSummary.gst,
           shop_id: shopId,
+          amount_paid: amountPaid,
+          balance_due: balanceDue,
           gst: {
             taxable: taxSummary.taxable,
             cgst: taxSummary.cgst,
@@ -517,6 +770,8 @@ export async function POST(request: NextRequest) {
         seller,
         items: orderItems,
         paymentMethod,
+        amountPaid,
+        balanceDue,
         razorpay
       },
       201

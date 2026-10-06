@@ -1,38 +1,22 @@
 import { query, queryOne } from "./db/pool";
-import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
 import { ensureShopsSchema } from "./shops";
-import { round2, splitInclusiveGst, type GstMoneySplit } from "./gst-math";
+import { round2, splitInclusiveGst } from "./gst-math";
 
 export type { GstMoneySplit } from "./gst-math";
-export { round2, splitInclusiveGst } from "./gst-math";
-
-/** Normalize HSN/SAC to digits only (4–8). */
-export function normalizeHsn(value: unknown): string | null {
-  const digits = String(value ?? "").replace(/\D/g, "");
-  if (digits.length < 4 || digits.length > 8) return null;
-  return digits;
-}
-
-/** Allowed GST % for catalogue / POS (matches product form). */
-export const ALLOWED_GST_RATES = [0, 3, 5, 9, 18] as const;
-
-export function normalizeGstRate(value: unknown, fallback = 5): number {
-  const n = Number(value);
-  if (!Number.isFinite(n) || n < 0 || n > 100) return fallback;
-  const rounded = round2(n);
-  if ((ALLOWED_GST_RATES as readonly number[]).includes(rounded)) return rounded;
-  // Map legacy 12/28 (and other) rates to nearest allowed option
-  let best = fallback;
-  let bestDist = Number.POSITIVE_INFINITY;
-  for (const rate of ALLOWED_GST_RATES) {
-    const dist = Math.abs(rate - rounded);
-    if (dist < bestDist) {
-      bestDist = dist;
-      best = rate;
-    }
-  }
-  return best;
-}
+export {
+  ALLOWED_GST_RATES,
+  COMMON_GARMENT_HSN,
+  GARMENT_HSN_CHAPTERS,
+  GARMENT_SALE_VALUE_THRESHOLD,
+  garmentGstRateForSaleValue,
+  isReadymadeGarmentHsn,
+  normalizeGstRate,
+  normalizeHsn,
+  resolveSaleGstRate,
+  round2,
+  splitInclusiveGst,
+  stateCodeFromGstin
+} from "./gst-math";
 
 export type SellerGstProfile = {
   legal_name: string | null;
@@ -48,17 +32,10 @@ export type SellerGstProfile = {
   shop_code?: string | null;
 };
 
-export function stateCodeFromGstin(gstin: string | null | undefined): string | null {
-  const raw = String(gstin || "")
-    .trim()
-    .toUpperCase();
-  if (raw.length < 2) return null;
-  const code = raw.slice(0, 2);
-  return /^\d{2}$/.test(code) ? code : null;
-}
+let gstSchemaReady = false;
 
 export async function ensureGstSchema() {
-  if (skipRuntimeSchemaEnsure()) return;
+  if (gstSchemaReady) return;
   await query(`
     alter table public.products
       add column if not exists hsn_code text,
@@ -75,6 +52,7 @@ export async function ensureGstSchema() {
       add column if not exists company_state_code text,
       add column if not exists prices_inclusive_of_gst boolean not null default true
   `);
+  gstSchemaReady = true;
 }
 
 export async function getSellerGstProfile(shopId?: string | null): Promise<SellerGstProfile> {

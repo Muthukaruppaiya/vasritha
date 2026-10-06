@@ -2,8 +2,10 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import {
+  ArrowLeftRight,
   Banknote,
   CreditCard,
+  HandCoins,
   Minus,
   Plus,
   Printer,
@@ -18,7 +20,8 @@ import {
   AdminEmpty
 } from "../../../components/admin/admin-ui";
 import { InvoiceBill } from "../../../components/admin/invoice-bill";
-import { adminFetch, formatMoney } from "../../../lib/admin-api";
+import { adminFetch, formatDate, formatMoney, getAdminUser } from "../../../lib/admin-api";
+import { isValidEmail, isValidPhone10, normalizePhone10 } from "../../../lib/validation";
 import { OPS_PLATFORM_NAME } from "../../../lib/platform";
 import Link from "next/link";
 
@@ -59,18 +62,74 @@ type InvoiceOrder = {
   customer_name?: string | null;
   customer_phone?: string | null;
   customer_email?: string | null;
+  cashier_name?: string | null;
+  cashier_id?: string | null;
   loyalty_points_earned?: number | null;
   loyalty_balance_after?: number | null;
   loyalty_prompt?: string | null;
+  amount_paid?: number | string | null;
+  balance_due?: number | string | null;
+  seller?: {
+    legal_name?: string | null;
+    address?: string | null;
+    gstin?: string | null;
+    state?: string | null;
+    state_code?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    shop_name?: string | null;
+    shop_code?: string | null;
+  } | null;
+  gst?: {
+    taxable: number;
+    cgst: number;
+    sgst: number;
+    igst: number;
+    inclusive?: boolean;
+  } | null;
   items: Array<{
+    id?: string;
     product_id: string;
+    variant_id?: string | null;
     product_name: string;
     variant_name: string | null;
     sku: string | null;
+    hsn_code?: string | null;
+    gst_rate?: number | string | null;
     unit_price: number;
     quantity: number;
     line_total: number;
+    returned_qty?: number;
+    remaining_qty?: number;
   }>;
+};
+
+type PosInvoiceHit = {
+  id: string;
+  order_number: string;
+  created_at: string;
+  total_amount: string;
+  customer_name: string | null;
+  customer_phone: string | null;
+  line_count: number;
+};
+
+type ExchangeReturnLine = {
+  orderItemId: string;
+  productName: string;
+  variantName: string | null;
+  sku: string | null;
+  unitPrice: number;
+  maxQty: number;
+  quantity: number;
+};
+
+type ExchangeContext = {
+  orderId: string;
+  orderNumber: string;
+  customerName: string | null;
+  customerPhone: string | null;
+  lines: ExchangeReturnLine[];
 };
 
 type CheckoutResult = {
@@ -80,7 +139,9 @@ type CheckoutResult = {
     balance_after?: number;
     prompt?: string | null;
   } | null;
-  paymentMethod: "cash" | "razorpay";
+  paymentMethod: "cash" | "razorpay" | "credit";
+  amountPaid?: number;
+  balanceDue?: number;
   razorpay: {
     mode: string;
     paymentId: string;
@@ -144,7 +205,8 @@ export default function AdminBillingPage() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [discountType, setDiscountType] = useState<"percentage" | "fixed">("percentage");
   const [discountValue, setDiscountValue] = useState("0");
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "razorpay">("cash");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "razorpay" | "credit">("cash");
+  const [creditPaidNow, setCreditPaidNow] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerEmail, setCustomerEmail] = useState("");
@@ -157,6 +219,20 @@ export default function AdminBillingPage() {
   const [flashKey, setFlashKey] = useState<string | null>(null);
   const [shops, setShops] = useState<ShopOption[]>([]);
   const [shopId, setShopId] = useState("");
+  const [shopLocked, setShopLocked] = useState(false);
+  const [exchange, setExchange] = useState<ExchangeContext | null>(null);
+  const [exchangeBrowseOpen, setExchangeBrowseOpen] = useState(false);
+  const [exchangeQuery, setExchangeQuery] = useState("");
+  const [exchangeHits, setExchangeHits] = useState<PosInvoiceHit[]>([]);
+  const [exchangeBusy, setExchangeBusy] = useState(false);
+  const [exchangePickOpen, setExchangePickOpen] = useState(false);
+  const [exchangeDraftLines, setExchangeDraftLines] = useState<ExchangeReturnLine[]>([]);
+  const [exchangeDraftMeta, setExchangeDraftMeta] = useState<{
+    orderId: string;
+    orderNumber: string;
+    customerName: string | null;
+    customerPhone: string | null;
+  } | null>(null);
 
   const itemCount = cart.reduce((sum, line) => sum + line.quantity, 0);
   const subtotal = cart.reduce((sum, line) => sum + line.price * line.quantity, 0);
@@ -165,14 +241,16 @@ export default function AdminBillingPage() {
     discountType === "percentage"
       ? Math.min(subtotal, (subtotal * discountRaw) / 100)
       : Math.min(subtotal, discountRaw);
-  const payable = Math.max(0, subtotal - discountAmount);
+  const returnCredit =
+    exchange?.lines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0) || 0;
+  const payable = Math.max(0, subtotal - discountAmount - returnCredit);
+  const creditPaidRaw = Math.max(0, Number(creditPaidNow) || 0);
+  const creditPaidClamped =
+    paymentMethod === "credit" ? Math.min(payable, creditPaidRaw) : payable;
+  const creditBalanceDue =
+    paymentMethod === "credit" ? Math.max(0, payable - creditPaidClamped) : 0;
 
-  const normalizePhone = (value: string) => {
-    const digits = value.replace(/\D/g, "");
-    if (digits.length === 12 && digits.startsWith("91")) return digits.slice(2);
-    if (digits.length === 11 && digits.startsWith("0")) return digits.slice(1);
-    return digits.slice(0, 10);
-  };
+  const normalizePhone = (value: string) => normalizePhone10(value);
 
   useEffect(() => {
     phoneRef.current?.focus();
@@ -182,7 +260,16 @@ export default function AdminBillingPage() {
     void (async () => {
       const result = await adminFetch<ShopOption[]>("/api/admin/shops?active=1");
       if (result.error || !result.data?.length) return;
-      setShops(result.data);
+      const bound = getAdminUser()?.shopId || null;
+      setShopLocked(Boolean(bound));
+      const list = bound
+        ? result.data.filter((shop) => shop.id === bound)
+        : result.data;
+      setShops(list.length ? list : result.data);
+      if (bound) {
+        setShopId(bound);
+        return;
+      }
       const saved =
         typeof window !== "undefined" ? window.localStorage.getItem(POS_SHOP_KEY) : null;
       const preferred =
@@ -194,9 +281,9 @@ export default function AdminBillingPage() {
   }, []);
 
   useEffect(() => {
-    if (!shopId || typeof window === "undefined") return;
+    if (!shopId || typeof window === "undefined" || shopLocked) return;
     window.localStorage.setItem(POS_SHOP_KEY, shopId);
-  }, [shopId]);
+  }, [shopId, shopLocked]);
 
   useEffect(() => {
     const phone = normalizePhone(customerPhone);
@@ -256,8 +343,9 @@ export default function AdminBillingPage() {
       void (async () => {
         setLookingUp(true);
         setLookupError("");
+        const shopQs = shopId ? `&shopId=${encodeURIComponent(shopId)}` : "";
         const result = await adminFetch<PosItem[]>(
-          `/api/admin/pos/lookup?q=${encodeURIComponent(term)}`
+          `/api/admin/pos/lookup?q=${encodeURIComponent(term)}${shopQs}`
         );
         setLookingUp(false);
         if (result.error) {
@@ -270,7 +358,7 @@ export default function AdminBillingPage() {
     }, 180);
 
     return () => window.clearTimeout(handle);
-  }, [query]);
+  }, [query, shopId]);
 
   const pickCustomer = (hit: PosCustomerHit) => {
     setCustomerPhone(hit.phone);
@@ -311,8 +399,9 @@ export default function AdminBillingPage() {
 
     setLookingUp(true);
     setLookupError("");
+    const shopQs = shopId ? `&shopId=${encodeURIComponent(shopId)}` : "";
     const result = await adminFetch<PosItem[]>(
-      `/api/admin/pos/lookup?q=${encodeURIComponent(term)}`
+      `/api/admin/pos/lookup?q=${encodeURIComponent(term)}${shopQs}`
     );
     setLookingUp(false);
 
@@ -358,6 +447,7 @@ export default function AdminBillingPage() {
     setDiscountValue("0");
     setDiscountType("percentage");
     setPaymentMethod("cash");
+    setCreditPaidNow("");
     setCustomerName("");
     setCustomerPhone("");
     setCustomerEmail("");
@@ -365,6 +455,11 @@ export default function AdminBillingPage() {
     setCustomerStatus("idle");
     setError("");
     setLastInvoice(null);
+    setExchange(null);
+    setExchangeBrowseOpen(false);
+    setExchangePickOpen(false);
+    setExchangeDraftLines([]);
+    setExchangeDraftMeta(null);
     window.setTimeout(() => phoneRef.current?.focus(), 0);
   };
 
@@ -373,11 +468,135 @@ export default function AdminBillingPage() {
     setDiscountValue("0");
     setDiscountType("percentage");
     setPaymentMethod("cash");
+    setCreditPaidNow("");
     setCustomerName("");
     setCustomerPhone("");
     setCustomerEmail("");
     setCustomerHits([]);
     setCustomerStatus("idle");
+    setExchange(null);
+    setExchangeBrowseOpen(false);
+    setExchangePickOpen(false);
+    setExchangeDraftLines([]);
+    setExchangeDraftMeta(null);
+  };
+
+  const clearExchange = () => {
+    setExchange(null);
+    setExchangePickOpen(false);
+    setExchangeDraftLines([]);
+    setExchangeDraftMeta(null);
+  };
+
+  const normalizeInvoiceCode = (value: string) => {
+    let q = value.trim();
+    q = q.replace(/^INV[-\s]*/i, "");
+    q = q.replace(/\s+/g, "");
+    return q;
+  };
+
+  const searchExchangeInvoices = async (q: string, opts?: { autoOpen?: boolean }) => {
+    setExchangeBusy(true);
+    setError("");
+    const params = new URLSearchParams();
+    const cleaned = normalizeInvoiceCode(q);
+    if (cleaned) params.set("q", cleaned);
+    else if (q.trim()) params.set("q", q.trim());
+    if (shopId) params.set("shopId", shopId);
+    const result = await adminFetch<PosInvoiceHit[]>(
+      `/api/admin/pos/invoices?${params.toString()}`
+    );
+    setExchangeBusy(false);
+    if (result.error) {
+      setError(result.error);
+      setExchangeHits([]);
+      return;
+    }
+    const hits = result.data || [];
+    setExchangeHits(hits);
+    // Scanner / exact bill no. → open the invoice immediately when unique.
+    if (opts?.autoOpen && hits.length === 1) {
+      void loadInvoiceForExchange(hits[0].id);
+    }
+  };
+
+  const applyExchangeSelection = (
+    meta: {
+      orderId: string;
+      orderNumber: string;
+      customerName: string | null;
+      customerPhone: string | null;
+    },
+    lines: ExchangeReturnLine[]
+  ) => {
+    const selected = lines.filter((l) => l.quantity > 0);
+    if (!selected.length) {
+      setError("Select at least one item to return / exchange.");
+      return;
+    }
+    setExchange({ ...meta, lines: selected });
+    if (meta.customerPhone) {
+      setCustomerPhone(normalizePhone(meta.customerPhone));
+      setCustomerStatus("known");
+    }
+    if (meta.customerName) setCustomerName(meta.customerName);
+    setExchangeBrowseOpen(false);
+    setExchangePickOpen(false);
+    setExchangeDraftLines([]);
+    setExchangeDraftMeta(null);
+    setError("");
+    window.setTimeout(() => scanRef.current?.focus(), 0);
+  };
+
+  const loadInvoiceForExchange = async (invoiceId: string) => {
+    setExchangeBusy(true);
+    setError("");
+    const result = await adminFetch<InvoiceOrder>(`/api/admin/orders/${invoiceId}`);
+    setExchangeBusy(false);
+    if (result.error || !result.data) {
+      setError(result.error || "Could not load invoice");
+      return;
+    }
+    const order = result.data;
+    const lines: ExchangeReturnLine[] = (order.items || [])
+      .map((item) => {
+        const remaining =
+          item.remaining_qty != null
+            ? Number(item.remaining_qty)
+            : Math.max(0, Number(item.quantity) - Number(item.returned_qty || 0));
+        if (!item.id || remaining <= 0) return null;
+        return {
+          orderItemId: item.id,
+          productName: item.product_name,
+          variantName: item.variant_name,
+          sku: item.sku,
+          unitPrice: Number(item.unit_price),
+          maxQty: remaining,
+          quantity: remaining
+        } as ExchangeReturnLine;
+      })
+      .filter(Boolean) as ExchangeReturnLine[];
+
+    if (!lines.length) {
+      setError("No exchangeable items left on this invoice.");
+      return;
+    }
+
+    const meta = {
+      orderId: order.id,
+      orderNumber: order.order_number,
+      customerName: order.customer_name || null,
+      customerPhone: order.customer_phone || null
+    };
+
+    if (lines.length === 1) {
+      applyExchangeSelection(meta, lines);
+      return;
+    }
+
+    setExchangeDraftMeta(meta);
+    setExchangeDraftLines(lines);
+    setExchangePickOpen(true);
   };
 
   const completeSale = async () => {
@@ -390,8 +609,8 @@ export default function AdminBillingPage() {
     const phone = normalizePhone(customerPhone);
     const email = customerEmail.trim();
 
-    if (phone.length !== 10) {
-      setError("Enter a valid 10-digit mobile number first.");
+    if (!isValidPhone10(phone, { required: true })) {
+      setError("Enter a valid 10-digit mobile number (starts with 6–9).");
       phoneRef.current?.focus();
       return;
     }
@@ -404,9 +623,25 @@ export default function AdminBillingPage() {
       nameRef.current?.focus();
       return;
     }
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (email && !isValidEmail(email)) {
       setError("Enter a valid email address.");
       return;
+    }
+
+    if (exchange && !exchange.lines.length) {
+      setError("Select return items for this exchange.");
+      return;
+    }
+
+    if (paymentMethod === "credit") {
+      if (!Number.isFinite(Number(creditPaidNow)) || Number(creditPaidNow) < 0) {
+        setError("Enter how much the customer is paying now (0 allowed).");
+        return;
+      }
+      if (creditPaidClamped >= payable && payable > 0) {
+        setError("For full payment use Cash. Credit is for balance left to pay later.");
+        return;
+      }
     }
 
     setBusy(true);
@@ -424,10 +659,20 @@ export default function AdminBillingPage() {
         discountType,
         discountValue: discountRaw,
         paymentMethod,
+        amountPaid: paymentMethod === "credit" ? creditPaidClamped : undefined,
         customerName: name,
         customerPhone: phone,
         customerEmail: email || null,
-        shopId: shopId || null
+        shopId: shopId || null,
+        exchange: exchange
+          ? {
+              orderId: exchange.orderId,
+              items: exchange.lines.map((line) => ({
+                orderItemId: line.orderItemId,
+                quantity: line.quantity
+              }))
+            }
+          : undefined
       }
     });
 
@@ -437,9 +682,17 @@ export default function AdminBillingPage() {
       return;
     }
 
-    if (paymentMethod === "cash" || !checkout.data.razorpay) {
+    if (paymentMethod === "cash" || paymentMethod === "credit" || !checkout.data.razorpay) {
       setLastInvoice({
         ...checkout.data.order,
+        amount_paid:
+          checkout.data.amountPaid ??
+          checkout.data.order.amount_paid ??
+          (paymentMethod === "credit" ? creditPaidClamped : payable),
+        balance_due:
+          checkout.data.balanceDue ??
+          checkout.data.order.balance_due ??
+          (paymentMethod === "credit" ? creditBalanceDue : 0),
         loyalty_points_earned:
           checkout.data.loyalty?.points_earned ?? checkout.data.order.loyalty_points_earned,
         loyalty_balance_after:
@@ -565,11 +818,11 @@ export default function AdminBillingPage() {
         <div className="pos-screen-actions">
           {shops.length > 0 ? (
             <label className="pos-shop-select">
-              <span>Shop</span>
+              <span>{shopLocked ? "Your store" : "Shop"}</span>
               <select
                 value={shopId}
                 onChange={(e) => setShopId(e.target.value)}
-                disabled={busy || !shops.length}
+                disabled={busy || !shops.length || shopLocked}
               >
                 {shops.map((shop) => (
                   <option key={shop.id} value={shop.id}>
@@ -583,6 +836,22 @@ export default function AdminBillingPage() {
           <Link href="/admin/invoices/store" className="pos-invoice-mini">
             Past invoices
           </Link>
+          <Link href="/admin/billing/dues" className="pos-invoice-mini">
+            Credit dues
+          </Link>
+          <button
+            type="button"
+            className="btn admin-ghost-btn"
+            disabled={busy}
+            onClick={() => {
+              setExchangeBrowseOpen(true);
+              setExchangeQuery("");
+              void searchExchangeInvoices("");
+            }}
+          >
+            <ArrowLeftRight size={15} />
+            Exchange
+          </button>
           <button type="button" className="btn admin-ghost-btn" onClick={clearSale} disabled={busy}>
             <Plus size={15} />
             New sale
@@ -621,14 +890,22 @@ export default function AdminBillingPage() {
                       className="pos-suggest-row"
                       onClick={() => addItem(item)}
                     >
-                      <span>
+                      <span className="pos-suggest-thumb" aria-hidden="true">
+                        {item.imageSrc ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={item.imageSrc} alt="" />
+                        ) : (
+                          <ScanBarcode size={16} />
+                        )}
+                      </span>
+                      <span className="pos-suggest-copy">
                         <strong>{item.name}</strong>
                         <em>
                           {item.sku || item.barcode || "—"}
                           {item.variantName ? ` · ${item.variantName}` : ""}
                         </em>
                       </span>
-                      <span>
+                      <span className="pos-suggest-meta">
                         {formatMoney(item.price)}
                         <small>Stock {item.stock}</small>
                       </span>
@@ -652,8 +929,12 @@ export default function AdminBillingPage() {
               </div>
               {!cart.length ? (
                 <AdminEmpty
-                  title="Cart is empty"
-                  body="Scan a barcode or search to add items."
+                  title={exchange ? "Add the new exchange item" : "Cart is empty"}
+                  body={
+                    exchange
+                      ? "Return is selected. Scan or search the replacement product on the left, then complete the exchange."
+                      : "Scan a barcode or search to add items."
+                  }
                 />
               ) : (
                 <div className="pos-cart">
@@ -825,9 +1106,34 @@ export default function AdminBillingPage() {
               </div>
             </section>
 
+            {exchange ? (
+              <div className="pos-exchange-banner">
+                <div>
+                  <strong>Exchange · {exchange.orderNumber}</strong>
+                  <p className="muted">
+                    Returning {exchange.lines.length} line
+                    {exchange.lines.length === 1 ? "" : "s"} · credit{" "}
+                    {formatMoney(returnCredit)}
+                  </p>
+                  <ul className="pos-exchange-lines">
+                    {exchange.lines.map((line) => (
+                      <li key={line.orderItemId}>
+                        {line.productName}
+                        {line.variantName ? ` · ${line.variantName}` : ""} × {line.quantity} —{" "}
+                        {formatMoney(line.unitPrice * line.quantity)}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <button type="button" className="btn admin-ghost-btn" onClick={clearExchange}>
+                  Clear
+                </button>
+              </div>
+            ) : null}
+
             <div className="pos-totals-block">
               <div className="pos-summary-row">
-                <span>Subtotal</span>
+                <span>New items</span>
                 <strong>{formatMoney(subtotal)}</strong>
               </div>
 
@@ -865,13 +1171,36 @@ export default function AdminBillingPage() {
                 <span>Discount</span>
                 <strong className="pos-discount-value">-{formatMoney(discountAmount)}</strong>
               </div>
+              {returnCredit > 0 ? (
+                <div className="pos-summary-row">
+                  <span>Return credit</span>
+                  <strong className="pos-discount-value">-{formatMoney(returnCredit)}</strong>
+                </div>
+              ) : null}
               <div className="pos-summary-row pos-summary-total">
-                <span>Payable</span>
+                <span>{exchange ? "Collect from customer" : "Payable"}</span>
                 <strong>{formatMoney(payable)}</strong>
               </div>
+              {paymentMethod === "credit" ? (
+                <>
+                  <div className="pos-summary-row">
+                    <span>Paying now</span>
+                    <strong>{formatMoney(creditPaidClamped)}</strong>
+                  </div>
+                  <div className="pos-summary-row">
+                    <span>Balance due later</span>
+                    <strong className="pos-discount-value">{formatMoney(creditBalanceDue)}</strong>
+                  </div>
+                </>
+              ) : null}
+              {exchange && returnCredit > subtotal - discountAmount ? (
+                <p className="muted" style={{ margin: "6px 0 0", fontSize: "0.8rem" }}>
+                  Return value exceeds new items — no cash refund (exchange only). Collect ₹0.
+                </p>
+              ) : null}
             </div>
 
-            <div className="pos-pay-modes" role="group" aria-label="Payment method">
+            <div className="pos-pay-modes pos-pay-modes--3" role="group" aria-label="Payment method">
               <button
                 type="button"
                 className={paymentMethod === "cash" ? "is-active" : ""}
@@ -879,6 +1208,21 @@ export default function AdminBillingPage() {
               >
                 <Banknote size={16} />
                 Cash
+              </button>
+              <button
+                type="button"
+                className={paymentMethod === "credit" ? "is-active" : ""}
+                onClick={() => {
+                  setPaymentMethod("credit");
+                  if (!creditPaidNow) {
+                    setCreditPaidNow(
+                      payable > 0 ? String(Math.round((payable / 2) * 100) / 100) : "0"
+                    );
+                  }
+                }}
+              >
+                <HandCoins size={16} />
+                Credit
               </button>
               <button
                 type="button"
@@ -890,6 +1234,25 @@ export default function AdminBillingPage() {
               </button>
             </div>
 
+            {paymentMethod === "credit" ? (
+              <label className="pos-field pos-field--compact">
+                <span className="pos-field-label">Amount received now</span>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  max={payable}
+                  value={creditPaidNow}
+                  onChange={(e) => setCreditPaidNow(e.target.value)}
+                  disabled={busy}
+                  placeholder="e.g. half of bill"
+                />
+                <span className="muted" style={{ fontSize: "0.75rem" }}>
+                  Rest ({formatMoney(creditBalanceDue)}) will show under Credit dues until collected.
+                </span>
+              </label>
+            ) : null}
+
             {error ? <AdminAlert>{error}</AdminAlert> : null}
 
             <button
@@ -900,13 +1263,189 @@ export default function AdminBillingPage() {
             >
               {busy
                 ? "Processing…"
-                : paymentMethod === "cash"
-                  ? `Collect ${formatMoney(payable)}`
-                  : `Pay ${formatMoney(payable)} with Razorpay`}
+                : !cart.length && exchange
+                  ? "Scan new item to complete exchange"
+                  : paymentMethod === "credit"
+                    ? creditPaidClamped > 0
+                      ? `Save on credit · Collect ${formatMoney(creditPaidClamped)} now`
+                      : `Save on credit · Due ${formatMoney(payable)}`
+                    : paymentMethod === "cash"
+                      ? exchange
+                        ? `Complete exchange · Collect ${formatMoney(payable)}`
+                        : `Collect ${formatMoney(payable)}`
+                      : `Pay ${formatMoney(payable)} with Razorpay`}
             </button>
+            {exchange && !cart.length ? (
+              <p className="muted" style={{ margin: 0, fontSize: "0.78rem", textAlign: "center" }}>
+                Exchange needs at least one new product. Use the scan box on the left.
+              </p>
+            ) : null}
           </div>
         </aside>
       </div>
+
+      {exchangeBrowseOpen ? (
+        <div className="pos-invoice-overlay" role="dialog" aria-modal="true">
+          <div className="pos-invoice-sheet" style={{ maxWidth: 640 }}>
+            <div className="admin-panel-head" style={{ marginBottom: 12 }}>
+              <h3>Select invoice to exchange</h3>
+              <button
+                type="button"
+                className="btn admin-ghost-btn"
+                onClick={() => setExchangeBrowseOpen(false)}
+              >
+                <X size={14} />
+                Close
+              </button>
+            </div>
+            <form
+              className="pos-scan"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const term = exchangeQuery.trim();
+                // Enter / scanner submit → search and auto-open if one match.
+                void searchExchangeInvoices(term, { autoOpen: Boolean(term) });
+              }}
+            >
+              <label className="pos-scan-field">
+                <ScanBarcode size={18} />
+                <input
+                  value={exchangeQuery}
+                  onChange={(e) => setExchangeQuery(e.target.value)}
+                  placeholder="Scan bill barcode or type INV-POS-… / mobile / name"
+                  autoFocus
+                  autoComplete="off"
+                  inputMode="search"
+                />
+              </label>
+              <button className="btn" type="submit" disabled={exchangeBusy}>
+                {exchangeBusy ? "…" : "Search"}
+              </button>
+            </form>
+            <p className="muted" style={{ margin: "8px 0 0", fontSize: "0.78rem" }}>
+              Tip: scan the invoice barcode, or search <code>INV-POS-…</code> /{" "}
+              <code>POS-…</code> / last digits / customer mobile.
+            </p>
+            {error ? (
+              <div style={{ marginTop: 10 }}>
+                <AdminAlert>{error}</AdminAlert>
+              </div>
+            ) : null}
+            <div className="pos-exchange-invoice-list">
+              {!exchangeHits.length ? (
+                <AdminEmpty
+                  title="No invoices"
+                  body="Scan or search a paid store bill to start exchange."
+                />
+              ) : (
+                exchangeHits.map((row) => (
+                  <button
+                    key={row.id}
+                    type="button"
+                    className="pos-exchange-invoice-row"
+                    onClick={() => void loadInvoiceForExchange(row.id)}
+                    disabled={exchangeBusy}
+                  >
+                    <div>
+                      <strong>INV-{row.order_number}</strong>
+                      <p className="muted">
+                        {row.customer_name || "Walk-in"} · {row.customer_phone || "—"} ·{" "}
+                        {row.line_count} item{row.line_count === 1 ? "" : "s"}
+                      </p>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <strong>{formatMoney(row.total_amount)}</strong>
+                      <p className="muted">{formatDate(row.created_at)}</p>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {exchangePickOpen && exchangeDraftMeta ? (
+        <div className="pos-invoice-overlay" role="dialog" aria-modal="true">
+          <div className="pos-invoice-sheet" style={{ maxWidth: 640 }}>
+            <div className="admin-panel-head" style={{ marginBottom: 12 }}>
+              <h3>Select items to return · {exchangeDraftMeta.orderNumber}</h3>
+              <button
+                type="button"
+                className="btn admin-ghost-btn"
+                onClick={() => {
+                  setExchangePickOpen(false);
+                  setExchangeDraftLines([]);
+                  setExchangeDraftMeta(null);
+                }}
+              >
+                <X size={14} />
+                Close
+              </button>
+            </div>
+            <p className="muted" style={{ marginTop: 0 }}>
+              This bill has more than one product. Choose what the customer is returning, then add the
+              new items on POS.
+            </p>
+            <div className="pos-exchange-pick-list">
+              {exchangeDraftLines.map((line, idx) => (
+                <label key={line.orderItemId} className="pos-exchange-pick-row">
+                  <input
+                    type="checkbox"
+                    checked={line.quantity > 0}
+                    onChange={(e) => {
+                      setExchangeDraftLines((rows) =>
+                        rows.map((r, i) =>
+                          i === idx
+                            ? { ...r, quantity: e.target.checked ? r.maxQty : 0 }
+                            : r
+                        )
+                      );
+                    }}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <strong>{line.productName}</strong>
+                    <p className="muted">
+                      {line.sku || "—"}
+                      {line.variantName ? ` · ${line.variantName}` : ""} ·{" "}
+                      {formatMoney(line.unitPrice)} each
+                    </p>
+                  </div>
+                  <input
+                    type="number"
+                    min={0}
+                    max={line.maxQty}
+                    value={line.quantity}
+                    disabled={line.quantity === 0}
+                    onChange={(e) => {
+                      const n = Math.max(
+                        0,
+                        Math.min(line.maxQty, Math.floor(Number(e.target.value) || 0))
+                      );
+                      setExchangeDraftLines((rows) =>
+                        rows.map((r, i) => (i === idx ? { ...r, quantity: n } : r))
+                      );
+                    }}
+                    style={{ width: 72 }}
+                  />
+                </label>
+              ))}
+            </div>
+            <div className="pos-invoice-actions">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => {
+                  if (!exchangeDraftMeta) return;
+                  applyExchangeSelection(exchangeDraftMeta, exchangeDraftLines);
+                }}
+              >
+                Continue — add new items
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {lastInvoice && (
         <div className="pos-invoice-overlay" role="dialog" aria-modal="true">

@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
-  CheckCircle2,
+  ClipboardCheck,
   PackagePlus,
   Plus,
   Printer,
@@ -14,17 +14,13 @@ import {
 } from "lucide-react";
 import {
   AdminAlert,
-  AdminBadge,
-  AdminEmpty,
   AdminLoading,
   AdminPageHeader,
-  AdminPanel,
-  statusTone
+  AdminPanel
 } from "../../../../components/admin/admin-ui";
 import {
   adminFetch,
   adminUpload,
-  formatDate,
   formatMoney,
   getAdminUser
 } from "../../../../lib/admin-api";
@@ -64,38 +60,31 @@ type Supplier = {
   phone: string | null;
 };
 
-type PendingGrn = {
-  id: string;
-  grn_number: string;
-  status: string;
-  supplier_id: string | null;
-  supplier_name: string | null;
-  supplier_code: string | null;
-  bill_no: string | null;
-  invoice_amount: string | number | null;
-  invoice_date?: string | null;
-  document_path?: string | null;
-  lines_total: string | number;
-  line_count: number;
-  created_at: string;
-};
-
-type BulkApproveResult = {
-  requested: number;
-  succeededCount: number;
-  failedCount: number;
-  succeeded: Array<{ id: string; grn_number: string; units: number; movements: number }>;
-  failed: Array<{ id: string; grn_number?: string; error: string }>;
-};
-
-function GrnPageInner() {
+function GrnEntryPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const resumeGrn = searchParams.get("resumeGrn") === "1";
   const resumeVariant = searchParams.get("newVariant") || "";
   const prefillVariant = searchParams.get("variant") || "";
 
-  const { data, loading, error, reload } = useAdminQuery<InventoryData>("/api/admin/inventory");
+  const sessionShopId = getAdminUser()?.shopId || null;
+  const [skuFilter, setSkuFilter] = useState("");
+  const [debouncedSku, setDebouncedSku] = useState("");
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedSku(skuFilter.trim()), 250);
+    return () => window.clearTimeout(t);
+  }, [skuFilter]);
+
+  const inventoryPath = useMemo(() => {
+    const params = new URLSearchParams();
+    params.set("limit", "80");
+    if (sessionShopId) params.set("shopId", sessionShopId);
+    if (debouncedSku.length >= 2) params.set("q", debouncedSku);
+    return `/api/admin/inventory?${params.toString()}`;
+  }, [sessionShopId, debouncedSku]);
+
+  const { data, loading, error, reload } = useAdminQuery<InventoryData>(inventoryPath);
   const { data: suppliers, reload: reloadSuppliers } = useAdminQuery<Supplier[]>(
     "/api/admin/suppliers?active=1"
   );
@@ -106,32 +95,11 @@ function GrnPageInner() {
   );
 
   const [inward, setInward] = useState<GrnDraft>(() => blankGrnDraft());
-  const [skuFilter, setSkuFilter] = useState("");
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
-  const [formOk, setFormOk] = useState("");
   const [draftBanner, setDraftBanner] = useState("");
   const [hydrated, setHydrated] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [bulkBusy, setBulkBusy] = useState(false);
-  const [bulkSummary, setBulkSummary] = useState<string>("");
-  const [statusFilter, setStatusFilter] = useState<"pending_approval" | "all">("pending_approval");
-  const [supplierFilter, setSupplierFilter] = useState("");
   const [docUploading, setDocUploading] = useState(false);
-
-  const listUrl = useMemo(() => {
-    const params = new URLSearchParams();
-    params.set("status", statusFilter);
-    if (supplierFilter) params.set("supplierId", supplierFilter);
-    return `/api/admin/inventory/grn?${params.toString()}`;
-  }, [statusFilter, supplierFilter]);
-
-  const {
-    data: listedGrns,
-    loading: listLoading,
-    error: listError,
-    reload: reloadList
-  } = useAdminQuery<PendingGrn[]>(listUrl);
 
   useEffect(() => {
     const draft = loadGrnDraft();
@@ -183,14 +151,6 @@ function GrnPageInner() {
     [suppliers, inward.supplierId]
   );
 
-  const eligiblePending = useMemo(
-    () => (listedGrns || []).filter((row) => row.status === "pending_approval"),
-    [listedGrns]
-  );
-
-  const allVisibleSelected =
-    eligiblePending.length > 0 && eligiblePending.every((row) => selected.has(row.id));
-
   const persistDraft = (next: GrnDraft) => {
     setInward(next);
     saveGrnDraft(next);
@@ -224,66 +184,6 @@ function GrnPageInner() {
     });
   };
 
-  const toggleSelect = (id: string) => {
-    setSelected((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const toggleSelectAll = () => {
-    setSelected((current) => {
-      if (allVisibleSelected) {
-        const next = new Set(current);
-        for (const row of eligiblePending) next.delete(row.id);
-        return next;
-      }
-      const next = new Set(current);
-      for (const row of eligiblePending) next.add(row.id);
-      return next;
-    });
-  };
-
-  const clearSelection = () => setSelected(new Set());
-
-  const bulkApprove = async () => {
-    if (!selected.size || !canApprove) return;
-    const count = selected.size;
-    const okConfirm = window.confirm(
-      `Approve ${count} GRN${count === 1 ? "" : "s"}?\n\nStock will increase once for each approved GRN.`
-    );
-    if (!okConfirm) return;
-
-    setBulkBusy(true);
-    setBulkSummary("");
-    const result = await adminFetch<BulkApproveResult>("/api/admin/inventory/grn/approve", {
-      method: "POST",
-      json: { ids: Array.from(selected) }
-    });
-    setBulkBusy(false);
-
-    if (result.error) {
-      setBulkSummary(result.error);
-      return;
-    }
-
-    const data = result.data;
-    const parts = [
-      `Approved ${data?.succeededCount || 0} of ${data?.requested || count}.`,
-      data?.failedCount
-        ? `Failed: ${(data.failed || [])
-            .map((f) => `${f.grn_number || f.id.slice(0, 8)} — ${f.error}`)
-            .slice(0, 5)
-            .join("; ")}`
-        : null
-    ].filter(Boolean);
-    setBulkSummary(parts.join(" "));
-    clearSelection();
-    await Promise.all([reloadList(), reload()]);
-  };
-
   const goCreateMissingProduct = () => {
     const emptyIdx = inward.lines.findIndex((line) => !line.productVariantId);
     const idx = emptyIdx >= 0 ? emptyIdx : Math.max(0, inward.lines.length - 1);
@@ -301,7 +201,6 @@ function GrnPageInner() {
   const submitGrn = async (approveNow = false) => {
     setSaving(true);
     setFormError("");
-    setFormOk("");
 
     for (const line of inward.lines) {
       if (!line.productVariantId) {
@@ -358,6 +257,7 @@ function GrnPageInner() {
         invoiceDate: inward.invoiceDate || undefined,
         documentPath: inward.documentPath || undefined,
         approveNow: approveNow || undefined,
+        shopId: sessionShopId || undefined,
         lines: inward.lines.map((line) => ({
           productVariantId: line.productVariantId,
           quantity: Number(line.quantity),
@@ -373,22 +273,17 @@ function GrnPageInner() {
 
     clearGrnDraft();
     setInward(blankGrnDraft());
-    await Promise.all([reloadList(), reload()]);
+    // Don't await inventory reload — it was adding seconds after a successful save.
+    void reload();
 
     if (result.data?.pending) {
-      setFormOk(
-        result.data.approveError
-          ? `GRN ${result.data.grn_number} saved as pending. Approve failed: ${result.data.approveError}`
-          : `GRN ${result.data.grn_number} submitted for approval. Stock updates after manager approval.`
-      );
-      setStatusFilter("pending_approval");
+      router.push("/admin/inventory/approvals?submitted=1");
       return;
     }
 
-    setFormOk(
-      `GRN ${result.data?.grn_number || ""} approved. ${result.data?.units || 0} units added to stock.`
+    router.push(
+      `/admin/barcodes?grn=${encodeURIComponent(result.data?.grn_number || "")}`
     );
-    router.push("/admin/barcodes");
   };
 
   const onSubmit = (event: FormEvent) => {
@@ -402,13 +297,17 @@ function GrnPageInner() {
     <>
       <AdminPageHeader
         eyebrow="Step 2 · Inventory"
-        title="Receive stock (GRN)"
-        description="Submit supplier inward for approval. Stock increases only after a manager approves the GRN."
+        title="GRN entry"
+        description="Enter supplier inward. Submit for manager approval, or submit & approve if you have rights."
         actions={
           <>
             <Link className="admin-icon-tip" href="/admin/inventory">
               <ArrowLeft size={16} strokeWidth={2} />
               <span>Back to inventory</span>
+            </Link>
+            <Link className="admin-icon-tip" href="/admin/inventory/approvals">
+              <ClipboardCheck size={16} strokeWidth={2} />
+              <span>GRN approvals</span>
             </Link>
             <Link className="admin-icon-tip" href="/admin/barcodes">
               <Printer size={16} strokeWidth={2} />
@@ -428,171 +327,7 @@ function GrnPageInner() {
 
       {error && <AdminAlert>{error}</AdminAlert>}
       {formError && <AdminAlert>{formError}</AdminAlert>}
-      {formOk && <AdminAlert tone="ok">{formOk}</AdminAlert>}
       {draftBanner && <AdminAlert tone="ok">{draftBanner}</AdminAlert>}
-      {bulkSummary && (
-        <AdminAlert tone={bulkSummary.toLowerCase().includes("failed") ? "error" : "ok"}>
-          {bulkSummary}
-        </AdminAlert>
-      )}
-
-      <AdminPanel
-        title="GRN approvals"
-        actions={
-          eligiblePending.length > 0 ? (
-            <span className="muted">{eligiblePending.length} pending</span>
-          ) : null
-        }
-      >
-        <div className="grn-toolbar grn-approve-filters">
-          <label>
-            <span>Status</span>
-            <select
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value as "pending_approval" | "all");
-                clearSelection();
-              }}
-            >
-              <option value="pending_approval">Pending approval</option>
-              <option value="all">All statuses</option>
-            </select>
-          </label>
-          <label>
-            <span>Supplier</span>
-            <select
-              value={supplierFilter}
-              onChange={(e) => {
-                setSupplierFilter(e.target.value);
-                clearSelection();
-              }}
-            >
-              <option value="">All suppliers</option>
-              {(suppliers || []).map((row) => (
-                <option key={row.id} value={row.id}>
-                  {row.name} · {row.code}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-
-        {listError && <AdminAlert>{listError}</AdminAlert>}
-        {listLoading && <AdminLoading />}
-
-        {canApprove && selected.size > 0 ? (
-          <div className="admin-bulk-bar">
-            <span>
-              <b>{selected.size}</b> selected
-            </span>
-            <div className="admin-bulk-actions">
-              <button type="button" disabled={bulkBusy} onClick={() => void bulkApprove()}>
-                <CheckCircle2 size={14} />
-                {bulkBusy ? "Approving…" : "Bulk approve"}
-              </button>
-              <button type="button" className="admin-bulk-clear" disabled={bulkBusy} onClick={clearSelection}>
-                Clear
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        {!listLoading && !(listedGrns || []).length ? (
-          <AdminEmpty
-            title="No GRNs in this view"
-            body="Submit a GRN below. Pending records appear here for manager approval."
-            action={
-              <button
-                type="button"
-                className="btn admin-ghost-btn"
-                onClick={() => {
-                  const el = document.querySelector(".grn-page");
-                  el?.scrollIntoView({ behavior: "smooth", block: "start" });
-                }}
-              >
-                Create GRN
-              </button>
-            }
-          />
-        ) : (
-          <div className="admin-table-wrap">
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  {canApprove ? (
-                    <th className="admin-check-col">
-                      <input
-                        type="checkbox"
-                        checked={allVisibleSelected}
-                        onChange={toggleSelectAll}
-                        disabled={!eligiblePending.length}
-                        aria-label="Select all pending GRNs"
-                      />
-                    </th>
-                  ) : null}
-                  <th>GRN</th>
-                  <th>Supplier</th>
-                  <th>Bill</th>
-                  <th>Invoice date</th>
-                  <th>Doc</th>
-                  <th>Lines</th>
-                  <th>Invoice</th>
-                  <th>Status</th>
-                  <th>Created</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(listedGrns || []).map((row) => {
-                  const isPending = row.status === "pending_approval";
-                  return (
-                    <tr key={row.id} className={selected.has(row.id) ? "is-selected" : ""}>
-                      {canApprove ? (
-                        <td className="admin-check-col">
-                          <input
-                            type="checkbox"
-                            checked={selected.has(row.id)}
-                            disabled={!isPending}
-                            onChange={() => toggleSelect(row.id)}
-                            aria-label={`Select ${row.grn_number}`}
-                          />
-                        </td>
-                      ) : null}
-                      <td>
-                        <strong>{row.grn_number}</strong>
-                      </td>
-                      <td>
-                        {row.supplier_name || "—"}
-                        {row.supplier_code ? (
-                          <span className="muted"> · {row.supplier_code}</span>
-                        ) : null}
-                      </td>
-                      <td>{row.bill_no || "—"}</td>
-                      <td>{row.invoice_date ? formatDate(row.invoice_date) : "—"}</td>
-                      <td>
-                        {row.document_path ? (
-                          <a href={row.document_path} target="_blank" rel="noreferrer">
-                            View
-                          </a>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td>{row.line_count}</td>
-                      <td>{formatMoney(row.invoice_amount)}</td>
-                      <td>
-                        <AdminBadge tone={statusTone(row.status)}>
-                          {row.status.replace(/_/g, " ")}
-                        </AdminBadge>
-                      </td>
-                      <td>{formatDate(row.created_at)}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </AdminPanel>
 
       <form className="grn-page" onSubmit={onSubmit}>
         <AdminPanel title="Supplier & invoice">
@@ -720,11 +455,7 @@ function GrnPageInner() {
           title="Lines"
           actions={
             <div className="grn-line-actions">
-              <button
-                type="button"
-                className="btn admin-ghost-btn"
-                onClick={goCreateMissingProduct}
-              >
+              <button type="button" className="btn admin-ghost-btn" onClick={goCreateMissingProduct}>
                 <PackagePlus size={15} />
                 New SKU
               </button>
@@ -876,10 +607,10 @@ function GrnPageInner() {
   );
 }
 
-export default function AdminGrnPage() {
+export default function AdminGrnEntryPage() {
   return (
     <Suspense fallback={<AdminLoading />}>
-      <GrnPageInner />
+      <GrnEntryPageInner />
     </Suspense>
   );
 }

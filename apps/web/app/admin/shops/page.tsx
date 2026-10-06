@@ -13,6 +13,14 @@ import {
 import { AdminFormModal } from "../../../components/admin/admin-form-modal";
 import { adminFetch } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
+import {
+  firstError,
+  normalizePhone10,
+  validateEmail,
+  validateGstin,
+  validatePhone10,
+  validateRequired
+} from "../../../lib/validation";
 
 type Shop = {
   id: string;
@@ -87,15 +95,30 @@ export default function AdminShopsPage() {
     setActionError("");
     setMessage("");
 
+    const phone = normalizePhone10(form.phone);
+    const gstin = form.gstin.trim().toUpperCase() || null;
+    const fieldError = firstError(
+      validateRequired(form.name, "Shop name"),
+      editing ? null : validateRequired(form.code, "Shop code"),
+      validatePhone10(form.phone, { required: false }),
+      validateEmail(form.email, { required: false }),
+      validateGstin(gstin)
+    );
+    if (fieldError) {
+      setSaving(false);
+      setActionError(fieldError);
+      return;
+    }
+
     const payload = {
       code: form.code.trim().toUpperCase(),
       name: form.name.trim(),
       address: form.address.trim() || null,
-      phone: form.phone.trim() || null,
+      phone: phone || null,
       email: form.email.trim() || null,
       state: form.state.trim() || null,
       state_code: form.state_code.trim() || null,
-      gstin: form.gstin.trim().toUpperCase() || null,
+      gstin,
       notes: form.notes.trim() || null,
       is_active: form.is_active,
       is_default: form.is_default
@@ -238,8 +261,8 @@ export default function AdminShopsPage() {
         )}
         <p className="muted" style={{ marginTop: 12 }}>
           <Store size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />
-          Catalogue stock stays shared for now. When you open a second shop, bills already carry{" "}
-          <b>shop_id</b> so per-shop stock can be layered later without rework.
+          Each shop keeps its own stock. Assign staff to a store under Users so they only see and
+          update that store’s inventory, POS, and bills.
         </p>
       </AdminPanel>
 
@@ -286,8 +309,13 @@ export default function AdminShopsPage() {
         <label>
           <span>Phone</span>
           <input
+            inputMode="numeric"
+            maxLength={10}
+            placeholder="9876543210"
             value={form.phone}
-            onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, phone: e.target.value.replace(/\D/g, "").slice(0, 10) }))
+            }
           />
         </label>
         <label>

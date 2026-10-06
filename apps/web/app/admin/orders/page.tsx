@@ -25,7 +25,7 @@ import {
 } from "../../../components/admin/admin-ui";
 import { CourierLabel } from "../../../components/admin/courier-label";
 import { InvoiceBill } from "../../../components/admin/invoice-bill";
-import { adminFetch, formatDate, formatMoney } from "../../../lib/admin-api";
+import { adminFetch, formatDate, formatMoney, getAdminUser } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
 
 type Order = {
@@ -165,9 +165,14 @@ export default function AdminOrdersPage() {
   const [printMode, setPrintMode] = useState<PrintMode>("both");
   const [deskTab, setDeskTab] = useState<DeskTab>("details");
 
-  const { data, error, loading, reload } = useAdminQuery<Order[]>(
-    "/api/admin/orders?channel=online"
-  );
+  const ordersPath = (() => {
+    const params = new URLSearchParams({ channel: "online" });
+    const boundShopId = getAdminUser()?.shopId;
+    if (boundShopId) params.set("shopId", boundShopId);
+    return `/api/admin/orders?${params.toString()}`;
+  })();
+
+  const { data, error, loading, reload } = useAdminQuery<Order[]>(ordersPath);
 
   const counts = useMemo(() => {
     const rows = data || [];

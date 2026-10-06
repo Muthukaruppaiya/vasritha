@@ -9,7 +9,7 @@ import {
 import { query, queryOne } from "../../../../../lib/db/pool";
 import { emptyToNull, subcategoryBelongsToCategory } from "../../../../../lib/db/taxonomy";
 import { listProductItems, ensureProductUnitsSchema, recordPriceHistory, syncSellableStock } from "../../../../../lib/product-units";
-import { ensureGstSchema, normalizeGstRate, normalizeHsn } from "../../../../../lib/gst";
+import { ensureGstSchema, normalizeHsn, resolveSaleGstRate } from "../../../../../lib/gst";
 import { ensureBrandsSchema, resolveBrandId } from "../../../../../lib/brands";
 import { resolveMediaUrl } from "../../../../../lib/product-image-storage";
 import {
@@ -66,9 +66,10 @@ export async function GET(request: NextRequest, { params }: Params) {
   const [variants, images, items, children, parent] = await Promise.all([
     query(`select * from product_variants where product_id = $1`, [id]),
     query(
-      `select *, image_kind::text as image_kind
-       from product_images where product_id = $1
-       order by image_kind asc, sort_order asc`,
+      `select pi.*, pi.image_kind::text as image_kind
+       from product_images pi
+       where pi.product_id = $1
+       order by pi.image_kind asc, pi.sort_order asc`,
       [id]
     ),
     listProductItems(id).catch(() => []),
@@ -166,9 +167,6 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     }
     body.hsn_code = hsn;
   }
-  if ("gst_rate" in body) {
-    body.gst_rate = normalizeGstRate(body.gst_rate, 5);
-  }
   if ("brand_id" in body) {
     await ensureBrandsSchema();
     body.brand_id = await resolveBrandId(
@@ -183,8 +181,18 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     price: string;
     category_id: string;
     subcategory_id: string | null;
+    hsn_code: string | null;
+    gst_rate: string | number | null;
   }>(`select * from products where id = $1`, [id]);
   if (!before) return fail("Product not found", 404);
+
+  if ("gst_rate" in body || "hsn_code" in body || "price" in body) {
+    body.gst_rate = resolveSaleGstRate({
+      hsnCode: "hsn_code" in body ? (body.hsn_code as string | null) : before.hsn_code,
+      saleValuePerPiece: "price" in body ? body.price : before.price,
+      fallbackRate: "gst_rate" in body ? body.gst_rate : before.gst_rate
+    });
+  }
 
   const updates: string[] = [];
   const values: unknown[] = [];
@@ -301,19 +309,95 @@ export async function DELETE(request: NextRequest, { params }: Params) {
   if (error || !ctx) return error;
 
   const { id } = await params;
+  const mode = new URL(request.url).searchParams.get("mode") || "delete";
 
   const before = await queryOne(`select * from products where id = $1`, [id]);
   if (!before) return fail("Product not found", 404);
 
-  await query(`update products set status = 'archived', updated_at = now() where id = $1`, [id]);
+  // Legacy / soft delete
+  if (mode === "archive") {
+    await query(`update products set status = 'archived', updated_at = now() where id = $1`, [id]);
+    await writeAuditLog({
+      actorUserId: ctx.userId,
+      action: "archive",
+      entityType: "products",
+      entityId: id,
+      before
+    });
+    return ok({ id, status: "archived", deleted: false });
+  }
+
+  const blockers = await queryOne<{
+    order_lines: number;
+    sold_pieces: number;
+    children: number;
+    cart_lines: number;
+  }>(
+    `select
+       (select count(*)::int from order_items where product_id = $1) as order_lines,
+       (select count(*)::int from product_items
+         where product_id = $1 and status::text in ('sold', 'reserved')) as sold_pieces,
+       (select count(*)::int from products where parent_product_id = $1) as children,
+       (select count(*)::int from cart_items where product_id = $1) as cart_lines`,
+    [id]
+  );
+
+  const orderLines = Number(blockers?.order_lines || 0);
+  const soldPieces = Number(blockers?.sold_pieces || 0);
+  const children = Number(blockers?.children || 0);
+  const cartLines = Number(blockers?.cart_lines || 0);
+
+  if (orderLines > 0 || soldPieces > 0) {
+    return fail(
+      "This product has sales history. Archive it instead of deleting permanently.",
+      409
+    );
+  }
+  if (children > 0) {
+    return fail(
+      "Delete or reassign child design products first, then delete this parent.",
+      409
+    );
+  }
+
+  if (cartLines > 0) {
+    await query(`delete from cart_items where product_id = $1`, [id]);
+  }
+
+  // Clear piece / reservation links that would block delete
+  await query(`delete from stock_reservations where product_id = $1`, [id]).catch(() => undefined);
+  await query(
+    `delete from shop_variant_stock
+     where variant_id in (select id from product_variants where product_id = $1)`,
+    [id]
+  ).catch(() => undefined);
+  await query(`delete from product_items where product_id = $1`, [id]).catch(() => undefined);
+  await query(`delete from product_images where product_id = $1`, [id]).catch(() => undefined);
+  await query(`delete from product_collections where product_id = $1`, [id]).catch(() => undefined);
+  await query(`delete from product_price_history where product_id = $1`, [id]).catch(() => undefined);
+  await query(`delete from wishlist_items where product_id = $1`, [id]).catch(() => undefined);
+  await query(`delete from product_variants where product_id = $1`, [id]).catch(() => undefined);
+
+  try {
+    await query(`delete from products where id = $1`, [id]);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Delete failed";
+    if (/foreign key|violates/i.test(message)) {
+      return fail(
+        "Product is linked to other records. Archive it instead of deleting.",
+        409
+      );
+    }
+    return fail(message, 400);
+  }
 
   await writeAuditLog({
     actorUserId: ctx.userId,
-    action: "archive",
+    action: "delete",
     entityType: "products",
     entityId: id,
     before
   });
 
-  return ok({ id, status: "archived" });
+  return ok({ id, deleted: true });
 }

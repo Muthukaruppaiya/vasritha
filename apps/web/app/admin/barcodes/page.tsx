@@ -6,6 +6,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import {
   ArrowDownToLine,
   CheckSquare,
+  ClipboardCheck,
   Package,
   Printer,
   RefreshCw,
@@ -21,8 +22,21 @@ import {
   AdminPanel
 } from "../../../components/admin/admin-ui";
 import { adminFetch, formatDate, formatMoney } from "../../../lib/admin-api";
-import { printProductStickers } from "../../../lib/print-stickers";
+import {
+  LABEL_LAYOUT_OPTIONS,
+  layoutToLabelSize,
+  printProductStickers,
+  type LabelLayout
+} from "../../../lib/print-stickers";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
+
+const LABEL_LAYOUT_KEY = "vasritha_label_layout";
+
+function readStoredLayout(): LabelLayout {
+  if (typeof window === "undefined") return "set2";
+  const raw = window.localStorage.getItem(LABEL_LAYOUT_KEY);
+  return raw === "set3" ? "set3" : "set2";
+}
 
 type BarcodeItem = {
   id: string;
@@ -52,12 +66,28 @@ type BarcodeData = {
 function BarcodesPageInner() {
   const searchParams = useSearchParams();
   const productFilter = searchParams.get("product") || "";
+  const labelParam = searchParams.get("label");
   const [search, setSearch] = useState("");
   const [unprintedOnly, setUnprintedOnly] = useState(true);
+  const [labelLayout, setLabelLayout] = useState<LabelLayout>(() => {
+    if (labelParam === "set3" || labelParam === "accessory") return "set3";
+    if (labelParam === "set2" || labelParam === "dress") return "set2";
+    return readStoredLayout();
+  });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [actionError, setActionError] = useState("");
+
+  useEffect(() => {
+    if (labelParam === "set3" || labelParam === "accessory") setLabelLayout("set3");
+    else if (labelParam === "set2" || labelParam === "dress") setLabelLayout("set2");
+  }, [labelParam]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(LABEL_LAYOUT_KEY, labelLayout);
+  }, [labelLayout]);
 
   const queryPath = useMemo(() => {
     const params = new URLSearchParams();
@@ -109,11 +139,13 @@ function BarcodesPageInner() {
         byProduct.set(item.product_id, list);
       }
 
+      const labelSize = layoutToLabelSize(labelLayout);
       let printed = 0;
       for (const [productId, group] of byProduct) {
         const first = group[0];
         await printProductStickers({
-          labelSize: first.label_size === "accessory" ? "accessory" : "dress",
+          layout: labelLayout,
+          labelSize,
           price: first.price,
           meta: {
             productName: first.product_name,
@@ -133,7 +165,7 @@ function BarcodesPageInner() {
             seq: item.seq,
             price: item.price,
             sizeLabel: item.color,
-            labelSize: first.label_size === "accessory" ? "accessory" : "dress",
+            labelSize,
             productName: item.product_name,
             shortName: item.short_name || undefined,
             categoryName: item.category_name || undefined,
@@ -178,7 +210,11 @@ function BarcodesPageInner() {
           <>
             <Link className="admin-icon-tip" href="/admin/inventory/grn">
               <ArrowDownToLine size={16} strokeWidth={2} />
-              <span>Receive stock</span>
+              <span>GRN entry</span>
+            </Link>
+            <Link className="admin-icon-tip" href="/admin/inventory/approvals">
+              <ClipboardCheck size={16} strokeWidth={2} />
+              <span>GRN approvals</span>
             </Link>
             <Link className="admin-icon-tip" href="/admin/products">
               <Package size={16} strokeWidth={2} />
@@ -265,6 +301,19 @@ function BarcodesPageInner() {
                 placeholder="Product, SKU, barcode…"
               />
             </div>
+          </label>
+          <label>
+            <span>Label type</span>
+            <select
+              value={labelLayout}
+              onChange={(e) => setLabelLayout(e.target.value as LabelLayout)}
+            >
+              {LABEL_LAYOUT_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label} ({opt.hint})
+                </option>
+              ))}
+            </select>
           </label>
           <label>
             <span>Status</span>

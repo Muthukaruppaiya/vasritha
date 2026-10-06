@@ -1,5 +1,4 @@
 import { query, queryOne } from "./db/pool";
-import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
 import { listLoyaltyRules } from "./loyalty";
 
 export type LoyaltyPopupSettings = {
@@ -40,10 +39,7 @@ const DEFAULTS: LoyaltyPopupSettings = {
 let schemaReady = false;
 
 export async function ensureLoyaltyPopupSchema() {
-  if (schemaReady || skipRuntimeSchemaEnsure()) {
-    schemaReady = true;
-    return;
-  }
+  if (schemaReady) return;
 
   await query(`
     alter table public.site_settings

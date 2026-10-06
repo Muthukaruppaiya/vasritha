@@ -7,7 +7,7 @@ import {
   ensureProductUnitsSchema,
   recordPriceHistory
 } from "../../../../lib/product-units";
-import { ensureGstSchema, normalizeGstRate, normalizeHsn } from "../../../../lib/gst";
+import { ensureGstSchema, normalizeHsn, resolveSaleGstRate } from "../../../../lib/gst";
 import { ensureBrandsSchema, resolveBrandId } from "../../../../lib/brands";
 import { resolveMediaUrl } from "../../../../lib/product-image-storage";
 import {
@@ -56,9 +56,10 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status");
-  const limitRaw = Number(searchParams.get("limit") || "100");
+  const q = (searchParams.get("q") || "").trim();
+  const limitRaw = Number(searchParams.get("limit") || "50");
   const offsetRaw = Number(searchParams.get("offset") || "0");
-  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 200) : 100;
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 100) : 50;
   const offset = Number.isFinite(offsetRaw) ? Math.max(offsetRaw, 0) : 0;
 
   const data = await query(
@@ -73,23 +74,21 @@ export async function GET(request: NextRequest) {
        parent.name as parent_name,
        parent.sku as parent_sku,
        img.storage_path as primary_image,
+       coalesce(p.stock_quantity, 0) as stock_quantity,
+       coalesce(units.unit_count, 0) as unit_count,
        coalesce((
-         select count(*)::int
-         from product_items pi_s
-         where pi_s.product_id = p.id and pi_s.status = 'to_sell'
-       ), 0) as stock_quantity,
-       (
-         select count(*)::int from product_items pi_count
-         where pi_count.product_id = p.id
-       ) as unit_count,
-       (
          select count(*)::int from products children
          where children.parent_product_id = p.id
-       ) as child_count
+       ), 0) as child_count
      from products p
      left join categories c on c.id = p.category_id
      left join subcategories sc on sc.id = p.subcategory_id
      left join products parent on parent.id = p.parent_product_id
+     left join lateral (
+       select count(*)::int as unit_count
+       from product_items pi_count
+       where pi_count.product_id = p.id
+     ) units on true
      left join lateral (
        select pi.storage_path
        from product_images pi
@@ -99,9 +98,17 @@ export async function GET(request: NextRequest) {
        limit 1
      ) img on true
      where ($1::text is null or p.status::text = $1)
+       and (
+         $2::text = ''
+         or p.name ilike '%' || $2 || '%'
+         or coalesce(p.sku, '') ilike '%' || $2 || '%'
+         or coalesce(p.barcode, '') ilike '%' || $2 || '%'
+         or coalesce(p.slug, '') ilike '%' || $2 || '%'
+         or coalesce(p.short_name, '') ilike '%' || $2 || '%'
+       )
      order by p.created_at desc
      limit ${limit} offset ${offset}`,
-    [status]
+    [status, q]
   );
   return ok(
     data.map((row) => {
@@ -140,7 +147,11 @@ export async function POST(request: NextRequest) {
     if (body.hsn_code != null && String(body.hsn_code).trim() && !hsnCode) {
       return fail("HSN code must be 4 to 8 digits");
     }
-    const gstRate = normalizeGstRate(body.gst_rate, 5);
+    const gstRate = resolveSaleGstRate({
+      hsnCode: hsnCode,
+      saleValuePerPiece: body.price,
+      fallbackRate: body.gst_rate
+    });
 
     const skuPrefix = String(body.sku_prefix || "VAS")
       .replace(/[^A-Za-z0-9]/g, "")

@@ -6,10 +6,37 @@ import {
   updateStaffUser
 } from "../../../../lib/db/auth";
 import { query, queryOne } from "../../../../lib/db/pool";
+import { ensureShopStockSchema, roleRequiresShop } from "../../../../lib/shop-scope";
+import { getShopById } from "../../../../lib/shops";
+import {
+  firstError,
+  normalizeEmail,
+  normalizePhone10,
+  validateEmail,
+  validatePassword,
+  validatePhone10,
+  validateRequired
+} from "../../../../lib/validation";
+
+async function validateShopForRole(roleCode: string, shopId: string | null | undefined) {
+  if (roleRequiresShop(roleCode)) {
+    if (!shopId) {
+      return "Store is required for this staff role";
+    }
+    const shop = await getShopById(shopId);
+    if (!shop || !shop.is_active) return "Select an active store";
+  } else if (shopId) {
+    const shop = await getShopById(shopId);
+    if (!shop || !shop.is_active) return "Select an active store";
+  }
+  return null;
+}
 
 export async function GET(request: NextRequest) {
   const { error } = await requirePermission(request, "users:manage");
   if (error) return error;
+
+  await ensureShopStockSchema();
 
   const q = new URL(request.url).searchParams.get("q")?.trim() ?? null;
   const like = q ? `%${q}%` : null;
@@ -20,17 +47,23 @@ export async function GET(request: NextRequest) {
     full_name: string;
     email: string;
     phone: string | null;
+    shop_id: string | null;
+    shop_name: string | null;
+    shop_code: string | null;
     created_at: string;
   }>(
-    `select u.id, u.full_name, u.email, u.phone, u.created_at
+    `select u.id, u.full_name, u.email, u.phone, u.shop_id,
+            s.name as shop_name, s.code as shop_code, u.created_at
      from users u
+     left join shops s on s.id = u.shop_id
      where exists (
        select 1
        from user_roles ur
        join roles r on r.id = ur.role_id
        where ur.user_id = u.id and r.code <> 'customer'
      )
-     and ($1::text is null or u.full_name ilike $1 or u.email ilike $1 or u.phone ilike $1)
+     and ($1::text is null or u.full_name ilike $1 or u.email ilike $1 or u.phone ilike $1
+          or coalesce(s.name, '') ilike $1 or coalesce(s.code, '') ilike $1)
      order by u.created_at desc
      limit 100`,
     [like]
@@ -64,19 +97,28 @@ export async function POST(request: NextRequest) {
   const { error, ctx } = await requirePermission(request, "users:manage");
   if (error || !ctx) return error;
 
+  await ensureShopStockSchema();
+
   const body = (await request.json().catch(() => null)) as {
     email?: string;
     password?: string;
     fullName?: string;
     phone?: string;
     roleCode?: string;
+    shopId?: string | null;
   } | null;
 
   if (!body?.email || !body?.password || !body?.fullName || !body?.roleCode) {
     return fail("email, password, fullName and roleCode are required");
   }
 
-  if (body.password.length < 6) return fail("password must be at least 6 characters");
+  const fieldError = firstError(
+    validateRequired(body.fullName, "Full name"),
+    validateEmail(body.email, { required: true }),
+    validatePassword(body.password, { required: true }),
+    validatePhone10(body.phone, { required: false })
+  );
+  if (fieldError) return fail(fieldError);
 
   const role = await queryOne<{ id: string; code: string; name: string }>(
     `select id, code, name from roles where code = $1`,
@@ -87,18 +129,24 @@ export async function POST(request: NextRequest) {
     return fail("Use the Customers area for storefront shoppers; staff users need an admin role");
   }
 
-  const existing = await queryOne(`select id from users where email = $1`, [
-    body.email.toLowerCase()
-  ]);
+  const shopId = body.shopId ? String(body.shopId) : null;
+  const shopError = await validateShopForRole(role.code, shopId);
+  if (shopError) return fail(shopError);
+
+  const email = normalizeEmail(body.email);
+  const phone = normalizePhone10(body.phone) || undefined;
+
+  const existing = await queryOne(`select id from users where email = $1`, [email]);
   if (existing) return fail("A user with this email already exists", 409);
 
   try {
     const user = await createStaffUser({
-      email: body.email,
+      email,
       password: body.password,
-      fullName: body.fullName,
-      phone: body.phone,
-      roleCode: body.roleCode
+      fullName: String(body.fullName).trim(),
+      phone,
+      roleCode: body.roleCode,
+      shopId: roleRequiresShop(role.code) ? shopId : shopId
     });
 
     await writeAuditLog({
@@ -106,7 +154,7 @@ export async function POST(request: NextRequest) {
       action: "create",
       entityType: "users",
       entityId: user.id,
-      after: { email: user.email, roleCode: body.roleCode }
+      after: { email: user.email, roleCode: body.roleCode, shopId }
     });
 
     return ok(
@@ -115,6 +163,7 @@ export async function POST(request: NextRequest) {
         email: user.email,
         fullName: user.full_name,
         phone: user.phone,
+        shopId,
         role: { code: role.code, name: role.name }
       },
       201
@@ -128,6 +177,8 @@ export async function PATCH(request: NextRequest) {
   const { error, ctx } = await requirePermission(request, "users:manage");
   if (error || !ctx) return error;
 
+  await ensureShopStockSchema();
+
   const body = (await request.json().catch(() => null)) as {
     userId?: string;
     roleCode?: string;
@@ -135,6 +186,7 @@ export async function PATCH(request: NextRequest) {
     email?: string;
     phone?: string | null;
     password?: string;
+    shopId?: string | null;
   } | null;
 
   if (!body?.userId) return fail("userId is required");
@@ -143,7 +195,8 @@ export async function PATCH(request: NextRequest) {
     body.fullName !== undefined ||
     body.email !== undefined ||
     body.phone !== undefined ||
-    body.password !== undefined;
+    body.password !== undefined ||
+    body.shopId !== undefined;
 
   // Quick role-only change (legacy table dropdown)
   if (!hasProfileEdit && body.roleCode) {
@@ -156,8 +209,14 @@ export async function PATCH(request: NextRequest) {
       return fail("Cannot assign the customer role from the staff Users page");
     }
 
-    const user = await queryOne(`select id from users where id = $1`, [body.userId]);
+    const user = await queryOne<{ shop_id: string | null }>(
+      `select shop_id from users where id = $1`,
+      [body.userId]
+    );
     if (!user) return fail("User not found", 404);
+
+    const shopError = await validateShopForRole(role.code, user.shop_id);
+    if (shopError) return fail(`${shopError}. Edit the user and assign a store.`);
 
     await query(
       `delete from user_roles ur
@@ -182,13 +241,52 @@ export async function PATCH(request: NextRequest) {
   }
 
   try {
+    const fieldError = firstError(
+      body.fullName !== undefined ? validateRequired(body.fullName, "Full name") : null,
+      body.email !== undefined ? validateEmail(body.email, { required: true }) : null,
+      body.phone !== undefined ? validatePhone10(body.phone, { required: false }) : null,
+      body.password !== undefined && body.password
+        ? validatePassword(body.password, { required: true })
+        : null
+    );
+    if (fieldError) return fail(fieldError);
+
+    const nextRole = body.roleCode;
+    if (nextRole || body.shopId !== undefined) {
+      const roleCode =
+        nextRole ||
+        (
+          await queryOne<{ code: string }>(
+            `select r.code from user_roles ur
+             join roles r on r.id = ur.role_id
+             where ur.user_id = $1 and r.code <> 'customer'
+             order by r.name asc limit 1`,
+            [body.userId]
+          )
+        )?.code;
+      if (roleCode) {
+        const existingShop = await queryOne<{ shop_id: string | null }>(
+          `select shop_id from users where id = $1`,
+          [body.userId]
+        );
+        const shopId =
+          body.shopId !== undefined ? body.shopId : existingShop?.shop_id ?? null;
+        const shopError = await validateShopForRole(roleCode, shopId);
+        if (shopError) return fail(shopError);
+      }
+    }
+
     const updated = await updateStaffUser({
       userId: body.userId,
-      fullName: body.fullName,
-      email: body.email,
-      phone: body.phone,
+      fullName: body.fullName !== undefined ? String(body.fullName).trim() : undefined,
+      email: body.email !== undefined ? normalizeEmail(body.email) : undefined,
+      phone:
+        body.phone !== undefined
+          ? normalizePhone10(body.phone) || null
+          : undefined,
       password: body.password,
-      roleCode: body.roleCode
+      roleCode: body.roleCode,
+      shopId: body.shopId
     });
 
     await writeAuditLog({
@@ -200,6 +298,7 @@ export async function PATCH(request: NextRequest) {
         email: updated.email,
         fullName: updated.full_name,
         phone: updated.phone,
+        shopId: updated.shop_id,
         roleCode: body.roleCode || undefined,
         passwordChanged: Boolean(body.password)
       }

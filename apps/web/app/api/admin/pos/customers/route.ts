@@ -23,40 +23,45 @@ export async function GET(request: NextRequest) {
     email: string;
     phone: string | null;
   }>(
-    `select u.id, u.full_name, u.email, u.phone
-     from users u
+    `select c.id, c.full_name, c.email, c.phone
+     from customers c
      where exists (
        select 1
        from user_roles ur
        join roles r on r.id = ur.role_id
-       where ur.user_id = u.id and r.code = 'customer'
+       where ur.user_id = c.id and r.code = 'customer'
      )
      and not exists (
        select 1
        from user_roles ur2
        join roles r2 on r2.id = ur2.role_id
-       where ur2.user_id = u.id and r2.code <> 'customer'
+       where ur2.user_id = c.id and r2.code <> 'customer'
      )
-     and u.phone is not null
-     and regexp_replace(u.phone, '\\D', '', 'g') like $1
-     and lower(u.email) <> lower($2)
+     and c.phone is not null
+     and regexp_replace(c.phone, '\\D', '', 'g') like $1
+     and lower(c.email) <> lower($2)
      order by
        case
-         when regexp_replace(u.phone, '\\D', '', 'g') = $3 then 0
-         when regexp_replace(u.phone, '\\D', '', 'g') like $4 then 1
+         when regexp_replace(c.phone, '\\D', '', 'g') = $3 then 0
+         when regexp_replace(c.phone, '\\D', '', 'g') like $4 then 1
          else 2
        end,
-       u.full_name asc
+       c.full_name asc
      limit 8`,
     [like, WALK_IN_EMAIL, digits, `${digits}%`]
   );
 
   return ok(
-    data.map((row) => ({
-      id: row.id,
-      fullName: row.full_name,
-      email: row.email && !row.email.includes("@pos.local") ? row.email : "",
-      phone: (row.phone || "").replace(/\D/g, "").slice(-10)
-    }))
+    data.map((row) => {
+      const email = row.email || "";
+      const hideEmail =
+        email.includes("@pos.local") || email.includes("@customer.vasritha.local");
+      return {
+        id: row.id,
+        fullName: row.full_name,
+        email: hideEmail ? "" : email,
+        phone: (row.phone || "").replace(/\D/g, "").slice(-10)
+      };
+    })
   );
 }

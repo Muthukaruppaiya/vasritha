@@ -1,5 +1,4 @@
 import { query, queryOne } from "./db/pool";
-import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
 import {
   buildPurchasePolicySummary,
   DEFAULT_IN_STORE_POLICY_TEXT,
@@ -13,10 +12,7 @@ export { buildPurchasePolicySummary, DEFAULT_IN_STORE_POLICY_TEXT };
 let schemaReady = false;
 
 export async function ensureExchangePolicySchema() {
-  if (schemaReady || skipRuntimeSchemaEnsure()) {
-    schemaReady = true;
-    return;
-  }
+  if (schemaReady) return;
 
   await query(`
     alter table public.site_settings

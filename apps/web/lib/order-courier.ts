@@ -1,13 +1,9 @@
 import { query } from "./db/pool";
-import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
 
 let ready = false;
 
 export async function ensureOrderCourierSchema() {
-  if (ready || skipRuntimeSchemaEnsure()) {
-    ready = true;
-    return;
-  }
+  if (ready) return;
   await query(`
     alter table orders
       add column if not exists courier_name text,
@@ -20,10 +16,7 @@ export async function ensureOrderCourierSchema() {
 let restockReady = false;
 
 export async function ensureProductRestockSchema() {
-  if (restockReady || skipRuntimeSchemaEnsure()) {
-    restockReady = true;
-    return;
-  }
+  if (restockReady) return;
   await query(`
     alter table products
       add column if not exists restock_expected boolean not null default false

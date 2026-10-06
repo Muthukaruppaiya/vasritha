@@ -17,12 +17,18 @@ function formatReceiptDate(value: string) {
   if (Number.isNaN(date.getTime())) return formatDate(value);
   return date.toLocaleString("en-IN", {
     day: "2-digit",
-    month: "short",
-    year: "numeric",
+    month: "2-digit",
+    year: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
     hour12: true
   });
+}
+
+function clip(value: string, max: number) {
+  const clean = String(value || "").trim();
+  if (clean.length <= max) return clean;
+  return `${clean.slice(0, max - 1)}…`;
 }
 
 /** GST bill: A4 tax invoice for online orders; 3″ (80mm) thermal roll for POS. */
@@ -35,85 +41,50 @@ export function InvoiceBill({ data, id = "vasritha-invoice-bill" }: Props) {
   const discount = Number(data.discount_amount || 0);
   const shipping = Number(data.shipping_amount || 0);
   const lines = Array.isArray(data.items) ? data.items : [];
-  const itemCount = lines.reduce((sum, item) => sum + Number(item.quantity), 0);
   const seller = data.seller;
   const hasGstin = Boolean(seller?.gstin);
   const gst = data.gst;
   const showCgst = Boolean(gst && (gst.cgst > 0 || gst.sgst > 0));
   const showIgst = Boolean(gst && gst.igst > 0);
 
+  const storeName = seller?.shop_name || seller?.legal_name || "VASRITHA";
+  const storeAddress = seller?.address?.trim() || null;
+  const placeOfSupply = seller?.state || null;
+  const stateCode = seller?.state_code || null;
+  const customerName = data.customer_name?.trim() || (isPos ? "Walk-in" : "Customer");
+  const customerPhone = data.customer_phone?.replace(/\D/g, "").slice(-10) || null;
+  const cashierName = data.cashier_name?.trim() || null;
+
   return (
     <article className="invoice-bill invoice-bill--shop" id={id}>
       <header className="invoice-bill-shop-head">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/vasritha-logo.svg" alt="" className="invoice-bill-logo" />
+        <img
+          src="/vasritha-logo-circle.png"
+          alt=""
+          className="invoice-bill-logo"
+        />
         <div className="invoice-bill-shop-title">
-          <strong>{seller?.legal_name || "VASRITHA"}</strong>
-          <span>Timeless Elegance · Textile &amp; Lifestyle</span>
-          {seller?.shop_code ? (
-            <span className="invoice-bill-shop-code-line">
-              Shop: {seller.shop_name || seller.legal_name}
-              {seller.shop_code ? ` · ${seller.shop_code}` : ""}
-            </span>
-          ) : null}
-          <em>{hasGstin ? "Tax Invoice" : isPos ? "Store counter bill" : "Online order bill"}</em>
+          <strong>{storeName}</strong>
+          {storeAddress ? <span className="invoice-bill-shop-address">{storeAddress}</span> : null}
+          {seller?.phone ? <span>Ph: {seller.phone}</span> : null}
+          {seller?.gstin ? <span>GSTIN: {seller.gstin}</span> : null}
+          <em>{hasGstin || isPos ? "Tax Invoice" : "Order Bill"}</em>
         </div>
       </header>
 
-      {(seller?.address || seller?.gstin || seller?.state || seller?.phone) && (
-        <div className="invoice-bill-shop-seller">
-          {seller?.address ? <p>{seller.address}</p> : null}
-          {seller?.state ? (
-            <p>
-              State: {seller.state}
-              {seller.state_code ? ` (${seller.state_code})` : ""}
-            </p>
-          ) : null}
-          {seller?.gstin ? (
-            <p>
-              <b>GSTIN:</b> {seller.gstin}
-            </p>
-          ) : null}
-          {seller?.phone ? <p>Ph: {seller.phone}</p> : null}
-        </div>
-      )}
-
-      <div className="invoice-bill-shop-meta">
-        <div>
-          <span>Invoice no.</span>
-          <b>INV-{data.order_number}</b>
-        </div>
-        <div>
-          <span>Date</span>
-          <b>{formatReceiptDate(data.created_at)}</b>
-        </div>
-        <div>
-          <span>Payment</span>
-          <b>{data.payment_status.toUpperCase()}</b>
-        </div>
-        <div>
-          <span>Items</span>
-          <b>{itemCount}</b>
-        </div>
-      </div>
-
-      <div className="invoice-bill-shop-customer">
-        <div>
-          <span>Customer</span>
-          <b>{data.customer_name || (isPos ? "Walk-in" : "Customer")}</b>
-        </div>
-        {data.customer_phone ? (
-          <div>
-            <span>Mobile</span>
-            <b>{data.customer_phone}</b>
-          </div>
+      <div className="invoice-bill-shop-meta invoice-bill-shop-meta--compact">
+        <p>BillNo : {data.order_number}</p>
+        <p>Date : {formatReceiptDate(data.created_at)}</p>
+        {placeOfSupply || stateCode ? (
+          <p>
+            Place of Supply : {placeOfSupply || "—"}
+            {stateCode ? ` & ${stateCode}` : ""}
+          </p>
         ) : null}
-        {data.customer_email ? (
-          <div>
-            <span>Email</span>
-            <b>{data.customer_email}</b>
-          </div>
-        ) : null}
+        {cashierName ? <p>Cashier : {cashierName}</p> : null}
+        <p>Customer : {customerName}</p>
+        {customerPhone ? <p>Mobile No : {customerPhone}</p> : null}
       </div>
 
       {!isPos && data.shipping_address ? (
@@ -132,38 +103,41 @@ export function InvoiceBill({ data, id = "vasritha-invoice-bill" }: Props) {
       <table className="invoice-bill-table invoice-bill-table--shop">
         <thead>
           <tr>
-            <th className="is-no">#</th>
-            <th className="is-item">Particulars</th>
-            <th className="is-hsn">HSN</th>
+            <th className="is-item">
+              Code
+              <small>HSN / Tax</small>
+            </th>
             <th className="is-qty">Qty</th>
             <th className="is-rate">Rate</th>
-            <th className="is-amt">Amount</th>
+            <th className="is-amt">Amt</th>
           </tr>
         </thead>
         <tbody>
           {lines.length ? (
-            lines.map((item, index) => (
-              <tr key={`${item.product_id}-${index}`}>
-                <td className="is-no">{index + 1}</td>
-                <td className="is-item">
-                  <b>
-                    {item.product_name}
-                    {item.variant_name ? ` · ${item.variant_name}` : ""}
-                  </b>
-                  <span>
-                    {item.sku ? `${item.sku}` : ""}
-                    {item.gst_rate != null ? ` · GST ${Number(item.gst_rate)}%` : ""}
-                  </span>
-                </td>
-                <td className="is-hsn">{item.hsn_code || "—"}</td>
-                <td className="is-qty">{item.quantity}</td>
-                <td className="is-rate">{formatMoney(item.unit_price)}</td>
-                <td className="is-amt">{formatMoney(item.line_total)}</td>
-              </tr>
-            ))
+            lines.map((item, index) => {
+              const code = item.sku || "—";
+              const hsn = item.hsn_code || "";
+              const rate =
+                item.gst_rate != null && item.gst_rate !== ""
+                  ? `GST${Number(item.gst_rate)}%`
+                  : "";
+              const meta = [hsn ? `HSN ${hsn}` : "", rate].filter(Boolean).join(" · ");
+
+              return (
+                <tr key={`${item.product_id}-${index}`}>
+                  <td className="is-item">
+                    <b>{clip(code, 28)}</b>
+                    {meta ? <span>{clip(meta, 32)}</span> : null}
+                  </td>
+                  <td className="is-qty">{item.quantity}</td>
+                  <td className="is-rate">{formatMoney(item.unit_price)}</td>
+                  <td className="is-amt">{formatMoney(item.line_total)}</td>
+                </tr>
+              );
+            })
           ) : (
             <tr>
-              <td colSpan={6}>No items on this bill.</td>
+              <td colSpan={4}>No items</td>
             </tr>
           )}
         </tbody>
@@ -171,7 +145,7 @@ export function InvoiceBill({ data, id = "vasritha-invoice-bill" }: Props) {
 
       <div className="invoice-bill-shop-totals">
         <div>
-          <span>Subtotal</span>
+          <span>Amount</span>
           <b>{formatMoney(data.subtotal)}</b>
         </div>
         {discount > 0 ? (
@@ -187,56 +161,69 @@ export function InvoiceBill({ data, id = "vasritha-invoice-bill" }: Props) {
           </div>
         ) : null}
         {gst ? (
+          <div>
+            <span>Taxable</span>
+            <b>{formatMoney(gst.taxable)}</b>
+          </div>
+        ) : null}
+        {gst && showCgst ? (
           <>
             <div>
-              <span>Taxable value</span>
-              <b>{formatMoney(gst.taxable)}</b>
+              <span>CGST</span>
+              <b>{formatMoney(gst.cgst)}</b>
             </div>
-            {showCgst ? (
-              <>
-                <div>
-                  <span>CGST</span>
-                  <b>{formatMoney(gst.cgst)}</b>
-                </div>
-                <div>
-                  <span>SGST</span>
-                  <b>{formatMoney(gst.sgst)}</b>
-                </div>
-              </>
-            ) : null}
-            {showIgst ? (
-              <div>
-                <span>IGST</span>
-                <b>{formatMoney(gst.igst)}</b>
-              </div>
-            ) : null}
+            <div>
+              <span>SGST</span>
+              <b>{formatMoney(gst.sgst)}</b>
+            </div>
           </>
         ) : null}
+        {gst && showIgst ? (
+          <div>
+            <span>IGST</span>
+            <b>{formatMoney(gst.igst)}</b>
+          </div>
+        ) : null}
         <div className="is-grand">
-          <span>Grand total</span>
+          <span>Total Amt</span>
           <b>{formatMoney(data.total_amount)}</b>
         </div>
+        {(() => {
+          const paid = Number(data.amount_paid);
+          const due = Number(data.balance_due);
+          const showCredit =
+            data.payment_status !== "paid" ||
+            (Number.isFinite(due) && due > 0.009) ||
+            (Number.isFinite(paid) && paid + 0.009 < Number(data.total_amount));
+          if (!showCredit || (!Number.isFinite(paid) && !Number.isFinite(due))) return null;
+          const paidAmt = Number.isFinite(paid)
+            ? paid
+            : Math.max(0, Number(data.total_amount) - (Number.isFinite(due) ? due : 0));
+          const dueAmt = Number.isFinite(due)
+            ? due
+            : Math.max(0, Number(data.total_amount) - paidAmt);
+          if (dueAmt <= 0.009 && data.payment_status === "paid") return null;
+          return (
+            <>
+              <div>
+                <span>Paid now</span>
+                <b>{formatMoney(paidAmt)}</b>
+              </div>
+              <div className="is-grand">
+                <span>Balance due</span>
+                <b>{formatMoney(dueAmt)}</b>
+              </div>
+            </>
+          );
+        })()}
       </div>
 
       <footer className="invoice-bill-shop-foot">
-        <p>
-          {gst?.inclusive !== false
-            ? "Prices inclusive of GST · Tax breakup shown above"
-            : "Tax as applicable under GST"}
-        </p>
-        {data.loyalty_prompt ? <p className="invoice-bill-loyalty">{data.loyalty_prompt}</p> : null}
-        {data.loyalty_points_earned != null && Number(data.loyalty_points_earned) > 0 ? (
-          <p>
-            Points earned: {data.loyalty_points_earned}
-            {data.loyalty_balance_after != null ? ` · Balance: ${data.loyalty_balance_after}` : ""}
-          </p>
+        <p>1. Goods once sold are exchangeable with this bill as per store policy.</p>
+        <p>2. No cash refunds. Exchange only at the store.</p>
+        {Number(data.balance_due) > 0.009 || data.payment_status !== "paid" ? (
+          <p>3. Balance due as noted above — settle at the store.</p>
         ) : null}
-        <p>Thank you for shopping at Vasritha</p>
-        <p>
-          Goods once sold are exchangeable with this bill as per store policy. NO CASH REFUNDS.
-          In-store purchases: exchange/refund only at the physical store.
-        </p>
-        <p className="invoice-bill-shop-code">{data.order_number}</p>
       </footer>
     </article>
   );

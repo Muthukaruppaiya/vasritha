@@ -1,5 +1,5 @@
 import { query, queryOne } from "./db/pool";
-import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
+import { skipEnsureIfRelationExists } from "./schema-bootstrap";
 import { clientIpFromRequest } from "./login-security";
 
 export type LoginClient = "staff" | "pos" | "website" | "unknown";
@@ -28,7 +28,11 @@ export type LoginEvent = {
 let schemaReady = false;
 
 export async function ensureLoginEventsSchema() {
-  if (schemaReady || skipRuntimeSchemaEnsure()) return;
+  if (schemaReady) return;
+  if (await skipEnsureIfRelationExists("public.login_events")) {
+    schemaReady = true;
+    return;
+  }
   await query(`
     create table if not exists public.login_events (
       id uuid primary key default gen_random_uuid(),

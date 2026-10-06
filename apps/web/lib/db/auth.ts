@@ -108,13 +108,20 @@ export async function createStaffUser(input: {
   fullName: string;
   phone?: string;
   roleCode: string;
+  shopId?: string | null;
 }) {
   const passwordHash = await bcrypt.hash(input.password, 10);
   const user = await queryOne<DbUser>(
-    `insert into users (email, password_hash, full_name, phone)
-     values ($1, $2, $3, $4)
+    `insert into users (email, password_hash, full_name, phone, shop_id)
+     values ($1, $2, $3, $4, $5)
      returning id, email, full_name, phone, password_hash`,
-    [input.email.toLowerCase(), passwordHash, input.fullName, input.phone ?? null]
+    [
+      input.email.toLowerCase(),
+      passwordHash,
+      input.fullName,
+      input.phone ?? null,
+      input.shopId ?? null
+    ]
   );
   if (!user) throw new Error("Failed to create user");
 
@@ -136,19 +143,22 @@ export async function updateStaffUser(input: {
   phone?: string | null;
   password?: string;
   roleCode?: string;
+  shopId?: string | null;
 }) {
   const existing = await queryOne<{
     id: string;
     email: string;
     full_name: string;
     phone: string | null;
-  }>(`select id, email, full_name, phone from users where id = $1`, [input.userId]);
+    shop_id: string | null;
+  }>(`select id, email, full_name, phone, shop_id from users where id = $1`, [input.userId]);
   if (!existing) throw new Error("User not found");
 
   const fullName = (input.fullName ?? existing.full_name).trim();
   const email = (input.email ?? existing.email).trim().toLowerCase();
   const phone =
     input.phone === undefined ? existing.phone : input.phone?.trim() ? input.phone.trim() : null;
+  const shopId = input.shopId === undefined ? existing.shop_id : input.shopId;
 
   if (!fullName) throw new Error("Full name is required");
   if (!email) throw new Error("Email is required");
@@ -166,16 +176,16 @@ export async function updateStaffUser(input: {
     const passwordHash = await bcrypt.hash(input.password, 10);
     await query(
       `update users
-       set full_name = $2, email = $3, phone = $4, password_hash = $5, updated_at = now()
+       set full_name = $2, email = $3, phone = $4, shop_id = $5, password_hash = $6, updated_at = now()
        where id = $1`,
-      [input.userId, fullName, email, phone, passwordHash]
+      [input.userId, fullName, email, phone, shopId, passwordHash]
     );
   } else {
     await query(
       `update users
-       set full_name = $2, email = $3, phone = $4, updated_at = now()
+       set full_name = $2, email = $3, phone = $4, shop_id = $5, updated_at = now()
        where id = $1`,
-      [input.userId, fullName, email, phone]
+      [input.userId, fullName, email, phone, shopId]
     );
   }
 
@@ -207,7 +217,7 @@ export async function updateStaffUser(input: {
     );
   }
 
-  return { id: input.userId, email, full_name: fullName, phone };
+  return { id: input.userId, email, full_name: fullName, phone, shop_id: shopId };
 }
 
 export async function deleteStaffUser(userId: string, actorUserId: string) {

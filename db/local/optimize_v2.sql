@@ -153,10 +153,19 @@ do $$ begin
     check (parent_product_id is null or parent_product_id <> id);
 exception when duplicate_object then null; end $$;
 
+-- Keep catalogue GST in sync with app ALLOWED_GST_RATES (incl. standard 12%).
+update public.products
+set gst_rate = 5
+where gst_rate is null
+   or gst_rate not in (0, 3, 5, 9, 12, 18);
+
+alter table public.products
+  drop constraint if exists products_gst_rate_chk;
+
 do $$ begin
   alter table public.products
     add constraint products_gst_rate_chk
-    check (gst_rate in (0, 3, 5, 9, 18));
+    check (gst_rate in (0, 3, 5, 9, 12, 18));
 exception when duplicate_object then null; end $$;
 
 do $$ begin

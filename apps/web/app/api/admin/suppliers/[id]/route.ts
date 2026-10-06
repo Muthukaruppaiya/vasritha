@@ -12,6 +12,14 @@ import {
   validatePan,
   type SupplierRow
 } from "../../../../../lib/suppliers";
+import {
+  firstError,
+  normalizeEmail,
+  normalizePhone10,
+  validateEmail,
+  validatePhone10,
+  validatePincode
+} from "../../../../../lib/validation";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -59,10 +67,19 @@ export async function PATCH(request: NextRequest, context: Ctx) {
   const gstin =
     body.gstin !== undefined ? normalizeGstin(body.gstin) : existing.gstin;
   const pan = body.pan !== undefined ? normalizePan(body.pan) : existing.pan;
-  const gstErr = validateGstin(gstin);
-  if (gstErr) return fail(gstErr);
-  const panErr = validatePan(pan);
-  if (panErr) return fail(panErr);
+  const phoneRaw = body.phone !== undefined ? body.phone : existing.phone;
+  const emailRaw = body.email !== undefined ? body.email : existing.email;
+  const pincodeRaw = body.pincode !== undefined ? body.pincode : existing.pincode;
+  const fieldError = firstError(
+    validatePhone10(phoneRaw, { required: false }),
+    validateEmail(emailRaw, { required: false }),
+    validatePincode(pincodeRaw, { required: false }),
+    validateGstin(gstin),
+    validatePan(pan)
+  );
+  if (fieldError) return fail(fieldError);
+  const phone = phoneRaw ? normalizePhone10(phoneRaw) || null : null;
+  const email = emailRaw ? normalizeEmail(emailRaw) || null : null;
 
   if (gstin) {
     const dupGst = await queryOne<{ id: string }>(
@@ -119,16 +136,8 @@ export async function PATCH(request: NextRequest, context: Ctx) {
           ? String(body.contact_person).trim()
           : null
         : existing.contact_person,
-      body.phone !== undefined
-        ? body.phone
-          ? String(body.phone).trim()
-          : null
-        : existing.phone,
-      body.email !== undefined
-        ? body.email
-          ? String(body.email).trim()
-          : null
-        : existing.email,
+      body.phone !== undefined ? phone : existing.phone,
+      body.email !== undefined ? email : existing.email,
       body.address !== undefined
         ? body.address
           ? String(body.address).trim()

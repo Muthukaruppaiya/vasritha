@@ -1,6 +1,7 @@
 import { query, queryOne } from "./db/pool";
-import { skipRuntimeSchemaEnsure } from "./schema-bootstrap";
-import { stateCodeFromGstin } from "./gst";
+import { skipEnsureIfRelationExists } from "./schema-bootstrap";
+import { stateCodeFromGstin } from "./gst-math";
+import { validateGstin as validateGstinShared, validatePan as validatePanShared } from "./validation";
 
 export type SupplierRow = {
   id: string;
@@ -27,8 +28,14 @@ export type SupplierRow = {
   updated_at: string;
 };
 
+let suppliersSchemaReady = false;
+
 export async function ensureSuppliersSchema() {
-  if (skipRuntimeSchemaEnsure()) return;
+  if (suppliersSchemaReady) return;
+  if (await skipEnsureIfRelationExists("public.suppliers")) {
+    suppliersSchemaReady = true;
+    return;
+  }
   await query(`
     create table if not exists public.suppliers (
       id uuid primary key default gen_random_uuid(),
@@ -79,6 +86,7 @@ export async function ensureSuppliersSchema() {
       on public.inventory_movements (supplier_id)
       where supplier_id is not null
   `);
+  suppliersSchemaReady = true;
 }
 
 export function normalizeSupplierCode(value: unknown): string {
@@ -124,19 +132,11 @@ export function normalizePan(value: unknown): string | null {
 }
 
 export function validateGstin(gstin: string | null): string | null {
-  if (!gstin) return null;
-  if (!/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(gstin)) {
-    return "Enter a valid 15-character GSTIN";
-  }
-  return null;
+  return validateGstinShared(gstin);
 }
 
 export function validatePan(pan: string | null): string | null {
-  if (!pan) return null;
-  if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan)) {
-    return "Enter a valid 10-character PAN (e.g. ABCDE1234F)";
-  }
-  return null;
+  return validatePanShared(pan);
 }
 
 export function deriveStateCode(gstin: string | null, explicit?: string | null) {

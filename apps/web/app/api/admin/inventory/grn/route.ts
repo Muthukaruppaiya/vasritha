@@ -8,6 +8,7 @@ import {
   listGrns,
   parseAndValidateGrnBody
 } from "../../../../../lib/inventory-grn";
+import { requireScopedShopId, resolveShopScope } from "../../../../../lib/shop-scope";
 
 /**
  * Submit a GRN for approval. Stock is applied only when approved
@@ -32,6 +33,7 @@ export async function POST(request: NextRequest) {
     invoiceDate?: string;
     documentPath?: string;
     approveNow?: boolean;
+    shopId?: string | null;
     lines?: Array<{ productVariantId?: string; quantity?: number; purchasePrice?: number }>;
   } | null;
 
@@ -39,6 +41,13 @@ export async function POST(request: NextRequest) {
 
   const parsed = await parseAndValidateGrnBody(body);
   if (!parsed.ok) return fail(parsed.error);
+
+  let shopId: string;
+  try {
+    shopId = (await requireScopedShopId(ctx, body.shopId || null)).shopId;
+  } catch (err) {
+    return fail(err instanceof Error ? err.message : "No active shop");
+  }
 
   const wantApproveNow = Boolean(body.approveNow);
   const canApprove = hasPermission(ctx.roles, "stock:approve");
@@ -49,7 +58,8 @@ export async function POST(request: NextRequest) {
   try {
     const grn = await createPendingGrn({
       userId: ctx.userId,
-      payload: parsed.data
+      payload: parsed.data,
+      shopId
     });
 
     await writeAuditLog({
@@ -70,7 +80,7 @@ export async function POST(request: NextRequest) {
 
     let approved: Awaited<ReturnType<typeof approveGrnOnce>> | null = null;
     if (wantApproveNow && canApprove) {
-      approved = await approveGrnOnce({ grnId: grn.id, userId: ctx.userId });
+      approved = await approveGrnOnce({ grnId: grn.id, userId: ctx.userId, shopId });
       if (approved.ok) {
         await writeAuditLog({
           actorUserId: ctx.userId,
@@ -114,20 +124,26 @@ export async function POST(request: NextRequest) {
 
 /** List GRNs (default: pending_approval). */
 export async function GET(request: NextRequest) {
-  const { error } = await requireAnyPermission(request, [
+  const { error, ctx } = await requireAnyPermission(request, [
     "stock:operate",
     "stock:approve",
     "purchases:operate"
   ]);
-  if (error) return error;
+  if (error || !ctx) return error;
+
+  await ensureInventoryGrnSchema();
 
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status");
   const supplierId = searchParams.get("supplierId");
+  const preferredShop = searchParams.get("shopId");
+  const scope = await resolveShopScope(ctx, preferredShop);
+  const shopId = scope.mode === "one" ? scope.shopId : preferredShop || null;
 
   const data = await listGrns({
     status: status === "all" ? null : status || "pending_approval",
-    supplierId
+    supplierId,
+    shopId
   });
   return ok(data);
 }

@@ -1,6 +1,6 @@
 /**
  * Apply DBA optimize scripts against the local database.
- * Runs optimize_v1.sql then optimize_v2.sql (idempotent).
+ * Runs optimize_v1 → v2 → v3 (idempotent).
  * Usage: npm run db:optimize
  */
 import fs from "node:fs";
@@ -13,7 +13,7 @@ const root = path.resolve(__dirname, "..");
 const databaseUrl =
   process.env.DATABASE_URL || "postgresql://postgres:postgres@127.0.0.1:5433/vasritha";
 
-const files = ["optimize_v1.sql", "optimize_v2.sql"].map((name) =>
+const files = ["optimize_v1.sql", "optimize_v2.sql", "optimize_v3.sql"].map((name) =>
   path.join(root, "db", "local", name)
 );
 

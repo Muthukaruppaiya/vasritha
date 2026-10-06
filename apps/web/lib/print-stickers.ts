@@ -1,4 +1,38 @@
-import { barcodeDataUrl, escapePrintHtml, qrDataUrl } from "./print-barcodes";
+import { barcodeDataUrl, escapePrintHtml } from "./print-barcodes";
+
+/** DB / API values (kept for compatibility). */
+export type LabelSizeCode = "dress" | "accessory";
+
+/** Print layout: 2-set = 50×25mm (2/row), 3-set = 35×22mm (3/row). */
+export type LabelLayout = "set2" | "set3";
+
+export function labelSizeToLayout(size: LabelSizeCode | string | null | undefined): LabelLayout {
+  return size === "accessory" ? "set3" : "set2";
+}
+
+export function layoutToLabelSize(layout: LabelLayout): LabelSizeCode {
+  return layout === "set3" ? "accessory" : "dress";
+}
+
+export const LABEL_LAYOUT_OPTIONS: Array<{
+  value: LabelLayout;
+  code: LabelSizeCode;
+  label: string;
+  hint: string;
+}> = [
+  {
+    value: "set2",
+    code: "dress",
+    label: "2-set · 50×25 mm",
+    hint: "2 labels per row"
+  },
+  {
+    value: "set3",
+    code: "accessory",
+    label: "3-set · 35×22 mm",
+    hint: "3 labels per row"
+  }
+];
 
 export type StickerItem = {
   id?: string;
@@ -8,7 +42,7 @@ export type StickerItem = {
   seq?: number;
   sizeLabel?: string | null;
   price?: number | string;
-  labelSize?: "accessory" | "dress";
+  labelSize?: LabelSizeCode;
   productName?: string;
   shortName?: string | null;
   categoryName?: string | null;
@@ -31,11 +65,12 @@ export type StickerProductMeta = {
   shopCode?: string | null;
 };
 
+/** Price without currency prefix (e.g. 9,990.00). */
 function formatPrice(value: number | string) {
-  return `Rs.${Number(value || 0).toLocaleString("en-IN", {
+  return Number(value || 0).toLocaleString("en-IN", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
-  })}`;
+  });
 }
 
 function splitUnitCode(code: string) {
@@ -43,10 +78,10 @@ function splitUnitCode(code: string) {
     .split(/[\/\-]/)
     .map((part) => part.trim())
     .filter(Boolean);
+  // No D.No line on sale tags
   return {
     line1: parts[0] || code,
-    line2: parts[1] || "",
-    line3: parts[2] ? `D.No:${parts[2]}` : ""
+    line2: parts[1] || ""
   };
 }
 
@@ -106,11 +141,9 @@ function stickerHtml(input: {
   brand: string;
   meta: StickerProductMeta;
   price: string;
-  mrp?: string | null;
-  sizeClass: "accessory" | "dress";
+  layout: LabelLayout;
   item: StickerItem;
   barcodeSrc: string;
-  qrSrc: string;
 }) {
   const codes = splitUnitCode(input.item.unit_code);
   const category = (
@@ -118,71 +151,41 @@ function stickerHtml(input: {
     input.meta.categoryName ||
     "APPAREL"
   ).toUpperCase();
-  const shortName = (
+  const displayName = (
     input.item.shortName ||
     input.meta.shortName ||
     input.item.productName ||
     input.meta.productName ||
     category
-  ).toUpperCase();
-  const fullName = (input.item.productName || input.meta.productName || "").toUpperCase();
-  const color = input.item.color || input.meta.color || "";
-  const size = input.item.sizeLabel || color || "—";
+  )
+    .trim()
+    .toUpperCase();
   const ref = input.item.tag || input.item.sku || input.meta.sku || input.item.unit_code;
-  const shop = input.meta.shopCode || "VAS";
-  const hsn = input.item.hsnCode || input.meta.hsnCode || "";
-  const itemMrp =
-    input.item.compareAtPrice != null &&
-    Number(input.item.compareAtPrice) > Number(input.price.replace(/[^\d.]/g, ""))
-      ? formatPrice(input.item.compareAtPrice)
-      : input.mrp;
+  const codesLine = [codes.line1, codes.line2].filter(Boolean).join(" · ");
 
-  return `<article class="sale-tag ${input.sizeClass}">
+  return `<article class="sale-tag ${input.layout}">
     <header class="sale-tag-brand">
       <span class="sale-tag-mark" aria-hidden="true">V</span>
       <strong>${escapePrintHtml(input.brand)}</strong>
     </header>
-    <div class="sale-tag-grid">
-      <div class="sale-tag-left">
-        <div>${escapePrintHtml(codes.line1)}</div>
-        ${codes.line2 ? `<div>${escapePrintHtml(codes.line2)}</div>` : ""}
-        ${codes.line3 ? `<div>${escapePrintHtml(codes.line3)}</div>` : ""}
-        ${hsn ? `<div class="sale-tag-hsn">HSN ${escapePrintHtml(hsn)}</div>` : ""}
-      </div>
-      <div class="sale-tag-right">
-        <div>C/</div>
-        <div>${escapePrintHtml(shop)}</div>
-        <div class="sale-tag-dept">${escapePrintHtml(category)}</div>
-        <div class="sale-tag-counter">${escapePrintHtml(shortName)}</div>
-        ${
-          fullName && fullName !== shortName
-            ? `<div class="sale-tag-fullname">${escapePrintHtml(fullName)}</div>`
-            : ""
-        }
-      </div>
-    </div>
-    <div class="sale-tag-mid">
-      <img class="sale-tag-qr" src="${input.qrSrc}" alt="" />
-      <div class="sale-tag-price-block">
-        <div class="sale-tag-ref">${escapePrintHtml(ref)}</div>
-        <div class="sale-tag-price">${escapePrintHtml(input.price)}</div>
-        ${itemMrp ? `<div class="sale-tag-mrp">MRP ${escapePrintHtml(itemMrp)}</div>` : ""}
-        ${color ? `<div class="sale-tag-color">COLOUR ${escapePrintHtml(color)}</div>` : ""}
-      </div>
-    </div>
+    <section class="sale-tag-body">
+      <div class="sale-tag-codes">${escapePrintHtml(codesLine)}</div>
+      <div class="sale-tag-name">${escapePrintHtml(displayName)}</div>
+    </section>
+    <section class="sale-tag-mid">
+      <div class="sale-tag-ref">${escapePrintHtml(String(ref))}</div>
+      <div class="sale-tag-price">${escapePrintHtml(input.price)}</div>
+    </section>
     <img class="sale-tag-barcode" src="${input.barcodeSrc}" alt="${escapePrintHtml(input.item.barcode)}" />
-    <footer class="sale-tag-foot">
-      <span class="sale-tag-barcode-num">${escapePrintHtml(input.item.barcode)}</span>
-      <span class="sale-tag-size">SIZE : ${escapePrintHtml(String(size))}</span>
-      <span class="sale-tag-shop">${escapePrintHtml(shop)}${input.item.seq ? input.item.seq : ""}</span>
-    </footer>
   </article>`;
 }
 
 export async function printProductStickers(input: {
   brand?: string;
   price: number | string;
-  labelSize: "accessory" | "dress";
+  /** Preferred: set2 | set3. Falls back from labelSize dress/accessory. */
+  layout?: LabelLayout;
+  labelSize?: LabelSizeCode;
   meta?: StickerProductMeta;
   items: StickerItem[];
 }) {
@@ -190,14 +193,11 @@ export async function printProductStickers(input: {
     throw new Error("No unique barcodes to print. Save stock first, or inward more pieces.");
   }
 
-  const brand = input.brand || input.meta?.brand || "VASRITHA";
+  const brand = input.brand || input.meta?.brand || "VASRITHA BOUTIQUE";
   const defaultPrice = formatPrice(input.price);
-  const defaultSize = input.labelSize === "accessory" ? "accessory" : "dress";
+  const defaultLayout =
+    input.layout || labelSizeToLayout(input.labelSize || "dress");
   const meta = input.meta || {};
-  const mrp =
-    meta.compareAtPrice != null && Number(meta.compareAtPrice) > Number(input.price)
-      ? formatPrice(meta.compareAtPrice)
-      : null;
 
   const cards: string[] = [];
   for (const raw of input.items) {
@@ -206,23 +206,22 @@ export async function printProductStickers(input: {
       .toUpperCase();
     if (!value) continue;
 
-    const sizeClass =
-      raw.labelSize === "accessory" || raw.labelSize === "dress" ? raw.labelSize : defaultSize;
     const price = raw.price != null ? formatPrice(raw.price) : defaultPrice;
     const item = { ...raw, barcode: value, unit_code: raw.unit_code || value };
-    const barcodeSrc = barcodeDataUrl(value, sizeClass === "accessory" ? 28 : 34, 1.2);
-    const qrSrc = await qrDataUrl(value, sizeClass === "accessory" ? 56 : 68);
+    const barcodeSrc = barcodeDataUrl(
+      value,
+      defaultLayout === "set3" ? 22 : 28,
+      defaultLayout === "set3" ? 1 : 1.15
+    );
 
     cards.push(
       stickerHtml({
         brand,
         meta,
         price,
-        mrp,
-        sizeClass,
+        layout: defaultLayout,
         item,
-        barcodeSrc,
-        qrSrc
+        barcodeSrc
       })
     );
   }
@@ -231,115 +230,145 @@ export async function printProductStickers(input: {
     throw new Error("Barcode values are invalid for printing.");
   }
 
+  const sheetClass = defaultLayout === "set3" ? "set-3" : "set-2";
+
   printDocument(
     `<!doctype html><html><head><title>Vasritha sale tags</title>
     <style>
-      @page { margin: 4mm; size: auto; }
+      @page { margin: 3mm; size: auto; }
       html, body { margin: 0; background: #fff; color: #2c1a10; }
       body { font-family: Arial, Helvetica, sans-serif; }
-      .sheet { display: flex; flex-wrap: wrap; gap: 4mm; padding: 3mm; }
+      .sheet {
+        display: grid;
+        gap: 2mm;
+        padding: 2mm;
+        justify-content: start;
+      }
+      .sheet.set-2 { grid-template-columns: repeat(2, 50mm); }
+      .sheet.set-3 { grid-template-columns: repeat(3, 35mm); }
       .sale-tag {
         border: 1px solid #422314;
-        border-radius: 3px;
+        border-radius: 2px;
         box-sizing: border-box;
-        padding: 2.5mm 3mm 2mm;
+        padding: 1.2mm 1.6mm 0.9mm;
         background: #fff;
         break-inside: avoid;
         page-break-inside: avoid;
-        display: flex;
-        flex-direction: column;
-        gap: 1.5mm;
+        display: grid;
+        grid-template-rows: auto auto auto auto;
+        align-content: start;
+        row-gap: 0.45mm;
+        overflow: hidden;
       }
-      .sale-tag.accessory { width: 42mm; min-height: 34mm; font-size: 6px; }
-      .sale-tag.dress { width: 72mm; min-height: 52mm; font-size: 7px; }
+      .sale-tag.set2 { width: 50mm; height: 25mm; font-size: 5.5px; }
+      .sale-tag.set3 { width: 35mm; height: 22mm; font-size: 4.4px; padding: 0.9mm 1.1mm 0.7mm; row-gap: 0.35mm; }
       .sale-tag-brand {
         display: flex;
         align-items: center;
-        gap: 2mm;
-        border-bottom: 1px solid #c89b5c;
-        padding-bottom: 1mm;
+        gap: 1.2mm;
+        border-bottom: 0.6px solid #c89b5c;
+        padding: 0 0 0.35mm;
+        margin: 0;
+        min-height: 3.8mm;
       }
+      .set3 .sale-tag-brand { min-height: 3.2mm; padding-bottom: 0.25mm; gap: 0.9mm; }
       .sale-tag-mark {
-        width: 7mm;
-        height: 7mm;
+        width: 4.2mm;
+        height: 4.2mm;
         border-radius: 50%;
         background: #422314;
         color: #c89b5c;
-        display: grid;
-        place-items: center;
-        font-weight: 800;
-        font-size: 8px;
-      }
-      .accessory .sale-tag-mark { width: 5mm; height: 5mm; font-size: 6px; }
-      .sale-tag-brand strong {
-        font-size: 9px;
-        letter-spacing: 0.08em;
-        color: #422314;
-        line-height: 1.1;
-      }
-      .accessory .sale-tag-brand strong { font-size: 7px; }
-      .sale-tag-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 2mm;
-        line-height: 1.2;
-      }
-      .sale-tag-left { font-weight: 700; }
-      .sale-tag-right { text-align: right; }
-      .sale-tag-dept { font-weight: 800; margin-top: 0.5mm; color: #61351f; }
-      .sale-tag-counter { font-size: 6px; font-weight: 700; }
-      .sale-tag-fullname { font-size: 5px; color: #806a5b; margin-top: 0.4mm; }
-      .sale-tag-hsn { font-size: 5px; color: #806a5b; margin-top: 0.4mm; }
-      .accessory .sale-tag-counter { font-size: 5px; }
-      .sale-tag-mid {
-        display: grid;
-        grid-template-columns: auto 1fr;
-        gap: 2mm;
+        display: inline-flex;
         align-items: center;
-      }
-      .sale-tag-qr { width: 16mm; height: 16mm; object-fit: contain; }
-      .accessory .sale-tag-qr { width: 11mm; height: 11mm; }
-      .sale-tag-price-block { text-align: center; }
-      .sale-tag-ref { font-size: 6px; margin-bottom: 0.5mm; letter-spacing: 0.04em; }
-      .sale-tag-price {
-        font-size: 13px;
+        justify-content: center;
         font-weight: 800;
-        letter-spacing: 0.02em;
+        font-size: 5.2px;
+        line-height: 1;
+        flex-shrink: 0;
+      }
+      .set3 .sale-tag-mark { width: 3.2mm; height: 3.2mm; font-size: 4.2px; }
+      .sale-tag-brand strong {
+        font-size: 6.2px;
+        letter-spacing: 0.04em;
         color: #422314;
+        line-height: 1.05;
+        font-weight: 800;
+        text-transform: uppercase;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
-      .accessory .sale-tag-price { font-size: 10px; }
-      .sale-tag-mrp {
-        font-size: 6px;
-        text-decoration: line-through;
-        color: #806a5b;
+      .set3 .sale-tag-brand strong { font-size: 4.8px; letter-spacing: 0.03em; }
+      .sale-tag-body {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.25mm;
+        margin: 0;
+        padding: 0;
+        min-width: 0;
       }
-      .sale-tag-color {
-        font-size: 5.5px;
+      .sale-tag-codes {
         font-weight: 700;
-        margin-top: 0.4mm;
-        color: #61351f;
+        line-height: 1.15;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
+      .sale-tag-name {
+        font-weight: 800;
+        color: #422314;
+        line-height: 1.12;
+        white-space: normal;
+        word-break: break-word;
+        overflow-wrap: anywhere;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+        font-size: 6px;
+        text-align: left;
+        max-height: 2.4em;
+      }
+      .set3 .sale-tag-name { font-size: 4.8px; }
+      .sale-tag-mid {
+        text-align: center;
+        line-height: 1.05;
+        padding: 0.1mm 0 0;
+        border-top: 0.4px solid #efe4d8;
+        margin: 0;
+      }
+      .sale-tag-ref {
+        font-size: 5px;
+        font-weight: 700;
+        letter-spacing: 0.03em;
+        color: #422314;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 100%;
+      }
+      .set3 .sale-tag-ref { font-size: 4px; }
+      .sale-tag-price {
+        font-size: 9.5px;
+        font-weight: 800;
+        letter-spacing: 0.01em;
+        color: #422314;
+        line-height: 1.05;
+        margin-top: 0.1mm;
+      }
+      .set3 .sale-tag-price { font-size: 7.5px; }
       .sale-tag-barcode {
         width: 100%;
-        height: auto;
+        height: 4.6mm;
+        object-fit: contain;
+        object-position: center;
         display: block;
+        margin: 0;
       }
-      .sale-tag-foot {
-        display: grid;
-        grid-template-columns: 1fr auto auto;
-        gap: 1mm;
-        align-items: end;
-        font-size: 6px;
-        font-weight: 700;
-        border-top: 1px solid #e7d8c9;
-        padding-top: 1mm;
-      }
-      .accessory .sale-tag-foot { font-size: 5px; }
-      .sale-tag-barcode-num { letter-spacing: 0.04em; }
-      .sale-tag-size { white-space: nowrap; }
-      .sale-tag-shop { text-align: right; }
+      .set3 .sale-tag-barcode { height: 3.8mm; }
     </style></head><body>
-    <div class="sheet">${cards.join("")}</div>
+    <div class="sheet ${sheetClass}">${cards.join("")}</div>
     </body></html>`
   );
 }

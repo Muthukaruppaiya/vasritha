@@ -61,6 +61,9 @@ export default function AdminLoginPage() {
         permissions?: string[];
         primaryRole: string | null;
         primaryRoleName: string | null;
+        shopId?: string | null;
+        shopName?: string | null;
+        shopCode?: string | null;
       };
       session: { access_token: string };
     }>("/api/auth/login", {
@@ -96,7 +99,10 @@ export default function AdminLoginPage() {
       roles,
       permissions: result.data.user.permissions,
       primaryRole: result.data.user.primaryRole,
-      primaryRoleName: result.data.user.primaryRoleName
+      primaryRoleName: result.data.user.primaryRoleName,
+      shopId: result.data.user.shopId ?? null,
+      shopName: result.data.user.shopName ?? null,
+      shopCode: result.data.user.shopCode ?? null
     });
 
     router.replace("/admin");

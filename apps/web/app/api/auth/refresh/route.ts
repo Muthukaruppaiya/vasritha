@@ -41,7 +41,10 @@ export async function POST(request: NextRequest) {
       roles,
       permissions: [...permissionsForRoles(roles)],
       primaryRole: primary,
-      primaryRoleName: primary ? ROLE_META[primary].name : null
+      primaryRoleName: primary ? ROLE_META[primary].name : null,
+      shopId: ctx.shopId,
+      shopName: ctx.shopName,
+      shopCode: ctx.shopCode
     },
     session: {
       access_token: accessToken,

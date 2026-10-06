@@ -9,6 +9,7 @@ import {
 } from "./rbac";
 import { verifyAccessToken } from "../db/auth";
 import { query, queryOne } from "../db/pool";
+import { ensureShopStockSchema } from "../shop-scope";
 
 export type AuthContext = {
   userId: string;
@@ -16,6 +17,9 @@ export type AuthContext = {
   roles: AppRole[];
   primaryRole: AppRole | null;
   permissions: Permission[];
+  shopId: string | null;
+  shopName: string | null;
+  shopCode: string | null;
 };
 
 function jsonError(message: string, status: number, extra?: Record<string, unknown>) {
@@ -44,21 +48,27 @@ export async function getAuthContext(request: Request): Promise<AuthContext | nu
   const token = await verifyAccessToken(bearer);
   if (!token) return null;
 
+  await ensureShopStockSchema().catch(() => undefined);
+
   // One round-trip instead of user + roles sequential queries (critical with remote DB).
   const row = await queryOne<{
     id: string;
     email: string | null;
+    shop_id: string | null;
+    shop_name: string | null;
+    shop_code: string | null;
     role_codes: string[] | null;
     role_templates: string[] | null;
   }>(
-    `select u.id, u.email,
+    `select u.id, u.email, u.shop_id, s.name as shop_name, s.code as shop_code,
             coalesce(array_agg(r.code) filter (where r.code is not null), '{}') as role_codes,
             coalesce(array_agg(r.permission_template) filter (where r.permission_template is not null), '{}') as role_templates
      from users u
+     left join shops s on s.id = u.shop_id
      left join user_roles ur on ur.user_id = u.id
      left join roles r on r.id = ur.role_id
      where u.id = $1
-     group by u.id`,
+     group by u.id, s.name, s.code`,
     [token.userId]
   );
   if (!row) return null;
@@ -78,7 +88,10 @@ export async function getAuthContext(request: Request): Promise<AuthContext | nu
     email: row.email,
     roles: resolved,
     primaryRole: highestRole(resolved),
-    permissions: [...permissionsForRoles(resolved)]
+    permissions: [...permissionsForRoles(resolved)],
+    shopId: row.shop_id,
+    shopName: row.shop_name,
+    shopCode: row.shop_code
   };
 }
 
