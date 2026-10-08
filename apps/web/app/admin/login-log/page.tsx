@@ -67,7 +67,7 @@ export default function LoginLogPage() {
       <AdminPageHeader
         eyebrow={OPS_PLATFORM_NAME}
         title="Login log"
-        description="Who signed in, when, from where — successful and failed attempts for staff, POS and website."
+        description="Staff and POS sign-ins — who, when, from where. Website customer logins are not logged. Entries older than 90 days are removed automatically."
       />
 
       <form
@@ -91,7 +91,6 @@ export default function LoginLogPage() {
             <option value="all">All</option>
             <option value="staff">Staff</option>
             <option value="pos">POS</option>
-            <option value="website">Website</option>
           </select>
         </label>
         <label>
@@ -150,7 +149,7 @@ export default function LoginLogPage() {
         {!loading && !rows.length ? (
           <AdminEmpty
             title="No login events yet"
-            body="Events appear after the next staff, POS or website sign-in."
+            body="Events appear after the next staff or POS sign-in."
           />
         ) : null}
         {rows.length > 0 ? (

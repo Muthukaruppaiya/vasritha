@@ -74,6 +74,23 @@ function normalizeClient(raw?: string | null): LoginClient {
   return "unknown";
 }
 
+/** Only staff / POS sign-ins are logged; website customer logins are not. */
+const LOGGED_CLIENTS = ["staff", "pos"];
+const LOGIN_EVENT_RETENTION_DAYS = 90;
+const PRUNE_INTERVAL_MS = 60 * 60 * 1000;
+let lastPruneAt = 0;
+
+async function pruneOldLoginEvents() {
+  if (Date.now() - lastPruneAt < PRUNE_INTERVAL_MS) return;
+  lastPruneAt = Date.now();
+  await query(
+    `delete from login_events
+     where created_at < now() - ($1::int * interval '1 day')
+        or client not in ('staff', 'pos')`,
+    [LOGIN_EVENT_RETENTION_DAYS]
+  );
+}
+
 export async function recordLoginEvent(input: {
   request: Request;
   email: string;
@@ -88,8 +105,11 @@ export async function recordLoginEvent(input: {
   longitude?: number | null;
   roles?: string[] | null;
 }) {
+  const client = normalizeClient(input.client);
+  if (!LOGGED_CLIENTS.includes(client)) return null;
   try {
     await ensureLoginEventsSchema();
+    await pruneOldLoginEvents().catch(() => undefined);
     const row = await queryOne<LoginEvent>(
       `insert into login_events (
          user_id, email_attempted, success, failure_code, failure_message, client,
@@ -105,7 +125,7 @@ export async function recordLoginEvent(input: {
         Boolean(input.success),
         input.failureCode || null,
         input.failureMessage || null,
-        normalizeClient(input.client),
+        client,
         clientIpFromRequest(input.request) || null,
         input.request.headers.get("user-agent") || null,
         input.deviceKey || null,
@@ -135,7 +155,7 @@ export async function listLoginEvents(filters: ListLoginEventFilters = {}) {
   await ensureLoginEventsSchema();
   const limit = Math.min(300, Math.max(1, filters.limit || 100));
   const params: unknown[] = [];
-  const where: string[] = ["1=1"];
+  const where: string[] = ["e.client in ('staff', 'pos')"];
 
   if (filters.client && filters.client !== "all") {
     params.push(filters.client);
@@ -193,9 +213,10 @@ export async function loginEventStats() {
        count(*)::text as total_24h,
        count(*) filter (where success)::text as success_24h,
        count(*) filter (where not success)::text as failed_24h,
-       count(*) filter (where client in ('staff', 'pos') and success)::text as staff_24h
+       count(*) filter (where success)::text as staff_24h
      from login_events
-     where created_at >= now() - interval '24 hours'`
+     where created_at >= now() - interval '24 hours'
+       and client in ('staff', 'pos')`
   );
   return {
     total_24h: Number(row?.total_24h || 0),
