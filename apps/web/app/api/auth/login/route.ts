@@ -10,8 +10,15 @@ import { getUserShopProfile } from "../../../../lib/shop-scope";
 const STAFF_SESSION_SECONDS = 5 * 60;
 const CUSTOMER_SESSION_SECONDS = 60 * 60 * 24 * 7;
 
+/** Admins can sign in from anywhere; store login security applies to other staff only. */
+const LOGIN_SECURITY_EXEMPT_ROLES: AppRole[] = ["super_admin", "business_owner"];
+
 function isStaffRole(roles: AppRole[]) {
   return roles.some((role) => role !== "customer");
+}
+
+function isLoginSecurityExempt(roles: AppRole[]) {
+  return roles.some((role) => LOGIN_SECURITY_EXEMPT_ROLES.includes(role));
 }
 
 export async function POST(request: NextRequest) {
@@ -59,7 +66,7 @@ export async function POST(request: NextRequest) {
   const isOpsLogin = loginClient === "staff" || loginClient === "pos";
 
   // Login security is only for POS / staff ops domain — never for public website shoppers.
-  if (staff && isOpsLogin) {
+  if (staff && isOpsLogin && !isLoginSecurityExempt(typedRoles)) {
     const security = await assertStaffLoginSecurity({
       request,
       client: loginClient,

@@ -823,8 +823,9 @@ export default function AdminSettingsPage() {
           {!loading && !error && (
             <form className="admin-form-grid" onSubmit={onSave}>
               <AdminAlert tone="ok">
-                Applies only to staff / POS login (ops domain, e.g. Sukadhaa). The public website
-                (e.g. Vasritha) is never checked. Keep the master switch OFF while testing.
+                Applies only to staff / POS login (ops domain, e.g. Sukadhaa). Super Admin and
+                Business Owner can log in from anywhere. The public website (e.g. Vasritha) is
+                never checked. Keep the master switch OFF while testing.
               </AdminAlert>
 
               <label className="admin-check-row">
