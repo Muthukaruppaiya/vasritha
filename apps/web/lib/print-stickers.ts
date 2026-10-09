@@ -178,13 +178,18 @@ function stickerHtml(input: {
   brand: string;
   price: string;
   codeLabel: string;
+  colorLabel?: string;
   barcodeSrc: string;
   barcodeAlt: string;
 }) {
+  const colorLine = input.colorLabel
+    ? `<div class="sale-tag-color">${escapePrintHtml(input.colorLabel)}</div>`
+    : "";
   return `<article class="sale-tag">
     <strong class="sale-tag-brand">${escapePrintHtml(input.brand)}</strong>
     <img class="sale-tag-barcode" src="${input.barcodeSrc}" alt="${escapePrintHtml(input.barcodeAlt)}" />
     <div class="sale-tag-code">${escapePrintHtml(input.codeLabel)}</div>
+    ${colorLine}
     <div class="sale-tag-price">${escapePrintHtml(input.price)}</div>
   </article>`;
 }
@@ -218,6 +223,9 @@ export async function printProductStickers(input: {
 
     const price = raw.price != null ? formatPrice(raw.price) : defaultPrice;
     const codeLabel = String(raw.unit_code || raw.barcode || raw.sku || scanValue).trim();
+    const colorLabel = String(
+      raw.color || raw.sizeLabel || input.meta?.color || ""
+    ).trim();
     const barcodeSrc = barcodeDataUrl(scanValue, spec.barH, spec.barW);
 
     cards.push(
@@ -225,6 +233,7 @@ export async function printProductStickers(input: {
         brand,
         price,
         codeLabel,
+        colorLabel: colorLabel || undefined,
         barcodeSrc,
         barcodeAlt: scanValue
       })
@@ -329,6 +338,19 @@ export async function printProductStickers(input: {
         text-overflow: ellipsis;
         max-width: 100%;
         margin: 0 0 0.3mm;
+      }
+      .sale-tag-color {
+        display: block;
+        font-size: calc(${spec.codePx} * 0.92);
+        font-weight: 500;
+        letter-spacing: 0.01em;
+        line-height: 1.05;
+        color: #000;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
+        margin: 0 0 0.25mm;
       }
       .sale-tag-price {
         display: block;

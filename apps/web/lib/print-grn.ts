@@ -8,6 +8,8 @@ export type GrnPrintDetail = {
   invoice_amount: number;
   invoice_date: string | null;
   document_path: string | null;
+  discount_amount?: number;
+  tax_amount?: number;
   lines_total: number;
   note: string | null;
   created_at: string;
@@ -38,6 +40,7 @@ export type GrnPrintDetail = {
     quantity: number;
     purchase_price: number;
     line_total: number;
+    color_breakdown?: Array<{ color: string; quantity: number }> | null;
   }>;
 };
 
@@ -119,20 +122,29 @@ export function printGrnDocument(detail: GrnPrintDetail) {
     detail.supplier.phone ? `Phone ${detail.supplier.phone}` : ""
   ].filter(Boolean);
 
+  const discountAmount = Number(detail.discount_amount || 0);
+  const taxAmount = Number(detail.tax_amount || 0);
+  const grandTotal = Math.round((Number(detail.lines_total || 0) - discountAmount + taxAmount) * 100) / 100;
+
   const rows = detail.lines
-    .map(
-      (line, i) => `<tr>
+    .map((line, i) => {
+      const colours = (line.color_breakdown || [])
+        .filter((s) => s.color && s.quantity > 0)
+        .map((s) => `${escapeHtml(s.color)} × ${s.quantity}`)
+        .join(", ");
+      return `<tr>
         <td>${i + 1}</td>
         <td>
           <strong>${escapeHtml(line.product_name)}</strong>
           ${line.variant_name ? `<div class="muted">${escapeHtml(line.variant_name)}</div>` : ""}
+          ${colours ? `<div class="muted">${colours}</div>` : ""}
         </td>
         <td>${escapeHtml(line.sku || "—")}</td>
         <td class="num">${line.quantity}</td>
         <td class="num">${escapeHtml(money(line.purchase_price))}</td>
         <td class="num">${escapeHtml(money(line.line_total))}</td>
-      </tr>`
-    )
+      </tr>`;
+    })
     .join("");
 
   const html = `<!doctype html><html><head><title>${escapeHtml(detail.grn_number)}</title>
@@ -207,7 +219,10 @@ export function printGrnDocument(detail: GrnPrintDetail) {
 
     <div class="totals">
       <table>
-        <tr><td>Lines total</td><td class="num"><strong>${escapeHtml(money(detail.lines_total))}</strong></td></tr>
+        <tr><td>Lines total</td><td class="num">${escapeHtml(money(detail.lines_total))}</td></tr>
+        <tr><td>Discount</td><td class="num">-${escapeHtml(money(discountAmount))}</td></tr>
+        <tr><td>Tax</td><td class="num">${escapeHtml(money(taxAmount))}</td></tr>
+        <tr><td>Grand total</td><td class="num"><strong>${escapeHtml(money(grandTotal))}</strong></td></tr>
         <tr><td>Invoice amount</td><td class="num"><strong>${escapeHtml(money(detail.invoice_amount))}</strong></td></tr>
       </table>
     </div>

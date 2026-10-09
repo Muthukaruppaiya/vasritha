@@ -5,6 +5,7 @@ import JsBarcode from "jsbarcode";
 import QRCode from "qrcode";
 import { Check, Printer, QrCode, RefreshCw, Save, Trash2, Upload, X } from "lucide-react";
 import { AdminAlert, slugify } from "./admin-ui";
+import { ColorField } from "./color-field";
 import { adminFetch, getAdminToken, getAdminUser } from "../../lib/admin-api";
 import {
   ALLOWED_GST_RATES,
@@ -60,6 +61,8 @@ export type ProductFormValues = {
   status: string;
   short_description: string;
   color: string;
+  /** When true, piece colours are set at GRN — product-level colour is optional. */
+  is_multicolour: boolean;
   description: string;
   is_featured: boolean;
   restock_expected: boolean;
@@ -112,7 +115,14 @@ export function ProductFormModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [units, setUnits] = useState<
-    Array<{ id: string; unit_code: string; barcode: string; status?: string; label_printed?: boolean }>
+    Array<{
+      id: string;
+      unit_code: string;
+      barcode: string;
+      status?: string;
+      label_printed?: boolean;
+      color?: string | null;
+    }>
   >([]);
   const [printBusy, setPrintBusy] = useState(false);
   const [websiteQrDataUrl, setWebsiteQrDataUrl] = useState("");
@@ -301,6 +311,7 @@ export function ProductFormModal({
         barcode: string;
         status?: string;
         label_printed?: boolean;
+        color?: string | null;
       }>;
     }>(`/api/admin/products/${productId}/items`);
     if (result.data?.items) setUnits(result.data.items);
@@ -318,7 +329,7 @@ export function ProductFormModal({
         shortName: form.short_name || undefined,
         categoryName: subcategory?.name || category?.name,
         sku: form.sku,
-        color: form.color,
+        color: form.is_multicolour ? undefined : form.color,
         tag: form.tag,
         hsnCode: form.hsn_code || undefined,
         compareAtPrice: form.compare_at_price
@@ -332,7 +343,14 @@ export function ProductFormModal({
           layout: labelSizeToLayout(form.label_size),
           labelSize: form.label_size,
           meta: stickerMeta,
-          items: [{ unit_code: form.sku || code, barcode: code, sizeLabel: form.color }]
+          items: [
+            {
+              unit_code: form.sku || code,
+              barcode: code,
+              color: form.is_multicolour ? null : form.color,
+              sizeLabel: form.is_multicolour ? null : form.color
+            }
+          ]
         });
         return;
       }
@@ -356,10 +374,14 @@ export function ProductFormModal({
         layout: labelSizeToLayout(form.label_size),
         labelSize: form.label_size,
         meta: stickerMeta,
-        items: chosen.map((row) => ({
-          ...row,
-          sizeLabel: form.color
-        }))
+        items: chosen.map((row) => {
+          const pieceColor = (row.color || (!form.is_multicolour ? form.color : "") || "").trim();
+          return {
+            ...row,
+            color: pieceColor || null,
+            sizeLabel: pieceColor || null
+          };
+        })
       });
       if (form.id && chosen.some((row) => row.id)) {
         await adminFetch(`/api/admin/products/${form.id}/items`, {
@@ -410,7 +432,7 @@ export function ProductFormModal({
     const fieldError = firstError(
       validateRequired(form.name, "Product name"),
       validateRequired(form.category_id, "Category"),
-      validateRequired(form.color, "Colour"),
+      form.is_multicolour ? null : validateRequired(form.color, "Colour"),
       validatePositiveMoney(form.price, { required: true, label: "Price" }),
       form.compare_at_price
         ? validatePositiveMoney(form.compare_at_price, { required: false, label: "Compare-at price" })
@@ -446,12 +468,13 @@ export function ProductFormModal({
         saleValuePerPiece: Number(form.price),
         fallbackRate: form.gst_rate
       }),
-      stock_quantity: Number(form.stock_quantity || 0),
+      stock_quantity: form.is_multicolour ? 0 : Number(form.stock_quantity || 0),
       status:
         !canApproveProducts && (form.status === "rejected" || form.status === "active")
           ? "pending_approval"
           : form.status,
-      color: form.color.trim(),
+      color: form.is_multicolour ? "" : form.color.trim(),
+      is_multicolour: Boolean(form.is_multicolour),
       short_description: form.short_description.trim(),
       description: form.description.trim(),
       is_featured: Boolean(form.is_featured),
@@ -594,31 +617,37 @@ export function ProductFormModal({
               <small className="admin-field-hint">Optional. e.g. Aarohi Kanchipuram</small>
             </label>
 
+            <label className="admin-span-2 admin-check-field">
+              <span className="admin-check-row">
+                <input
+                  type="checkbox"
+                  checked={Boolean(form.is_multicolour)}
+                  onChange={(e) =>
+                    setForm((f) => ({
+                      ...f,
+                      is_multicolour: e.target.checked,
+                      color: e.target.checked ? "" : f.color,
+                      stock_quantity: e.target.checked ? "0" : f.stock_quantity
+                    }))
+                  }
+                />
+                <span>Multi-colour product</span>
+              </span>
+              <small className="admin-field-hint">
+                Same product code, several colours. Enter colour-wise counts when receiving stock (GRN).
+              </small>
+            </label>
+
             <label>
               <span>Colour</span>
-              <input
-                required
-                list="product-colour-suggestions"
+              <ColorField
+                id="product-form-colour"
+                required={!form.is_multicolour}
+                disabled={form.is_multicolour}
                 value={form.color ?? ""}
-                onChange={(e) => setForm((f) => ({ ...f, color: e.target.value }))}
-                placeholder="e.g. Blush Pink, Crimson Red, Antique Gold"
+                onChange={(color) => setForm((f) => ({ ...f, color }))}
+                upsertOnBlur={!form.is_multicolour}
               />
-              <datalist id="product-colour-suggestions">
-                <option value="Crimson Red" />
-                <option value="Blush Pink" />
-                <option value="Ivory Cream" />
-                <option value="Indigo Blue" />
-                <option value="Antique Gold" />
-                <option value="Gold" />
-                <option value="Multicolour" />
-                <option value="Natural Wood" />
-                <option value="Antique Brass" />
-                <option value="Maroon" />
-                <option value="Emerald Green" />
-                <option value="Black" />
-                <option value="White" />
-              </datalist>
-              <small className="admin-field-hint">Shown on the product page under the price.</small>
             </label>
 
             <label>
@@ -869,12 +898,14 @@ export function ProductFormModal({
                 min="0"
                 value={form.stock_quantity}
                 onChange={(e) => setForm((f) => ({ ...f, stock_quantity: e.target.value }))}
-                disabled={Boolean(form.id)}
+                disabled={Boolean(form.id) || form.is_multicolour}
               />
               <small className="admin-field-hint">
                 {form.id
                   ? "Do not edit qty here — open Inventory → GRN entry to add pieces."
-                  : "Optional first inward. Later stock always goes through Inventory → Receive (GRN)."}
+                  : form.is_multicolour
+                    ? "Multi-colour stock is received via GRN with colour-wise counts."
+                    : "Optional first inward. Later stock always goes through Inventory → Receive (GRN)."}
               </small>
             </label>
 
@@ -1236,6 +1267,7 @@ export function blankProductForm(categoryId = ""): ProductFormValues {
     status: "pending_approval",
     short_description: "",
     color: "",
+    is_multicolour: false,
     description: "",
     is_featured: false,
     restock_expected: false

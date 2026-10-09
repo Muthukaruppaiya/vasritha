@@ -20,7 +20,7 @@ type AdminFormModalProps = {
 export function AdminFormModal({
   open,
   title,
-  eyebrow = "Create new",
+  eyebrow: _eyebrow,
   onClose,
   onSubmit,
   saving = false,
@@ -43,7 +43,6 @@ export function AdminFormModal({
       >
         <div className="admin-modal-head">
           <div>
-            {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
             <h2 id="admin-form-modal-title">{title}</h2>
           </div>
           <button type="button" className="admin-modal-close" aria-label="Close" onClick={onClose}>

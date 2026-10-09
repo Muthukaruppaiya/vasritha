@@ -3,7 +3,7 @@ import { fail, ok, requirePermission, writeAuditLog } from "../../../../lib/auth
 import { query, queryOne } from "../../../../lib/db/pool";
 import { ensureGstSchema } from "../../../../lib/gst";
 import { requireScopedShopId } from "../../../../lib/shop-scope";
-import { syncSellableStock } from "../../../../lib/product-units";
+import { ensureProductUnitsSchema, syncSellableStock } from "../../../../lib/product-units";
 
 const LOW_STOCK = 10;
 
@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
   if (error || !ctx) return error;
 
   await ensureGstSchema();
+  await ensureProductUnitsSchema();
 
   const { searchParams } = new URL(request.url);
   const q = (searchParams.get("q") || "").trim();
@@ -38,6 +39,7 @@ export async function GET(request: NextRequest) {
       or p.name ilike '%' || $1 || '%'
       or coalesce(pv.sku, '') ilike '%' || $1 || '%'
       or coalesce(pv.barcode, '') ilike '%' || $1 || '%'
+      or coalesce(p.color, '') ilike '%' || $1 || '%'
       or coalesce(p.hsn_code, '') ilike '%' || $1 || '%'
       or coalesce(c.name, '') ilike '%' || $1 || '%'
     )
@@ -97,6 +99,8 @@ export async function GET(request: NextRequest) {
          p.id as product_id,
          p.name as product_name,
          p.status as product_status,
+         p.color as product_color,
+         coalesce(p.is_multicolour, false) as is_multicolour,
          p.hsn_code,
          p.gst_rate,
          p.category_id,

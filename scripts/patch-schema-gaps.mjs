@@ -30,7 +30,9 @@ const statements = [
      add column if not exists shop_id uuid references public.shops(id)`,
   `alter table public.inventory_grns
      add column if not exists invoice_date date,
-     add column if not exists document_path text`,
+     add column if not exists document_path text,
+     add column if not exists discount_amount numeric(12,2) not null default 0,
+     add column if not exists tax_amount numeric(12,2) not null default 0`,
   `alter table public.users
      add column if not exists shop_id uuid references public.shops(id)`,
   `alter table public.products

@@ -16,6 +16,7 @@ type ProductItem = {
   seq: number;
   unit_code: string;
   barcode: string;
+  color?: string | null;
   status: string;
   damage_detail: string | null;
   date_added: string;
@@ -37,6 +38,7 @@ type ProductDetail = {
   sku_prefix?: string | null;
   label_size?: "accessory" | "dress";
   color?: string | null;
+  is_multicolour?: boolean;
   short_description?: string | null;
   description?: string | null;
   price: string;
@@ -329,7 +331,11 @@ export function ProductDetailModal({
                   </div>
                   <div>
                     <dt>Colour</dt>
-                    <dd>{data.color || "—"}</dd>
+                    <dd>
+                      {data.is_multicolour
+                        ? "Multi-colour (per piece)"
+                        : data.color || "—"}
+                    </dd>
                   </div>
                   <div>
                     <dt>HSN / GST</dt>
@@ -418,16 +424,24 @@ export function ProductDetailModal({
                               productName: data.name,
                               categoryName: data.category_name || undefined,
                               sku: data.sku,
-                              color: data.color,
+                              color: data.is_multicolour ? undefined : data.color,
                               tag: data.tag,
                               compareAtPrice: data.compare_at_price
                             },
-                            items: list.map((item) => ({
-                              ...item,
-                              tag: item.tag,
-                              seq: item.seq,
-                              sizeLabel: data.color
-                            }))
+                            items: list.map((item) => {
+                              const pieceColor = (
+                                item.color ||
+                                (!data.is_multicolour ? data.color : "") ||
+                                ""
+                              ).trim();
+                              return {
+                                ...item,
+                                tag: item.tag,
+                                seq: item.seq,
+                                color: pieceColor || null,
+                                sizeLabel: pieceColor || null
+                              };
+                            })
                           })
                             .then(() =>
                               adminFetch(`/api/admin/products/${data.id}/items`, {
@@ -481,6 +495,10 @@ export function ProductDetailModal({
                         <dd>{selected.tag}</dd>
                       </div>
                       <div>
+                        <dt>Colour</dt>
+                        <dd>{selected.color || data?.color || "—"}</dd>
+                      </div>
+                      <div>
                         <dt>Status</dt>
                         <dd>{selected.status.replace("_", " ")}</dd>
                       </div>
@@ -502,6 +520,11 @@ export function ProductDetailModal({
                       className="btn"
                       onClick={() => {
                         if (!data || !selected) return;
+                        const pieceColor = (
+                          selected.color ||
+                          (!data.is_multicolour ? data.color : "") ||
+                          ""
+                        ).trim();
                         void printProductStickers({
                           price: data.price,
                           labelSize: data.label_size === "accessory" ? "accessory" : "dress",
@@ -509,7 +532,7 @@ export function ProductDetailModal({
                             productName: data.name,
                             categoryName: data.category_name || undefined,
                             sku: data.sku,
-                            color: data.color,
+                            color: data.is_multicolour ? undefined : data.color,
                             tag: data.tag,
                             compareAtPrice: data.compare_at_price
                           },
@@ -518,7 +541,8 @@ export function ProductDetailModal({
                               ...selected,
                               tag: selected.tag,
                               seq: selected.seq,
-                              sizeLabel: data.color
+                              color: pieceColor || null,
+                              sizeLabel: pieceColor || null
                             }
                           ]
                         });

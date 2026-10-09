@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import {
   AdminAlert,
@@ -15,6 +15,7 @@ import { AdminFormModal } from "../../../components/admin/admin-form-modal";
 import { adminFetch, adminUpload, formatDate } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
 import { ROLE_META, ROLE_ORDER, type AppRole } from "../../../lib/auth/rbac";
+import { previewDocumentNumber } from "../../../lib/document-numbers";
 
 type Settings = {
   site_name: string | null;
@@ -51,6 +52,11 @@ type Settings = {
   company_gstin: string | null;
   company_state: string | null;
   company_state_code: string | null;
+  doc_prefix_invoice?: string | null;
+  doc_prefix_grn?: string | null;
+  doc_prefix_online?: string | null;
+  doc_number_pad?: number | string | null;
+  doc_number_year_mode?: string | null;
   staff_login_security_enabled?: boolean;
   staff_login_require_ip?: boolean;
   staff_login_require_device?: boolean;
@@ -126,6 +132,11 @@ export default function AdminSettingsPage() {
     company_gstin: "",
     company_state: "",
     company_state_code: "",
+    doc_prefix_invoice: "VAS",
+    doc_prefix_grn: "GRN",
+    doc_prefix_online: "VAS",
+    doc_number_pad: 3,
+    doc_number_year_mode: "calendar",
     staff_login_security_enabled: false,
     staff_login_require_ip: false,
     staff_login_require_device: false,
@@ -151,6 +162,21 @@ export default function AdminSettingsPage() {
   const [logoBusy, setLogoBusy] = useState<"header" | "logo" | null>(null);
   const [logoMessage, setLogoMessage] = useState("");
   const [logoError, setLogoError] = useState("");
+
+  const docPreview = useMemo(
+    () => ({
+      invoice: previewDocumentNumber(form, "invoice", 1),
+      grn: previewDocumentNumber(form, "grn", 1),
+      online: previewDocumentNumber(form, "online", 1)
+    }),
+    [
+      form.doc_prefix_invoice,
+      form.doc_prefix_grn,
+      form.doc_prefix_online,
+      form.doc_number_pad,
+      form.doc_number_year_mode
+    ]
+  );
 
   useEffect(() => {
     if (!data) return;
@@ -191,6 +217,11 @@ export default function AdminSettingsPage() {
       company_gstin: data.company_gstin || "",
       company_state: data.company_state || "",
       company_state_code: data.company_state_code || "",
+      doc_prefix_invoice: data.doc_prefix_invoice || "VAS",
+      doc_prefix_grn: data.doc_prefix_grn || "GRN",
+      doc_prefix_online: data.doc_prefix_online || "VAS",
+      doc_number_pad: data.doc_number_pad ?? 3,
+      doc_number_year_mode: data.doc_number_year_mode === "fy" ? "fy" : "calendar",
       staff_login_security_enabled: Boolean(data.staff_login_security_enabled),
       staff_login_require_ip: Boolean(data.staff_login_require_ip),
       staff_login_require_device: Boolean(data.staff_login_require_device),
@@ -277,7 +308,12 @@ export default function AdminSettingsPage() {
           form.staff_login_store_lng === "" || form.staff_login_store_lng == null
             ? null
             : Number(form.staff_login_store_lng),
-        staff_login_store_radius_m: Number(form.staff_login_store_radius_m || 300)
+        staff_login_store_radius_m: Number(form.staff_login_store_radius_m || 300),
+        doc_prefix_invoice: form.doc_prefix_invoice || "VAS",
+        doc_prefix_grn: form.doc_prefix_grn || "GRN",
+        doc_prefix_online: form.doc_prefix_online || "VAS",
+        doc_number_pad: Number(form.doc_number_pad || 3),
+        doc_number_year_mode: form.doc_number_year_mode === "fy" ? "fy" : "calendar"
       }
     });
     setSaving(false);
@@ -803,6 +839,85 @@ export default function AdminSettingsPage() {
                     placeholder="919000000000"
                   />
                 </label>
+
+                <div className="admin-span-2" style={{ marginTop: 8 }}>
+                  <h3 style={{ margin: "4px 0" }}>Document numbers</h3>
+                  <p className="muted" style={{ marginTop: 0 }}>
+                    Format: PREFIX + YEAR + sequence (e.g. {docPreview.invoice})
+                  </p>
+                </div>
+                <label>
+                  <span>Invoice / POS prefix</span>
+                  <input
+                    value={form.doc_prefix_invoice || ""}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        doc_prefix_invoice: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "")
+                      }))
+                    }
+                    placeholder="VAS"
+                    maxLength={12}
+                  />
+                </label>
+                <label>
+                  <span>GRN prefix</span>
+                  <input
+                    value={form.doc_prefix_grn || ""}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        doc_prefix_grn: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "")
+                      }))
+                    }
+                    placeholder="GRN"
+                    maxLength={12}
+                  />
+                </label>
+                <label>
+                  <span>Online order prefix</span>
+                  <input
+                    value={form.doc_prefix_online || ""}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        doc_prefix_online: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "")
+                      }))
+                    }
+                    placeholder="VAS"
+                    maxLength={12}
+                  />
+                </label>
+                <label>
+                  <span>Sequence digits</span>
+                  <input
+                    type="number"
+                    min={2}
+                    max={8}
+                    value={form.doc_number_pad ?? 3}
+                    onChange={(e) => setForm((f) => ({ ...f, doc_number_pad: e.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>Year mode</span>
+                  <select
+                    value={form.doc_number_year_mode === "fy" ? "fy" : "calendar"}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        doc_number_year_mode: e.target.value === "fy" ? "fy" : "calendar"
+                      }))
+                    }
+                  >
+                    <option value="calendar">Calendar year</option>
+                    <option value="fy">Financial year start</option>
+                  </select>
+                </label>
+                <div className="admin-span-2 muted" style={{ fontSize: "0.9rem" }}>
+                  Next examples · Invoice <b>{docPreview.invoice}</b> · GRN <b>{docPreview.grn}</b> ·
+                  Online <b>{docPreview.online}</b>
+                </div>
+
                 {saveError && <AdminAlert>{saveError}</AdminAlert>}
                 {message && <AdminAlert tone="ok">{message}</AdminAlert>}
                 <div className="admin-span-2">

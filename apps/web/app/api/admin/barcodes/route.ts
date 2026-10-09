@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
        p.short_name,
        p.sku,
        p.price::text as price,
-       p.color,
+       coalesce(nullif(trim(i.color), ''), nullif(trim(p.color), '')) as color,
        p.hsn_code,
        p.label_size::text as label_size,
        p.compare_at_price::text as compare_at_price,

@@ -9,17 +9,30 @@ import { skipEnsureIfRelationExists } from "./schema-bootstrap";
 import type { GrnPrintDetail } from "./print-grn";
 import { ensureCompanySettingsSchema } from "./company-settings";
 import { ensureSuppliersSchema, getSupplierById, supplierLabel } from "./suppliers";
+import { ensureColourName } from "./colours";
+import { nextDocumentNumber } from "./document-numbers";
 
 export type { GrnPrintDetail };
 
 export const GRN_STATUSES = ["pending_approval", "approved", "cancelled"] as const;
 export type GrnStatus = (typeof GRN_STATUSES)[number];
 
+export type GrnColorBatch = {
+  color: string;
+  quantity: number;
+};
+
 export type GrnLineInput = {
   productVariantId: string;
   quantity: number;
   purchasePrice: number;
+  /** Colour-wise counts for multi-colour products. */
+  colorBreakdown?: GrnColorBatch[];
 };
+
+function computeGrnLineTotal(quantity: number, purchasePrice: number) {
+  return Math.round(quantity * purchasePrice * 100) / 100;
+}
 
 export type ParsedGrnPayload = {
   supplierId: string;
@@ -29,9 +42,16 @@ export type ParsedGrnPayload = {
   invoiceAmount: number;
   invoiceDate: string | null;
   documentPath: string | null;
+  /** Whole-GRN discount ₹ */
+  discountAmount: number;
+  /** Whole-GRN tax ₹ */
+  taxAmount: number;
   extraNote: string;
   lines: GrnLineInput[];
+  /** Sum of line purchase amounts (before GRN discount/tax). */
   linesTotal: number;
+  /** linesTotal − discount + tax */
+  grandTotal: number;
   note: string | null;
 };
 
@@ -112,7 +132,14 @@ export async function ensureInventoryGrnSchema() {
   await query(`
     alter table public.inventory_grns
       add column if not exists invoice_date date,
-      add column if not exists document_path text
+      add column if not exists document_path text,
+      add column if not exists discount_amount numeric(12,2) not null default 0,
+      add column if not exists tax_amount numeric(12,2) not null default 0
+  `);
+
+  await query(`
+    alter table public.inventory_grn_lines
+      add column if not exists color_breakdown jsonb
   `);
 
   schemaReady = true;
@@ -126,17 +153,36 @@ export async function parseAndValidateGrnBody(body: {
   invoiceAmount?: number;
   invoiceDate?: string | null;
   documentPath?: string | null;
-  lines?: Array<{ productVariantId?: string; quantity?: number; purchasePrice?: number }>;
+  discountAmount?: number;
+  taxAmount?: number;
+  lines?: Array<{
+    productVariantId?: string;
+    quantity?: number;
+    purchasePrice?: number;
+    colorBreakdown?: Array<{ color?: string; quantity?: number }>;
+  }>;
 }): Promise<{ ok: true; data: ParsedGrnPayload } | { ok: false; error: string }> {
+  await ensureProductUnitsSchema();
   const lines = (body.lines || [])
-    .map((line) => ({
-      productVariantId: String(line.productVariantId || "").trim(),
-      quantity: Number(line.quantity),
-      purchasePrice:
-        line.purchasePrice == null || line.purchasePrice === ("" as unknown)
-          ? NaN
-          : Number(line.purchasePrice)
-    }))
+    .map((line) => {
+      const colorBreakdown = Array.isArray(line.colorBreakdown)
+        ? line.colorBreakdown
+            .map((s) => ({
+              color: String(s.color || "").trim(),
+              quantity: Math.trunc(Number(s.quantity) || 0)
+            }))
+            .filter((s) => s.color && s.quantity > 0)
+        : undefined;
+      return {
+        productVariantId: String(line.productVariantId || "").trim(),
+        quantity: Number(line.quantity),
+        purchasePrice:
+          line.purchasePrice == null || line.purchasePrice === ("" as unknown)
+            ? NaN
+            : Number(line.purchasePrice),
+        colorBreakdown
+      };
+    })
     .filter((line) => line.productVariantId && Number.isFinite(line.quantity) && line.quantity > 0);
 
   if (!lines.length) {
@@ -146,6 +192,45 @@ export async function parseAndValidateGrnBody(body: {
   for (const line of lines) {
     if (!Number.isFinite(line.purchasePrice) || line.purchasePrice < 0) {
       return { ok: false, error: "Enter purchase price (₹) for every line" };
+    }
+  }
+
+  // Validate multi-colour breakdown against product flags.
+  for (const line of lines) {
+    const product = await queryOne<{
+      is_multicolour: boolean | null;
+      color: string | null;
+      name: string;
+    }>(
+      `select p.is_multicolour, p.color, p.name
+       from product_variants v
+       join products p on p.id = v.product_id
+       where v.id = $1`,
+      [line.productVariantId]
+    );
+    if (!product) {
+      return { ok: false, error: `Variant not found for a GRN line` };
+    }
+    if (product.is_multicolour) {
+      if (!line.colorBreakdown?.length) {
+        return {
+          ok: false,
+          error: `${product.name} is multi-colour — enter colour-wise quantities on that line`
+        };
+      }
+      const splitQty = line.colorBreakdown.reduce((sum, s) => sum + s.quantity, 0);
+      if (splitQty !== Math.trunc(line.quantity)) {
+        return {
+          ok: false,
+          error: `${product.name}: colour quantities (${splitQty}) must equal line qty (${Math.trunc(line.quantity)})`
+        };
+      }
+      for (const split of line.colorBreakdown) {
+        await ensureColourName(split.color);
+      }
+    } else if (line.colorBreakdown?.length) {
+      // Ignore accidental splits on single-colour products
+      line.colorBreakdown = undefined;
     }
   }
 
@@ -200,10 +285,33 @@ export async function parseAndValidateGrnBody(body: {
       ? documentPathRaw.slice(0, 500)
       : null;
 
-  const linesTotal = lines.reduce(
-    (sum, line) => sum + Math.round(line.quantity * line.purchasePrice * 100) / 100,
+  const mappedLines = lines.map((l) => ({
+    productVariantId: l.productVariantId,
+    quantity: Math.trunc(Math.abs(l.quantity)),
+    purchasePrice: l.purchasePrice,
+    colorBreakdown: l.colorBreakdown
+  }));
+
+  const discountRaw = body.discountAmount;
+  const taxRaw = body.taxAmount;
+  const discountAmount =
+    discountRaw == null || discountRaw === ("" as unknown) ? 0 : Number(discountRaw);
+  const taxAmount = taxRaw == null || taxRaw === ("" as unknown) ? 0 : Number(taxRaw);
+  if (!Number.isFinite(discountAmount) || discountAmount < 0) {
+    return { ok: false, error: "Discount must be zero or a positive amount (₹)" };
+  }
+  if (!Number.isFinite(taxAmount) || taxAmount < 0) {
+    return { ok: false, error: "Tax must be zero or a positive amount (₹)" };
+  }
+
+  const linesTotal = mappedLines.reduce(
+    (sum, line) => sum + computeGrnLineTotal(line.quantity, line.purchasePrice),
     0
   );
+  if (discountAmount > linesTotal + 0.001) {
+    return { ok: false, error: "Discount cannot exceed lines total" };
+  }
+  const grandTotal = Math.round((linesTotal - discountAmount + taxAmount) * 100) / 100;
 
   const noteParts = [
     supplierName ? `Supplier: ${supplierName}` : "",
@@ -211,7 +319,10 @@ export async function parseAndValidateGrnBody(body: {
     billNo ? `Bill: ${billNo}` : "",
     invoiceDate ? `Invoice date: ${invoiceDate}` : "",
     `Invoice amt: ₹${invoiceAmount.toFixed(2)}`,
+    discountAmount > 0 ? `Discount: ₹${discountAmount.toFixed(2)}` : "",
+    taxAmount > 0 ? `Tax: ₹${taxAmount.toFixed(2)}` : "",
     `Lines total: ₹${linesTotal.toFixed(2)}`,
+    `Grand total: ₹${grandTotal.toFixed(2)}`,
     extraNote
   ].filter(Boolean);
 
@@ -225,20 +336,15 @@ export async function parseAndValidateGrnBody(body: {
       invoiceAmount,
       invoiceDate,
       documentPath,
+      discountAmount: Math.round(discountAmount * 100) / 100,
+      taxAmount: Math.round(taxAmount * 100) / 100,
       extraNote,
-      lines: lines.map((l) => ({
-        productVariantId: l.productVariantId,
-        quantity: Math.trunc(Math.abs(l.quantity)),
-        purchasePrice: l.purchasePrice
-      })),
+      lines: mappedLines,
       linesTotal,
+      grandTotal,
       note: noteParts.join(" · ") || null
     }
   };
-}
-
-function nextGrnNumber() {
-  return `GRN-${Date.now().toString().slice(-10)}`;
 }
 
 /** Apply stock for an already-locked pending GRN. Idempotent guard: caller must lock pending row. */
@@ -276,19 +382,27 @@ export async function applyApprovedGrnStock(
       throw new Error(`Variant not found: ${line.productVariantId}`);
     }
 
-    const tagged = await db.queryOne<{ tag: string | null; sku: string | null }>(
-      `select tag, sku from products where id = $1`,
-      [variant.product_id]
-    );
+    const tagged = await db.queryOne<{
+      tag: string | null;
+      sku: string | null;
+      color: string | null;
+      is_multicolour: boolean | null;
+    }>(`select tag, sku, color, is_multicolour from products where id = $1`, [variant.product_id]);
 
     const qty = line.quantity;
+    const colorBatches =
+      tagged?.is_multicolour && line.colorBreakdown?.length
+        ? line.colorBreakdown.map((s) => ({ color: s.color, count: s.quantity }))
+        : undefined;
     const items = await createProductUnits(db, {
       productId: variant.product_id,
       variantId: variant.id,
       tag: tagged?.tag || tagged?.sku || variant.sku,
       sku: tagged?.sku || variant.sku,
       count: qty,
-      shopId: input.shopId
+      shopId: input.shopId,
+      color: tagged?.is_multicolour ? null : tagged?.color || null,
+      colorBatches
     });
     createdItems.push(...(items as unknown as Record<string, unknown>[]));
 
@@ -310,7 +424,7 @@ export async function applyApprovedGrnStock(
       [variant.product_id]
     );
 
-    const lineTotal = Math.round(line.quantity * line.purchasePrice * 100) / 100;
+    const lineTotal = computeGrnLineTotal(line.quantity, line.purchasePrice);
     const lineNote = [
       input.payload.note,
       `Purchase @ ₹${Number(line.purchasePrice).toFixed(2)}`,
@@ -384,12 +498,12 @@ export async function createPendingGrn(input: {
       throw new Error(`Variant not found: ${missing}`);
     }
 
-    const grnNumber = nextGrnNumber();
+    const grnNumber = await nextDocumentNumber("grn", db);
     const grn = await db.queryOne<{ id: string; grn_number: string; status: GrnStatus }>(
       `insert into inventory_grns (
          grn_number, status, supplier_id, bill_no, invoice_amount, invoice_date, document_path,
-         lines_total, note, created_by, shop_id
-       ) values ($1, 'pending_approval', $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         discount_amount, tax_amount, lines_total, note, created_by, shop_id
+       ) values ($1, 'pending_approval', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
        returning id, grn_number, status`,
       [
         grnNumber,
@@ -398,6 +512,8 @@ export async function createPendingGrn(input: {
         input.payload.invoiceAmount,
         input.payload.invoiceDate,
         input.payload.documentPath,
+        input.payload.discountAmount,
+        input.payload.taxAmount,
         input.payload.linesTotal,
         input.payload.note,
         input.userId,
@@ -410,21 +526,22 @@ export async function createPendingGrn(input: {
     const params: unknown[] = [];
     let p = 1;
     input.payload.lines.forEach((line, sort) => {
-      const lineTotal = Math.round(line.quantity * line.purchasePrice * 100) / 100;
-      valueSql.push(`($${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++})`);
+      const lineTotal = computeGrnLineTotal(line.quantity, line.purchasePrice);
+      valueSql.push(`($${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++})`);
       params.push(
         grn.id,
         line.productVariantId,
         line.quantity,
         line.purchasePrice,
         lineTotal,
-        sort
+        sort,
+        line.colorBreakdown?.length ? JSON.stringify(line.colorBreakdown) : null
       );
     });
 
     await db.query(
       `insert into inventory_grn_lines (
-         grn_id, product_variant_id, quantity, purchase_price, line_total, sort_order
+         grn_id, product_variant_id, quantity, purchase_price, line_total, sort_order, color_breakdown
        ) values ${valueSql.join(", ")}`,
       params
     );
@@ -458,6 +575,8 @@ export async function loadGrnPayload(
     invoice_amount: string | number | null;
     invoice_date: string | null;
     document_path: string | null;
+    discount_amount: string | number | null;
+    tax_amount: string | number | null;
     lines_total: string | number;
     note: string | null;
   }>(`select * from inventory_grns where id = $1`, [grnId]);
@@ -467,8 +586,9 @@ export async function loadGrnPayload(
     product_variant_id: string;
     quantity: number;
     purchase_price: string | number;
+    color_breakdown: GrnColorBatch[] | string | null;
   }>(
-    `select product_variant_id, quantity, purchase_price
+    `select product_variant_id, quantity, purchase_price, color_breakdown
      from inventory_grn_lines where grn_id = $1 order by sort_order asc`,
     [grnId]
   );
@@ -488,11 +608,42 @@ export async function loadGrnPayload(
     }
   }
 
-  const mapped = lines.map((l) => ({
-    productVariantId: l.product_variant_id,
-    quantity: Number(l.quantity),
-    purchasePrice: Number(l.purchase_price)
-  }));
+  const mapped = lines.map((l) => {
+    let colorBreakdown: GrnColorBatch[] | undefined;
+    const raw = l.color_breakdown;
+    if (Array.isArray(raw)) {
+      colorBreakdown = raw
+        .map((s) => ({
+          color: String((s as GrnColorBatch).color || "").trim(),
+          quantity: Math.trunc(Number((s as GrnColorBatch).quantity) || 0)
+        }))
+        .filter((s) => s.color && s.quantity > 0);
+    } else if (typeof raw === "string" && raw.trim()) {
+      try {
+        const parsed = JSON.parse(raw) as GrnColorBatch[];
+        if (Array.isArray(parsed)) {
+          colorBreakdown = parsed
+            .map((s) => ({
+              color: String(s.color || "").trim(),
+              quantity: Math.trunc(Number(s.quantity) || 0)
+            }))
+            .filter((s) => s.color && s.quantity > 0);
+        }
+      } catch {
+        colorBreakdown = undefined;
+      }
+    }
+    return {
+      productVariantId: l.product_variant_id,
+      quantity: Number(l.quantity),
+      purchasePrice: Number(l.purchase_price),
+      colorBreakdown: colorBreakdown?.length ? colorBreakdown : undefined
+    };
+  });
+  const linesTotal = Number(grn.lines_total || 0);
+  const discountAmount = Number(grn.discount_amount || 0);
+  const taxAmount = Number(grn.tax_amount || 0);
+  const grandTotal = Math.round((linesTotal - discountAmount + taxAmount) * 100) / 100;
 
   return {
     grn,
@@ -504,9 +655,12 @@ export async function loadGrnPayload(
       invoiceAmount: Number(grn.invoice_amount || 0),
       invoiceDate: grn.invoice_date || null,
       documentPath: grn.document_path || null,
+      discountAmount,
+      taxAmount,
       extraNote: "",
       lines: mapped,
-      linesTotal: Number(grn.lines_total || 0),
+      linesTotal,
+      grandTotal,
       note: grn.note
     }
   };
@@ -653,6 +807,8 @@ export async function getGrnPrintDetail(grnId: string): Promise<GrnPrintDetail |
     invoice_amount: string | number | null;
     invoice_date: string | null;
     document_path: string | null;
+    discount_amount: string | number | null;
+    tax_amount: string | number | null;
     lines_total: string | number;
     note: string | null;
     created_at: string;
@@ -670,7 +826,9 @@ export async function getGrnPrintDetail(grnId: string): Promise<GrnPrintDetail |
     state_code: string | null;
   }>(
     `select g.id, g.grn_number, g.status, g.bill_no, g.invoice_amount, g.invoice_date,
-            g.document_path, g.lines_total, g.note, g.created_at, g.approved_at, g.supplier_id,
+            g.document_path, coalesce(g.discount_amount, 0) as discount_amount,
+            coalesce(g.tax_amount, 0) as tax_amount, g.lines_total, g.note,
+            g.created_at, g.approved_at, g.supplier_id,
             s.code as supplier_code, s.name as supplier_name, s.trade_name, s.gstin, s.pan,
             s.phone, s.address, s.city, s.state, s.state_code
      from inventory_grns g
@@ -687,9 +845,10 @@ export async function getGrnPrintDetail(grnId: string): Promise<GrnPrintDetail |
     quantity: number;
     purchase_price: string | number;
     line_total: string | number;
+    color_breakdown: GrnColorBatch[] | string | null;
   }>(
     `select p.name as product_name, coalesce(p.sku, v.sku) as sku, v.name as variant_name,
-            l.quantity, l.purchase_price, l.line_total
+            l.quantity, l.purchase_price, l.line_total, l.color_breakdown
      from inventory_grn_lines l
      join product_variants v on v.id = l.product_variant_id
      join products p on p.id = v.product_id
@@ -717,6 +876,8 @@ export async function getGrnPrintDetail(grnId: string): Promise<GrnPrintDetail |
     invoice_amount: Number(grn.invoice_amount || 0),
     invoice_date: grn.invoice_date,
     document_path: grn.document_path,
+    discount_amount: Number(grn.discount_amount || 0),
+    tax_amount: Number(grn.tax_amount || 0),
     lines_total: Number(grn.lines_total || 0),
     note: grn.note,
     created_at: grn.created_at,
@@ -740,14 +901,41 @@ export async function getGrnPrintDetail(grnId: string): Promise<GrnPrintDetail |
       gstin: company?.company_gstin || null,
       phone: company?.support_phone || null
     },
-    lines: lines.map((l) => ({
-      product_name: l.product_name,
-      sku: l.sku,
-      variant_name: l.variant_name,
-      quantity: Number(l.quantity),
-      purchase_price: Number(l.purchase_price),
-      line_total: Number(l.line_total)
-    }))
+    lines: lines.map((l) => {
+      let color_breakdown: GrnColorBatch[] | null = null;
+      const raw = l.color_breakdown;
+      if (Array.isArray(raw)) {
+        color_breakdown = raw
+          .map((s) => ({
+            color: String((s as GrnColorBatch).color || "").trim(),
+            quantity: Math.trunc(Number((s as GrnColorBatch).quantity) || 0)
+          }))
+          .filter((s) => s.color && s.quantity > 0);
+      } else if (typeof raw === "string" && raw.trim()) {
+        try {
+          const parsed = JSON.parse(raw) as GrnColorBatch[];
+          if (Array.isArray(parsed)) {
+            color_breakdown = parsed
+              .map((s) => ({
+                color: String(s.color || "").trim(),
+                quantity: Math.trunc(Number(s.quantity) || 0)
+              }))
+              .filter((s) => s.color && s.quantity > 0);
+          }
+        } catch {
+          color_breakdown = null;
+        }
+      }
+      return {
+        product_name: l.product_name,
+        sku: l.sku,
+        variant_name: l.variant_name,
+        quantity: Number(l.quantity),
+        purchase_price: Number(l.purchase_price),
+        line_total: Number(l.line_total),
+        color_breakdown: color_breakdown?.length ? color_breakdown : null
+      };
+    })
   };
 }
 

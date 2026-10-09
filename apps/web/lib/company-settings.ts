@@ -11,7 +11,12 @@ export async function ensureCompanySettingsSchema() {
       add column if not exists company_state_code text,
       add column if not exists prices_inclusive_of_gst boolean not null default true,
       add column if not exists support_phone text,
-      add column if not exists support_email text
+      add column if not exists support_email text,
+      add column if not exists doc_prefix_invoice text not null default 'VAS',
+      add column if not exists doc_prefix_grn text not null default 'GRN',
+      add column if not exists doc_prefix_online text not null default 'VAS',
+      add column if not exists doc_number_pad integer not null default 3,
+      add column if not exists doc_number_year_mode text not null default 'calendar'
   `);
   await query(`
     update public.site_settings

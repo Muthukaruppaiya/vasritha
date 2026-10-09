@@ -26,6 +26,7 @@ import {
 } from "../../../../../lib/loyalty";
 import { requireScopedShopId } from "../../../../../lib/shop-scope";
 import { ensureExchangePolicySchema } from "../../../../../lib/exchange-policy";
+import { nextDocumentNumber } from "../../../../../lib/document-numbers";
 
 type CheckoutLine = {
   productId: string;
@@ -457,7 +458,7 @@ export async function POST(request: NextRequest) {
     );
     const total = taxSummary.payable;
 
-    const orderNumber = `POS-${Date.now().toString().slice(-8)}`;
+    const orderNumber = await nextDocumentNumber("invoice");
     // Cash = full pay now. Credit = partial/zero now, balance later. Razorpay = pending until verify.
     let amountPaid = total;
     if (paymentMethod === "credit") {

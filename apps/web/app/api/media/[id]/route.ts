@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { readMediaBlob } from "../../../../lib/admin-upload";
 import { readProductImageBlob } from "../../../../lib/product-image-storage";
 
 export const runtime = "nodejs";
@@ -13,7 +14,9 @@ export async function GET(_request: NextRequest, { params }: Params) {
   }
 
   try {
-    const row = await readProductImageBlob(id);
+    const row =
+      (await readProductImageBlob(id).catch(() => null)) ||
+      (await readMediaBlob(id).catch(() => null));
     if (!row?.bytes) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }

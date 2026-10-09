@@ -548,8 +548,29 @@ function AdminGrnApprovalsInner() {
                   <strong>{formatMoney(detail.invoice_amount)}</strong>
                 </div>
                 <div>
+                  <span className="muted">Discount</span>
+                  <strong>-{formatMoney(Number(detail.discount_amount || 0))}</strong>
+                </div>
+                <div>
+                  <span className="muted">Tax</span>
+                  <strong>{formatMoney(Number(detail.tax_amount || 0))}</strong>
+                </div>
+                <div>
                   <span className="muted">Lines total</span>
                   <strong>{formatMoney(detail.lines_total)}</strong>
+                </div>
+                <div>
+                  <span className="muted">Grand total</span>
+                  <strong>
+                    {formatMoney(
+                      Math.round(
+                        (Number(detail.lines_total || 0) -
+                          Number(detail.discount_amount || 0) +
+                          Number(detail.tax_amount || 0)) *
+                          100
+                      ) / 100
+                    )}
+                  </strong>
                 </div>
                 <div>
                   <span className="muted">Created</span>
@@ -588,20 +609,27 @@ function AdminGrnApprovalsInner() {
                     </tr>
                   </thead>
                   <tbody>
-                    {detail.lines.map((line, index) => (
-                      <tr key={`${line.sku || line.product_name}-${index}`}>
-                        <td>
-                          <strong>{line.product_name}</strong>
-                          {line.variant_name ? (
-                            <div className="muted admin-sub">{line.variant_name}</div>
-                          ) : null}
-                        </td>
-                        <td>{line.sku || "—"}</td>
-                        <td>{line.quantity}</td>
-                        <td>{formatMoney(line.purchase_price)}</td>
-                        <td>{formatMoney(line.line_total)}</td>
-                      </tr>
-                    ))}
+                    {detail.lines.map((line, index) => {
+                      const colours = (line.color_breakdown || [])
+                        .filter((s) => s.color && s.quantity > 0)
+                        .map((s) => `${s.color} × ${s.quantity}`)
+                        .join(", ");
+                      return (
+                        <tr key={`${line.sku || line.product_name}-${index}`}>
+                          <td>
+                            <strong>{line.product_name}</strong>
+                            {line.variant_name ? (
+                              <div className="muted admin-sub">{line.variant_name}</div>
+                            ) : null}
+                            {colours ? <div className="muted admin-sub">{colours}</div> : null}
+                          </td>
+                          <td>{line.sku || "—"}</td>
+                          <td>{line.quantity}</td>
+                          <td>{formatMoney(line.purchase_price)}</td>
+                          <td>{formatMoney(line.line_total)}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

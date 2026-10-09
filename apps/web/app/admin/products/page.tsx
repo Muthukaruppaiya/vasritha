@@ -65,6 +65,7 @@ type Product = {
   short_description?: string;
   short_name?: string;
   color?: string | null;
+  is_multicolour?: boolean;
   description?: string;
   is_featured?: boolean;
   created_at: string;
@@ -202,7 +203,8 @@ function AdminProductsPageInner() {
       category_id: parent.category_id,
       subcategory_id: parent.subcategory_id || "",
       parent_product_id: parent.id,
-      color: parent.color || "",
+      color: parent.is_multicolour ? "" : parent.color || "",
+      is_multicolour: Boolean(parent.is_multicolour),
       label_size: parent.label_size === "accessory" ? "accessory" : "dress",
       sku_prefix: "VAS",
       name: `${parent.name} · design`,
@@ -408,6 +410,7 @@ function AdminProductsPageInner() {
       short_name: product.short_name || "",
       short_description: product.short_description || "",
       color: product.color || "",
+      is_multicolour: Boolean(product.is_multicolour),
       description: product.description || "",
       is_featured: Boolean(product.is_featured),
       restock_expected: Boolean(
@@ -1064,7 +1067,9 @@ function AdminProductsPageInner() {
                       </div>
                     </td>
                     <td>
-                      {product.color ? (
+                      {product.is_multicolour ? (
+                        <span className="admin-color-cell">Multi-colour</span>
+                      ) : product.color ? (
                         <span className="admin-color-cell">
                           <span className="admin-color-dot" style={colorSwatchStyle(product.color)} />
                           {product.color}

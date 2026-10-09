@@ -36,6 +36,17 @@ type PosItem = {
   price: number;
   stock: number;
   imageSrc: string | null;
+  color?: string | null;
+  isMulticolour?: boolean;
+};
+
+type PosColourOption = {
+  color: string;
+  available: number;
+  itemIds: string[];
+  unitCodes: string[];
+  barcodes: string[];
+  price: number;
 };
 
 type CartLine = PosItem & { quantity: number; key: string };
@@ -203,6 +214,12 @@ export default function AdminBillingPage() {
   const [suggestions, setSuggestions] = useState<PosItem[]>([]);
   const [lookingUp, setLookingUp] = useState(false);
   const [lookupError, setLookupError] = useState("");
+  const [colourPick, setColourPick] = useState<{
+    product: PosItem;
+    colours: PosColourOption[];
+    loading: boolean;
+    error: string;
+  } | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [discountType, setDiscountType] = useState<"percentage" | "fixed">("percentage");
   const [discountValue, setDiscountValue] = useState("0");
@@ -370,7 +387,7 @@ export default function AdminBillingPage() {
     window.setTimeout(() => scanRef.current?.focus(), 0);
   };
 
-  const addItem = (item: PosItem) => {
+  const pushCartItem = (item: PosItem) => {
     const key = lineKey(item);
     setCart((prev) => {
       const existing = prev.find((line) => line.key === key);
@@ -390,7 +407,89 @@ export default function AdminBillingPage() {
     setQuery("");
     setSuggestions([]);
     setLookupError("");
+    setColourPick(null);
     window.setTimeout(() => scanRef.current?.focus(), 0);
+  };
+
+  const openColourPicker = async (item: PosItem) => {
+    setColourPick({ product: item, colours: [], loading: true, error: "" });
+    setSuggestions([]);
+    const params = new URLSearchParams();
+    params.set("productId", item.productId);
+    if (item.variantId) params.set("variantId", item.variantId);
+    if (shopId) params.set("shopId", shopId);
+    const result = await adminFetch<{ colours: PosColourOption[] }>(
+      `/api/admin/pos/colours?${params.toString()}`
+    );
+    if (result.error) {
+      setColourPick({ product: item, colours: [], loading: false, error: result.error });
+      return;
+    }
+    const colours = (result.data?.colours || []).filter((c) => c.available > 0);
+    if (!colours.length) {
+      setColourPick({
+        product: item,
+        colours: [],
+        loading: false,
+        error: "No coloured pieces in stock for this product at this store."
+      });
+      return;
+    }
+    setColourPick({ product: item, colours, loading: false, error: "" });
+  };
+
+  const addItem = (item: PosItem) => {
+    // Piece barcode already carries colour — skip colour prompt.
+    // Name / SKU search on multi-colour products must choose a colour first.
+    if (item.isMulticolour && !item.itemId) {
+      void openColourPicker(item);
+      return;
+    }
+    pushCartItem(item);
+  };
+
+  const pickColour = async (opt: PosColourOption) => {
+    if (!colourPick) return;
+    const product = colourPick.product;
+    const inCart = new Set(
+      cart.map((line) => line.itemId).filter((id): id is string => Boolean(id))
+    );
+
+    // Refresh so we claim the next free piece of this colour (not one already in cart).
+    const params = new URLSearchParams();
+    params.set("productId", product.productId);
+    if (product.variantId) params.set("variantId", product.variantId);
+    if (shopId) params.set("shopId", shopId);
+    const result = await adminFetch<{ colours: PosColourOption[] }>(
+      `/api/admin/pos/colours?${params.toString()}`
+    );
+    const fresh =
+      (result.data?.colours || []).find(
+        (c) => c.color.toLowerCase() === opt.color.toLowerCase()
+      ) || opt;
+    const idx = (fresh.itemIds || opt.itemIds || []).findIndex((id) => !inCart.has(id));
+    if (idx < 0) {
+      setColourPick({
+        product,
+        colours: (result.data?.colours || []).filter((c) => c.available > 0),
+        loading: false,
+        error: `No more ${opt.color} pieces available at this store.`
+      });
+      return;
+    }
+    const itemId = fresh.itemIds[idx];
+    const unitCode = fresh.unitCodes?.[idx] || product.sku;
+    const barcode = fresh.barcodes?.[idx] || product.barcode;
+    pushCartItem({
+      ...product,
+      itemId,
+      sku: unitCode,
+      barcode,
+      price: fresh.price || product.price,
+      stock: 1,
+      color: opt.color,
+      isMulticolour: false
+    });
   };
 
   const onScanSubmit = async (event: FormEvent) => {
@@ -882,40 +981,76 @@ export default function AdminBillingPage() {
                 </button>
               </form>
               {lookupError ? <AdminAlert>{lookupError}</AdminAlert> : null}
-              {suggestions.length > 0 && (
-                <div className="pos-suggest" role="listbox" aria-label="Product suggestions">
+              {colourPick ? (
+                <div className="pos-colour-pick" role="dialog" aria-label="Choose colour">
+                  <div className="pos-colour-pick-head">
+                    <div>
+                      <strong>Choose colour</strong>
+                      <p className="muted">{colourPick.product.name}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="pos-remove"
+                      aria-label="Close colour picker"
+                      onClick={() => {
+                        setColourPick(null);
+                        window.setTimeout(() => scanRef.current?.focus(), 0);
+                      }}
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                  {colourPick.loading ? (
+                    <p className="muted">Loading colours…</p>
+                  ) : colourPick.error ? (
+                    <AdminAlert>{colourPick.error}</AdminAlert>
+                  ) : (
+                    <div className="pos-colour-grid">
+                      {colourPick.colours.map((opt) => (
+                        <button
+                          key={opt.color}
+                          type="button"
+                          className="pos-colour-chip"
+                          onClick={() => void pickColour(opt)}
+                        >
+                          <strong>{opt.color}</strong>
+                          <span>{opt.available} in stock</span>
+                          <em>{formatMoney(opt.price || colourPick.product.price)}</em>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : null}
+              {suggestions.length > 0 && !colourPick && (
+                <div className="grn-sku-modal-list pos-suggest-list" role="listbox" aria-label="Products">
                   {suggestions.map((item) => (
                     <button
                       key={lineKey(item)}
                       type="button"
-                      className="pos-suggest-row"
+                      className="grn-sku-modal-option"
                       onClick={() => addItem(item)}
                     >
-                      <span className="pos-suggest-thumb" aria-hidden="true">
-                        {item.imageSrc ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={item.imageSrc} alt="" />
-                        ) : (
-                          <ScanBarcode size={16} />
-                        )}
-                      </span>
-                      <span className="pos-suggest-copy">
+                      <span className="grn-sku-modal-option-main">
                         <strong>{item.name}</strong>
                         <em>
-                          {item.sku || item.barcode || "—"}
-                          {item.variantName ? ` · ${item.variantName}` : ""}
+                          {item.isMulticolour
+                            ? "Multi-colour"
+                            : item.color || item.variantName || "—"}
                         </em>
                       </span>
-                      <span className="pos-suggest-meta">
-                        {formatMoney(item.price)}
-                        <small>Stock {item.stock}</small>
+                      <span className="grn-sku-modal-option-side">
+                        <span>{item.sku || item.barcode || "no-sku"}</span>
+                        <small>
+                          {formatMoney(item.price)} · On hand {item.stock}
+                        </small>
                       </span>
                     </button>
                   ))}
                 </div>
               )}
-              {query.trim() && !lookingUp && !suggestions.length && !lookupError ? (
-                <p className="pos-suggest-empty muted">No matching product for “{query.trim()}”.</p>
+              {query.trim() && !lookingUp && !suggestions.length && !lookupError && !colourPick ? (
+                <p className="pos-suggest-empty muted">No matches</p>
               ) : null}
             </div>
 
@@ -965,6 +1100,7 @@ export default function AdminBillingPage() {
                             <p className="muted">
                               {line.sku || line.barcode || "—"}
                               {line.variantName ? ` · ${line.variantName}` : ""}
+                              {line.color ? ` · ${line.color}` : ""}
                             </p>
                             <p className="pos-unit">{formatMoney(line.price)} each</p>
                           </div>

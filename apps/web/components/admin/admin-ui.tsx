@@ -4,22 +4,22 @@ import { ReactNode } from "react";
 import { TrendingDown, TrendingUp, Minus } from "lucide-react";
 
 export function AdminPageHeader({
-  eyebrow = "Admin workspace",
+  eyebrow: _eyebrow,
   title,
-  description,
+  description: _description,
   actions
 }: {
+  /** Kept for call-site compatibility; section labels are no longer shown. */
   eyebrow?: string;
   title: string;
+  /** Kept for call-site compatibility; help copy is no longer shown. */
   description?: string;
   actions?: ReactNode;
 }) {
   return (
     <header className="admin-page-head">
       <div>
-        {eyebrow ? <div className="eyebrow">{eyebrow}</div> : null}
         <h1>{title}</h1>
-        {description ? <p className="muted admin-page-desc">{description}</p> : null}
       </div>
       {actions ? <div className="admin-page-actions">{actions}</div> : null}
     </header>
@@ -73,17 +73,17 @@ export function statusTone(status?: string | null): "neutral" | "success" | "war
 
 export function AdminEmpty({
   title,
-  body,
+  body: _body,
   action
 }: {
   title: string;
+  /** Kept for call-site compatibility; help copy is no longer shown. */
   body?: string;
   action?: ReactNode;
 }) {
   return (
     <div className="admin-empty">
       <strong>{title}</strong>
-      {body ? <p className="muted">{body}</p> : null}
       {action ? <div className="admin-empty-action">{action}</div> : null}
     </div>
   );

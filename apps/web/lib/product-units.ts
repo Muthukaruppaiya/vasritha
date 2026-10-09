@@ -14,6 +14,7 @@ export type ProductItem = {
   seq: number;
   unit_code: string;
   barcode: string;
+  color?: string | null;
   status: UnitStatus;
   damage_detail: string | null;
   date_added: string;
@@ -67,6 +68,7 @@ async function runEnsureProductUnitsSchema() {
       add column if not exists short_name text not null default '',
       add column if not exists short_description text not null default '',
       add column if not exists color text not null default '',
+      add column if not exists is_multicolour boolean not null default false,
       add column if not exists is_featured boolean not null default false,
       add column if not exists tag text,
       add column if not exists sku_prefix text not null default 'VAS',
@@ -134,6 +136,7 @@ async function runEnsureProductUnitsSchema() {
       seq integer not null,
       unit_code text not null unique,
       barcode text not null unique,
+      color text not null default '',
       status public.product_item_status not null default 'to_sell',
       damage_detail text,
       date_added timestamptz not null default now(),
@@ -142,6 +145,10 @@ async function runEnsureProductUnitsSchema() {
       label_printed boolean not null default false,
       unique (product_id, seq)
     )
+  `);
+  await query(`
+    alter table public.product_items
+      add column if not exists color text not null default ''
   `);
   await query(`
     create table if not exists public.product_price_history (
@@ -154,7 +161,17 @@ async function runEnsureProductUnitsSchema() {
 }
 
 export async function ensureProductUnitsSchema() {
-  if (await skipEnsureIfRelationExists("public.product_items")) return;
+  if (await skipEnsureIfRelationExists("public.product_items")) {
+    await query(`
+      alter table public.products
+        add column if not exists is_multicolour boolean not null default false
+    `);
+    await query(`
+      alter table public.product_items
+        add column if not exists color text not null default ''
+    `);
+    return;
+  }
   if (!productUnitsSchemaReady) {
     productUnitsSchemaReady = runEnsureProductUnitsSchema().catch((error) => {
       productUnitsSchemaReady = null;
@@ -173,10 +190,29 @@ export async function createProductUnits(
     sku: string;
     count: number;
     shopId?: string | null;
+    /** Single colour for every piece in this batch. */
+    color?: string | null;
+    /** Colour-wise batches (multi-colour GRN). Takes priority over count+color. */
+    colorBatches?: Array<{ color: string; count: number }>;
   }
 ) {
-  const count = Math.max(0, Math.trunc(input.count));
-  if (!count) return [] as ProductItem[];
+  const batches =
+    input.colorBatches && input.colorBatches.length
+      ? input.colorBatches
+          .map((b) => ({
+            color: String(b.color || "").trim(),
+            count: Math.max(0, Math.trunc(Number(b.count) || 0))
+          }))
+          .filter((b) => b.count > 0)
+      : [
+          {
+            color: String(input.color || "").trim(),
+            count: Math.max(0, Math.trunc(input.count))
+          }
+        ].filter((b) => b.count > 0);
+
+  const total = batches.reduce((sum, b) => sum + b.count, 0);
+  if (!total) return [] as ProductItem[];
 
   const maxRow = await db.queryOne<{ max: number }>(
     `select coalesce(max(seq), 0)::int as max from product_items where product_id = $1`,
@@ -186,20 +222,25 @@ export async function createProductUnits(
   const compact = compactBarcodeBase(input.sku);
   const tag = (input.tag || input.sku).trim().toUpperCase();
 
-  // Insert in chunks so large GRN qty doesn't do thousands of round-trips.
+  // Flatten into colour-per-piece so inserts stay chunked.
+  const pieceColors: string[] = [];
+  for (const batch of batches) {
+    for (let i = 0; i < batch.count; i += 1) pieceColors.push(batch.color);
+  }
+
   const CHUNK = 100;
   const created: ProductItem[] = [];
-  let remaining = count;
-  while (remaining > 0) {
-    const n = Math.min(CHUNK, remaining);
+  let offset = 0;
+  while (offset < pieceColors.length) {
+    const slice = pieceColors.slice(offset, offset + CHUNK);
     const valueSql: string[] = [];
     const params: unknown[] = [];
     let p = 1;
-    for (let i = 0; i < n; i += 1) {
+    for (const color of slice) {
       seq += 1;
       const padded = String(seq).padStart(4, "0");
       valueSql.push(
-        `($${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++}, 'to_sell')`
+        `($${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++}, 'to_sell')`
       );
       params.push(
         input.productId,
@@ -208,18 +249,19 @@ export async function createProductUnits(
         tag,
         seq,
         `${input.sku}-${padded}`.toUpperCase(),
-        `${compact}${padded}`
+        `${compact}${padded}`,
+        color
       );
     }
     const rows = await db.query<ProductItem>(
       `insert into product_items
-         (product_id, variant_id, shop_id, tag, seq, unit_code, barcode, status)
+         (product_id, variant_id, shop_id, tag, seq, unit_code, barcode, color, status)
        values ${valueSql.join(", ")}
        returning *`,
       params
     );
     created.push(...rows);
-    remaining -= n;
+    offset += slice.length;
   }
 
   return created;
@@ -355,21 +397,23 @@ export async function allocateSellableItems(
   );
 }
 
-export async function lookupUnitByCode(code: string, shopId?: string | null) {
-  const exact = code.trim().toUpperCase();
-  return queryOne<{
-    item_id: string;
-    product_id: string;
-    variant_id: string;
-    shop_id: string | null;
-    name: string;
-    unit_code: string;
-    barcode: string;
-    tag: string;
-    price: string;
-    image_path: string | null;
-  }>(
-    `select
+type UnitLookupRow = {
+  item_id: string;
+  product_id: string;
+  variant_id: string;
+  shop_id: string | null;
+  name: string;
+  unit_code: string;
+  barcode: string;
+  tag: string;
+  color: string | null;
+  is_multicolour: boolean;
+  price: string;
+  image_path: string | null;
+  seq?: number;
+};
+
+const UNIT_LOOKUP_SELECT = `
        i.id as item_id,
        i.product_id,
        i.variant_id,
@@ -378,6 +422,9 @@ export async function lookupUnitByCode(code: string, shopId?: string | null) {
        i.unit_code,
        i.barcode,
        i.tag,
+       i.seq,
+       coalesce(nullif(trim(i.color), ''), nullif(trim(p.color), '')) as color,
+       coalesce(p.is_multicolour, false) as is_multicolour,
        coalesce(pv.price, p.price) as price,
        (
          select pi.storage_path from product_images pi
@@ -389,13 +436,101 @@ export async function lookupUnitByCode(code: string, shopId?: string | null) {
        ) as image_path
      from product_items i
      join products p on p.id = i.product_id
-     join product_variants pv on pv.id = i.variant_id
+     join product_variants pv on pv.id = i.variant_id`;
+
+export async function lookupUnitByCode(code: string, shopId?: string | null) {
+  const exact = code.trim().toUpperCase();
+  return queryOne<UnitLookupRow>(
+    `select ${UNIT_LOOKUP_SELECT}
      where i.status = 'to_sell'
        and p.status = 'active'
        and (upper(i.barcode) = $1 or upper(i.unit_code) = $1)
        and ($2::uuid is null or i.shop_id = $2::uuid)
      limit 1`,
     [exact, shopId || null]
+  );
+}
+
+/**
+ * Partial piece search: code fragment (e.g. 0001 in VASRUKMIN140001),
+ * serial (001 / 0001 → seq 1), piece colour.
+ */
+export async function lookupUnitsPartial(term: string, shopId?: string | null, limit = 20) {
+  const raw = term.trim();
+  if (!raw) return [] as UnitLookupRow[];
+  const like = `%${raw}%`;
+  const digitsOnly = /^\d+$/.test(raw);
+  const padLen = Math.max(4, raw.length);
+  const paddedSeq = digitsOnly ? raw.padStart(padLen, "0") : null;
+
+  return query<UnitLookupRow>(
+    `select ${UNIT_LOOKUP_SELECT}
+     where i.status = 'to_sell'
+       and p.status = 'active'
+       and ($3::uuid is null or i.shop_id = $3::uuid)
+       and (
+         i.unit_code ilike $1
+         or i.barcode ilike $1
+         or coalesce(i.color, '') ilike $1
+         or coalesce(i.tag, '') ilike $1
+         or (
+           $2::text is not null
+           and lpad(i.seq::text, greatest(4, length($2)), '0')
+             = lpad($2, greatest(4, length($2)), '0')
+         )
+       )
+     order by
+       case when upper(i.unit_code) = upper($4) or upper(i.barcode) = upper($4) then 0 else 1 end,
+       i.seq asc,
+       p.name asc
+     limit $5`,
+    [like, paddedSeq, shopId || null, raw.toUpperCase(), limit]
+  );
+}
+
+/** Sellable colour counts for a multi-colour product at a shop. */
+export async function listSellableColourOptions(
+  productId: string,
+  variantId: string | null | undefined,
+  shopId?: string | null
+) {
+  await ensureProductUnitsSchema();
+  const params: unknown[] = [productId];
+  const where = [
+    `i.product_id = $1`,
+    `i.status = 'to_sell'`,
+    `nullif(trim(i.color), '') is not null`
+  ];
+  if (variantId) {
+    params.push(variantId);
+    where.push(`i.variant_id = $${params.length}`);
+  }
+  if (shopId) {
+    params.push(shopId);
+    where.push(`i.shop_id = $${params.length}`);
+  }
+  return query<{
+    color: string;
+    available: number;
+    item_ids: string[];
+    unit_codes: string[];
+    barcodes: string[];
+    price: string;
+  }>(
+    `select
+       trim(i.color) as color,
+       count(*)::int as available,
+       array_agg(i.id::text order by i.seq asc) as item_ids,
+       array_agg(i.unit_code order by i.seq asc) as unit_codes,
+       array_agg(i.barcode order by i.seq asc) as barcodes,
+       (array_agg(coalesce(pv.price, p.price)::text order by i.seq asc))[1] as price
+     from product_items i
+     join products p on p.id = i.product_id
+     join product_variants pv on pv.id = i.variant_id
+     where ${where.join(" and ")}
+     group by trim(i.color)
+     order by trim(i.color) asc`,
+    params
   );
 }
 
@@ -406,6 +541,8 @@ export async function createUnitsAndSync(input: {
   sku: string;
   count: number;
   shopId?: string | null;
+  color?: string | null;
+  colorBatches?: Array<{ color: string; count: number }>;
 }) {
   return withTransaction(async (db) => {
     const items = await createProductUnits(db, input);

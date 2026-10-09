@@ -1,6 +1,11 @@
 import { query, queryOne } from "./db/pool";
 import { resolveMediaUrl } from "./product-image-storage";
-import { lookupUnitByCode } from "./product-units";
+import {
+  ensureProductUnitsSchema,
+  listSellableColourOptions,
+  lookupUnitByCode,
+  lookupUnitsPartial
+} from "./product-units";
 export const WALK_IN_EMAIL = "pos@vasritha.local";
 export const WALK_IN_NAME = "Walk-in Customer";
 
@@ -98,7 +103,67 @@ export type PosSellable = {
   price: number;
   stock: number;
   imageSrc: string | null;
+  /** Piece or product colour label. */
+  color?: string | null;
+  /** True when colours must be chosen at POS for name/SKU search (not piece barcode). */
+  isMulticolour?: boolean;
 };
+
+export type PosColourOption = {
+  color: string;
+  available: number;
+  /** Sellable piece ids for this colour, ordered by seq. */
+  itemIds: string[];
+  unitCodes: string[];
+  barcodes: string[];
+  price: number;
+};
+
+export async function listPosColourOptions(
+  productId: string,
+  variantId?: string | null,
+  shopId?: string | null
+): Promise<PosColourOption[]> {
+  await ensureProductUnitsSchema();
+  const rows = await listSellableColourOptions(productId, variantId, shopId);
+  return rows.map((row) => ({
+    color: row.color,
+    available: Number(row.available),
+    itemIds: Array.isArray(row.item_ids) ? row.item_ids.map(String) : [],
+    unitCodes: Array.isArray(row.unit_codes) ? row.unit_codes.map(String) : [],
+    barcodes: Array.isArray(row.barcodes) ? row.barcodes.map(String) : [],
+    price: Number(row.price)
+  }));
+}
+
+function mapUnitSellable(unit: {
+  product_id: string;
+  variant_id: string;
+  item_id: string;
+  name: string;
+  unit_code: string;
+  barcode: string;
+  tag: string;
+  color: string | null;
+  price: string;
+  image_path: string | null;
+}): PosSellable {
+  return {
+    productId: unit.product_id,
+    variantId: unit.variant_id,
+    itemId: unit.item_id,
+    name: unit.name,
+    sku: unit.unit_code,
+    barcode: unit.barcode,
+    variantName: unit.tag,
+    price: Number(unit.price),
+    stock: 1,
+    imageSrc: unit.image_path ? resolveMediaUrl(unit.image_path) : null,
+    color: unit.color || null,
+    // Piece already identifies colour — never prompt.
+    isMulticolour: false
+  };
+}
 
 export async function lookupSellable(
   q: string,
@@ -107,25 +172,14 @@ export async function lookupSellable(
   const term = q.trim();
   if (!term) return [];
 
+  await ensureProductUnitsSchema();
+
   const exact = term.toUpperCase();
   const like = `%${term}%`;
 
   const unit = await lookupUnitByCode(exact, shopId).catch(() => null);
   if (unit) {
-    return [
-      {
-        productId: unit.product_id,
-        variantId: unit.variant_id,
-        itemId: unit.item_id,
-        name: unit.name,
-        sku: unit.unit_code,
-        barcode: unit.barcode,
-        variantName: unit.tag,
-        price: Number(unit.price),
-        stock: 1,
-        imageSrc: unit.image_path ? resolveMediaUrl(unit.image_path) : null
-      }
-    ];
+    return [mapUnitSellable(unit)];
   }
 
   const stockExpr = shopId
@@ -142,6 +196,8 @@ export async function lookupSellable(
     name: string;
     product_sku: string | null;
     product_barcode: string | null;
+    product_color: string | null;
+    is_multicolour: boolean;
     variant_name: string | null;
     variant_sku: string | null;
     variant_barcode: string | null;
@@ -157,6 +213,8 @@ export async function lookupSellable(
        p.name,
        p.sku as product_sku,
        p.barcode as product_barcode,
+       nullif(trim(p.color), '') as product_color,
+       coalesce(p.is_multicolour, false) as is_multicolour,
        pv.name as variant_name,
        pv.sku as variant_sku,
        pv.barcode as variant_barcode,
@@ -190,12 +248,27 @@ export async function lookupSellable(
     return exactRows.map(mapSellable);
   }
 
+  // Partial piece codes / serial (0001, 001) / piece colour
+  const partialUnits = await lookupUnitsPartial(term, shopId, 20).catch(() => []);
+  const unitHits = partialUnits.map(mapUnitSellable);
+  const seenProducts = new Set(unitHits.map((row) => row.productId));
+
+  const fuzzyParams = shopId ? [like, shopId] : [like];
+  const fuzzyStockExpr = shopId
+    ? `coalesce((
+         select s.stock_quantity from shop_variant_stock s
+         where s.variant_id = pv.id and s.shop_id = $2
+       ), 0)`
+    : `pv.stock_quantity`;
+
   const fuzzy = await query<{
     product_id: string;
     variant_id: string | null;
     name: string;
     product_sku: string | null;
     product_barcode: string | null;
+    product_color: string | null;
+    is_multicolour: boolean;
     variant_name: string | null;
     variant_sku: string | null;
     variant_barcode: string | null;
@@ -211,13 +284,15 @@ export async function lookupSellable(
        p.name,
        p.sku as product_sku,
        p.barcode as product_barcode,
+       nullif(trim(p.color), '') as product_color,
+       coalesce(p.is_multicolour, false) as is_multicolour,
        pv.name as variant_name,
        pv.sku as variant_sku,
        pv.barcode as variant_barcode,
        p.price as product_price,
        pv.price as variant_price,
        p.stock_quantity as product_stock,
-       ${stockExpr} as variant_stock,
+       ${fuzzyStockExpr} as variant_stock,
        (
          select pi.storage_path from product_images pi
          where pi.product_id = p.id
@@ -228,21 +303,53 @@ export async function lookupSellable(
        ) as image_path
      from products p
      left join product_variants pv on pv.product_id = p.id
+     left join categories c on c.id = p.category_id
+     left join subcategories sc on sc.id = p.subcategory_id
      where p.status = 'active'
        and (
          p.name ilike $1
          or coalesce(p.sku, '') ilike $1
          or coalesce(p.barcode, '') ilike $1
+         or coalesce(p.tag, '') ilike $1
+         or coalesce(p.short_name, '') ilike $1
+         or coalesce(p.color, '') ilike $1
          or coalesce(pv.sku, '') ilike $1
          or coalesce(pv.barcode, '') ilike $1
          or coalesce(pv.name, '') ilike $1
+         or coalesce(c.name, '') ilike $1
+         or coalesce(sc.name, '') ilike $1
+         or exists (
+           select 1 from product_items i
+           where i.product_id = p.id
+             and i.status = 'to_sell'
+             and ($2::uuid is null or i.shop_id = $2::uuid)
+             and (
+               i.unit_code ilike $1
+               or i.barcode ilike $1
+               or coalesce(i.color, '') ilike $1
+             )
+         )
        )
      order by p.name asc, pv.name asc nulls first
-     limit 20`,
-    shopId ? [like, shopId] : [like]
+     limit 30`,
+    [like, shopId || null]
   );
 
-  return fuzzy.map(mapSellable);
+  // Digit / code fragment searches: prefer matching pieces first.
+  const prefersPieces =
+    unitHits.length > 0 &&
+    (/^\d+$/.test(term) || /[A-Za-z0-9]{3,}/.test(term));
+
+  const productHits = fuzzy
+    .map(mapSellable)
+    .filter((row) => !seenProducts.has(row.productId));
+
+  if (prefersPieces) {
+    return [...unitHits, ...productHits].slice(0, 20);
+  }
+
+  // Colour / category / name: product rows first, then leftover pieces.
+  return [...productHits, ...unitHits].slice(0, 20);
 }
 
 function mapSellable(row: {
@@ -251,6 +358,8 @@ function mapSellable(row: {
   name: string;
   product_sku: string | null;
   product_barcode: string | null;
+  product_color: string | null;
+  is_multicolour: boolean;
   variant_name: string | null;
   variant_sku: string | null;
   variant_barcode: string | null;
@@ -273,6 +382,8 @@ function mapSellable(row: {
     stock: Number(
       hasVariant && row.variant_stock != null ? row.variant_stock : row.product_stock
     ),
-    imageSrc: row.image_path ? resolveMediaUrl(row.image_path) : null
+    imageSrc: row.image_path ? resolveMediaUrl(row.image_path) : null,
+    color: row.is_multicolour ? null : row.product_color,
+    isMulticolour: Boolean(row.is_multicolour)
   };
 }

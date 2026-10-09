@@ -17,6 +17,7 @@ import {
 } from "../../../../lib/product-status";
 import type { AppRole } from "../../../../lib/auth/rbac";
 import { ensureProductRestockSchema } from "../../../../lib/order-courier";
+import { ensureColourName } from "../../../../lib/colours";
 
 async function upsertDefaultVariant(input: {
   productId: string;
@@ -53,6 +54,7 @@ export async function GET(request: NextRequest) {
   if (error) return error;
 
   await ensureProductStatusEnum();
+  await ensureProductUnitsSchema();
 
   const { searchParams } = new URL(request.url);
   const status = searchParams.get("status");
@@ -65,7 +67,7 @@ export async function GET(request: NextRequest) {
   const data = await query(
     `select
        p.id, p.name, p.slug, p.sku, p.barcode, p.tag, p.sku_prefix, p.label_size,
-       p.short_name, p.short_description, p.color, p.description,
+       p.short_name, p.short_description, p.color, p.is_multicolour, p.description,
        p.price, p.compare_at_price, p.hsn_code, p.gst_rate, p.status, p.is_featured,
        p.category_id, p.subcategory_id, p.parent_product_id, p.created_at, p.updated_at,
        c.name as category_name,
@@ -167,7 +169,19 @@ export async function POST(request: NextRequest) {
     if (!(await subcategoryBelongsToCategory(String(body.category_id), subcategoryId))) {
       return fail("Subcategory must belong to the selected category");
     }
-    const stock = body.stock_quantity != null ? Math.max(0, Math.trunc(Number(body.stock_quantity))) : 0;
+    const isMulticolour = Boolean(body.is_multicolour);
+    // Multi-colour pieces get colours at GRN — no opening stock at create.
+    const stock = isMulticolour
+      ? 0
+      : body.stock_quantity != null
+        ? Math.max(0, Math.trunc(Number(body.stock_quantity)))
+        : 0;
+    const productColor = isMulticolour
+      ? ""
+      : body.color
+        ? String(body.color).trim()
+        : "";
+    if (productColor) await ensureColourName(productColor);
 
     // Optional parent for Case 2 (design children). Case 1 leaves this null.
     let parentProductId: string | null = emptyToNull(body.parent_product_id);
@@ -193,10 +207,10 @@ export async function POST(request: NextRequest) {
     }>(
       `insert into products
          (name, slug, sku, barcode, tag, sku_prefix, label_size, category_id, subcategory_id,
-          short_name, short_description, color, description,
+          short_name, short_description, color, is_multicolour, description,
           price, compare_at_price, hsn_code, gst_rate, status, stock_quantity, is_featured,
           parent_product_id, brand_id, restock_expected)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
        returning *`,
       [
         String(body.name),
@@ -210,7 +224,8 @@ export async function POST(request: NextRequest) {
         subcategoryId,
         body.short_name ? String(body.short_name).trim() : "",
         body.short_description ? String(body.short_description) : "",
-        body.color ? String(body.color).trim() : "",
+        productColor,
+        isMulticolour,
         body.description ? String(body.description) : "",
         Number(body.price),
         body.compare_at_price != null ? Number(body.compare_at_price) : null,
@@ -242,7 +257,8 @@ export async function POST(request: NextRequest) {
         variantId: variant.id,
         tag: tag.toUpperCase(),
         sku,
-        count: stock
+        count: stock,
+        color: productColor || null
       });
     }
 

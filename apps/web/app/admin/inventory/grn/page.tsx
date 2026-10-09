@@ -10,8 +10,10 @@ import {
   PackagePlus,
   Plus,
   Printer,
+  Search,
   Trash2,
-  Truck
+  Truck,
+  X
 } from "lucide-react";
 import {
   AdminAlert,
@@ -19,6 +21,11 @@ import {
   AdminPageHeader,
   AdminPanel
 } from "../../../../components/admin/admin-ui";
+import { ColorField } from "../../../../components/admin/color-field";
+import {
+  ProductPickModal,
+  type ProductPickRow
+} from "../../../../components/admin/product-pick-modal";
 import {
   adminFetch,
   adminUpload,
@@ -26,8 +33,11 @@ import {
   getAdminUser
 } from "../../../../lib/admin-api";
 import {
+  blankColorSplit,
   blankGrnDraft,
   clearGrnDraft,
+  colorSplitsQty,
+  draftGrandTotal,
   draftLinesTotal,
   lineTotal,
   loadGrnDraft,
@@ -37,17 +47,7 @@ import {
 } from "../../../../lib/grn-draft";
 import { useAdminQuery } from "../../../../hooks/use-admin-query";
 
-type StockRow = {
-  variant_id: string;
-  sku: string | null;
-  variant_name: string | null;
-  stock_quantity: number;
-  product_name: string;
-};
-
-type InventoryData = {
-  stock: StockRow[];
-};
+type StockRow = ProductPickRow;
 
 type Supplier = {
   id: string;
@@ -69,23 +69,15 @@ function GrnEntryPageInner() {
   const prefillVariant = searchParams.get("variant") || "";
 
   const sessionShopId = getAdminUser()?.shopId || null;
-  const [skuFilter, setSkuFilter] = useState("");
-  const [debouncedSku, setDebouncedSku] = useState("");
-
-  useEffect(() => {
-    const t = window.setTimeout(() => setDebouncedSku(skuFilter.trim()), 250);
-    return () => window.clearTimeout(t);
-  }, [skuFilter]);
 
   const inventoryPath = useMemo(() => {
     const params = new URLSearchParams();
-    params.set("limit", "80");
+    params.set("limit", "200");
     if (sessionShopId) params.set("shopId", sessionShopId);
-    if (debouncedSku.length >= 2) params.set("q", debouncedSku);
     return `/api/admin/inventory?${params.toString()}`;
-  }, [sessionShopId, debouncedSku]);
+  }, [sessionShopId]);
 
-  const { data, loading, error, reload } = useAdminQuery<InventoryData>(inventoryPath);
+  const { data, loading, error, reload } = useAdminQuery<{ stock: StockRow[] }>(inventoryPath);
   const { data: suppliers, reload: reloadSuppliers } = useAdminQuery<Supplier[]>(
     "/api/admin/suppliers?active=1"
   );
@@ -98,81 +90,99 @@ function GrnEntryPageInner() {
   const [inward, setInward] = useState<GrnDraft>(() => blankGrnDraft());
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
-  const [draftBanner, setDraftBanner] = useState("");
-  const [pendingDraft, setPendingDraft] = useState<GrnDraft | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [docUploading, setDocUploading] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState<number | null>(null);
+  const [pickedByVariant, setPickedByVariant] = useState<Record<string, ProductPickRow>>({});
 
   useEffect(() => {
-    const draft = loadGrnDraft();
-    if (resumeGrn && draft) {
-      const next = { ...draft };
-      if (resumeVariant) {
-        const idx = Math.min(Math.max(next.focusLineIndex, 0), next.lines.length - 1);
-        const lines = [...next.lines];
-        lines[idx] = { ...lines[idx], productVariantId: resumeVariant, searchHint: undefined };
-        next.lines = lines;
-        next.focusLineIndex = idx;
-        saveGrnDraft(next);
+    // Resume only when returning from Product Master with a new variant.
+    if (resumeGrn) {
+      const draft = loadGrnDraft();
+      if (draft) {
+        const next = { ...draft };
+        if (resumeVariant) {
+          const idx = Math.min(Math.max(next.focusLineIndex, 0), next.lines.length - 1);
+          const lines = [...next.lines];
+          lines[idx] = { ...lines[idx], productVariantId: resumeVariant, searchHint: undefined };
+          next.lines = lines;
+          next.focusLineIndex = idx;
+          saveGrnDraft(next);
+        }
+        setInward(next);
+        setHydrated(true);
+        return;
       }
-      setInward(next);
-      setPendingDraft(null);
-      setDraftBanner("Draft restored — continue your GRN.");
-    } else if (prefillVariant) {
-      setInward(blankGrnDraft(prefillVariant));
-      setPendingDraft(null);
-    } else if (draft) {
-      // Do not auto-fill the form — offer continue vs new
-      setInward(blankGrnDraft());
-      setPendingDraft(draft);
-      setDraftBanner("");
-    } else {
-      setInward(blankGrnDraft());
-      setPendingDraft(null);
     }
+    // Always open a blank GRN — no “continue draft” banner.
+    clearGrnDraft();
+    setInward(blankGrnDraft(prefillVariant || ""));
     setHydrated(true);
   }, [resumeGrn, resumeVariant, prefillVariant]);
+
+  useEffect(() => {
+    if (!data?.stock?.length) return;
+    setPickedByVariant((prev) => {
+      const next = { ...prev };
+      for (const line of inward.lines) {
+        if (!line.productVariantId || next[line.productVariantId]) continue;
+        const row = data.stock.find((s) => s.variant_id === line.productVariantId);
+        if (row) next[line.productVariantId] = row;
+      }
+      return next;
+    });
+  }, [data?.stock, inward.lines]);
 
   const startNewGrn = () => {
     clearGrnDraft();
     setInward(blankGrnDraft());
-    setPendingDraft(null);
     setFormError("");
-    setDraftBanner("Started a new GRN. Previous draft cleared.");
-    setSkuFilter("");
+    setPickerOpen(null);
     if (resumeGrn || resumeVariant || prefillVariant) {
       router.replace("/admin/inventory/grn");
     }
   };
+  const closeSkuPicker = () => setPickerOpen(null);
 
-  const continueDraft = () => {
-    if (!pendingDraft) return;
-    setInward(pendingDraft);
-    setPendingDraft(null);
-    setDraftBanner("Continuing saved GRN draft.");
+  const openSkuPicker = (index: number) => setPickerOpen(index);
+
+  const resolveStock = (variantId: string) =>
+    pickedByVariant[variantId] ||
+    (data?.stock || []).find((s) => s.variant_id === variantId) ||
+    null;
+
+  const chooseSku = (row: ProductPickRow) => {
+    if (pickerOpen == null) return;
+    const lines = [...inward.lines];
+    const current = lines[pickerOpen];
+    const next: GrnDraftLine = {
+      ...current,
+      productVariantId: row.variant_id,
+      colorSplits: row.is_multicolour
+        ? current.colorSplits?.length
+          ? current.colorSplits
+          : [blankColorSplit()]
+        : undefined
+    };
+    if (next.colorSplits?.length) {
+      const splitSum = colorSplitsQty(next.colorSplits);
+      if (splitSum > 0) next.quantity = String(splitSum);
+    }
+    lines[pickerOpen] = next;
+    setPickedByVariant((prev) => ({ ...prev, [row.variant_id]: row }));
+    persistDraft({ ...inward, lines });
+    closeSkuPicker();
   };
-  const skuSelectOptions = useMemo(() => {
-    const list = data?.stock || [];
-    const q = skuFilter.trim().toLowerCase();
-    const selectedIds = new Set(inward.lines.map((line) => line.productVariantId).filter(Boolean));
-    if (!q) return list;
-    return list.filter((row) => {
-      if (selectedIds.has(row.variant_id)) return true;
-      const hay = [row.product_name, row.sku, row.variant_name].filter(Boolean).join(" ").toLowerCase();
-      return hay.includes(q);
-    });
-  }, [data?.stock, skuFilter, inward.lines]);
 
-  const filteredOnly = useMemo(() => {
-    const q = skuFilter.trim().toLowerCase();
-    if (!q) return data?.stock || [];
-    return (data?.stock || []).filter((row) => {
-      const hay = [row.product_name, row.sku, row.variant_name].filter(Boolean).join(" ").toLowerCase();
-      return hay.includes(q);
-    });
-  }, [data?.stock, skuFilter]);
+  const clearSku = (index: number) => {
+    updateLine(index, { productVariantId: "", colorSplits: undefined });
+  };
 
   const linesTotal = useMemo(() => draftLinesTotal(inward.lines), [inward.lines]);
+  const grandTotal = useMemo(
+    () => draftGrandTotal(inward.lines, inward.discountAmount, inward.taxAmount),
+    [inward.lines, inward.discountAmount, inward.taxAmount]
+  );
   const selectedSupplier = useMemo(
     () => (suppliers || []).find((row) => row.id === inward.supplierId) || null,
     [suppliers, inward.supplierId]
@@ -185,8 +195,38 @@ function GrnEntryPageInner() {
 
   const updateLine = (index: number, patch: Partial<GrnDraftLine>) => {
     const lines = [...inward.lines];
-    lines[index] = { ...lines[index], ...patch };
+    let next = { ...lines[index], ...patch };
+
+    if ("productVariantId" in patch) {
+      const row = patch.productVariantId ? resolveStock(patch.productVariantId) : null;
+      if (row?.is_multicolour) {
+        next = {
+          ...next,
+          colorSplits: next.colorSplits?.length ? next.colorSplits : [blankColorSplit()]
+        };
+      } else {
+        next = { ...next, colorSplits: undefined };
+      }
+    }
+
+    if (next.colorSplits?.length) {
+      const splitSum = colorSplitsQty(next.colorSplits);
+      if (splitSum > 0) next = { ...next, quantity: String(splitSum) };
+    }
+
+    lines[index] = next;
     persistDraft({ ...inward, lines });
+  };
+
+  const updateColorSplit = (
+    lineIndex: number,
+    splitIndex: number,
+    patch: Partial<{ color: string; quantity: string }>
+  ) => {
+    const line = inward.lines[lineIndex];
+    if (!line?.colorSplits) return;
+    const splits = line.colorSplits.map((s, i) => (i === splitIndex ? { ...s, ...patch } : s));
+    updateLine(lineIndex, { colorSplits: splits });
   };
 
   const onInvoiceDocument = async (file: File | null) => {
@@ -214,14 +254,8 @@ function GrnEntryPageInner() {
   const goCreateMissingProduct = () => {
     const emptyIdx = inward.lines.findIndex((line) => !line.productVariantId);
     const idx = emptyIdx >= 0 ? emptyIdx : Math.max(0, inward.lines.length - 1);
-    const lines = [...inward.lines];
-    lines[idx] = {
-      ...lines[idx],
-      searchHint: skuFilter.trim() || lines[idx].searchHint
-    };
-    const next: GrnDraft = { ...inward, lines, focusLineIndex: idx };
+    const next: GrnDraft = { ...inward, focusLineIndex: idx };
     saveGrnDraft(next);
-    setDraftBanner("GRN saved as draft. Create the product, then return here.");
     window.location.href = "/admin/products?fromGrn=1";
   };
 
@@ -240,6 +274,27 @@ function GrnEntryPageInner() {
         setFormError("Enter purchase price for every line.");
         return;
       }
+      const stockRow = resolveStock(line.productVariantId);
+      if (stockRow?.is_multicolour) {
+        const splits = (line.colorSplits || []).filter(
+          (s) => s.color.trim() && Number(s.quantity) > 0
+        );
+        if (!splits.length) {
+          setSaving(false);
+          setFormError(
+            `${stockRow.product_name} is multi-colour — enter colour-wise quantities on that line.`
+          );
+          return;
+        }
+        const splitSum = colorSplitsQty(splits);
+        if (splitSum !== Math.trunc(Number(line.quantity) || 0)) {
+          setSaving(false);
+          setFormError(
+            `${stockRow.product_name}: colour quantities (${splitSum}) must equal line qty (${Math.trunc(Number(line.quantity) || 0)}).`
+          );
+          return;
+        }
+      }
     }
 
     if (!inward.supplierId) {
@@ -252,6 +307,24 @@ function GrnEntryPageInner() {
     if (!Number.isFinite(invoiceAmount) || invoiceAmount < 0) {
       setSaving(false);
       setFormError("Enter invoice amount.");
+      return;
+    }
+
+    const discountAmount = Number(inward.discountAmount || 0);
+    const taxAmount = Number(inward.taxAmount || 0);
+    if (!Number.isFinite(discountAmount) || discountAmount < 0) {
+      setSaving(false);
+      setFormError("Discount must be zero or a positive amount.");
+      return;
+    }
+    if (!Number.isFinite(taxAmount) || taxAmount < 0) {
+      setSaving(false);
+      setFormError("Tax must be zero or a positive amount.");
+      return;
+    }
+    if (discountAmount > linesTotal + 0.001) {
+      setSaving(false);
+      setFormError("Discount cannot exceed lines total.");
       return;
     }
 
@@ -283,13 +356,28 @@ function GrnEntryPageInner() {
         invoiceAmount,
         invoiceDate: inward.invoiceDate || undefined,
         documentPath: inward.documentPath || undefined,
+        discountAmount,
+        taxAmount,
         approveNow: approveNow || undefined,
         shopId: sessionShopId || undefined,
-        lines: inward.lines.map((line) => ({
-          productVariantId: line.productVariantId,
-          quantity: Number(line.quantity),
-          purchasePrice: Number(line.purchasePrice)
-        }))
+        lines: inward.lines.map((line) => {
+          const stockRow = resolveStock(line.productVariantId);
+          const colorBreakdown =
+            stockRow?.is_multicolour && line.colorSplits?.length
+              ? line.colorSplits
+                  .map((s) => ({
+                    color: s.color.trim(),
+                    quantity: Math.trunc(Number(s.quantity) || 0)
+                  }))
+                  .filter((s) => s.color && s.quantity > 0)
+              : undefined;
+          return {
+            productVariantId: line.productVariantId,
+            quantity: Number(line.quantity),
+            purchasePrice: Number(line.purchasePrice),
+            colorBreakdown
+          };
+        })
       }
     });
     setSaving(false);
@@ -323,9 +411,9 @@ function GrnEntryPageInner() {
   return (
     <>
       <AdminPageHeader
-        eyebrow="Step 2 · Inventory"
-        title="GRN entry"
-        description="Enter supplier inward. Submit for manager approval, or submit & approve if you have rights."
+        eyebrow="Inventory"
+        title="New GRN"
+        description="Receive supplier stock. Multi-colour SKUs need colour-wise quantities before submit."
         actions={
           <>
             <button
@@ -364,22 +452,6 @@ function GrnEntryPageInner() {
 
       {error && <AdminAlert>{error}</AdminAlert>}
       {formError && <AdminAlert>{formError}</AdminAlert>}
-      {draftBanner && <AdminAlert tone="ok">{draftBanner}</AdminAlert>}
-      {pendingDraft ? (
-        <AdminAlert tone="ok">
-          A saved GRN draft was found
-          {pendingDraft.savedAt
-            ? ` (saved ${new Date(pendingDraft.savedAt).toLocaleString()})`
-            : ""}
-          .{" "}
-          <button type="button" className="admin-ghost-btn" onClick={continueDraft}>
-            Continue draft
-          </button>{" "}
-          <button type="button" className="admin-ghost-btn" onClick={startNewGrn}>
-            Discard &amp; start new
-          </button>
-        </AdminAlert>
-      ) : null}
 
       <form className="grn-page" onSubmit={onSubmit}>
         <AdminPanel title="Supplier & invoice">
@@ -462,8 +534,34 @@ function GrnEntryPageInner() {
               />
             </label>
             <label>
+              <span>Discount (₹)</span>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={inward.discountAmount}
+                onChange={(e) => persistDraft({ ...inward, discountAmount: e.target.value })}
+                placeholder="0"
+              />
+            </label>
+            <label>
+              <span>Tax (₹)</span>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={inward.taxAmount}
+                onChange={(e) => persistDraft({ ...inward, taxAmount: e.target.value })}
+                placeholder="0"
+              />
+            </label>
+            <label>
               <span>Lines total (auto)</span>
               <input readOnly value={formatMoney(linesTotal)} />
+            </label>
+            <label>
+              <span>Grand total (auto)</span>
+              <input readOnly value={formatMoney(grandTotal)} />
             </label>
             <label className="grn-span-2">
               <span>Invoice document (PDF / image)</span>
@@ -473,13 +571,10 @@ function GrnEntryPageInner() {
                 disabled={docUploading}
                 onChange={(e) => void onInvoiceDocument(e.target.files?.[0] || null)}
               />
-              <small className="admin-field-hint">
-                {docUploading
-                  ? "Uploading…"
-                  : inward.documentPath
-                    ? `Attached: ${inward.documentName || inward.documentPath}`
-                    : "Optional scan or PDF of the supplier invoice."}
-              </small>
+              {docUploading ? <small>Uploading…</small> : null}
+              {!docUploading && inward.documentPath ? (
+                <small>Attached: {inward.documentName || inward.documentPath}</small>
+              ) : null}
               {inward.documentPath ? (
                 <div className="grn-doc-actions">
                   <button
@@ -517,7 +612,10 @@ function GrnEntryPageInner() {
                 onClick={() =>
                   persistDraft({
                     ...inward,
-                    lines: [...inward.lines, { productVariantId: "", quantity: "1", purchasePrice: "" }]
+                    lines: [
+                      ...inward.lines,
+                      { productVariantId: "", quantity: "1", purchasePrice: "" }
+                    ]
                   })
                 }
               >
@@ -529,31 +627,9 @@ function GrnEntryPageInner() {
         >
           {loading && <AdminLoading />}
 
-          <div className="grn-toolbar">
-            <label>
-              <span>Search SKU / part in list</span>
-              <input
-                value={skuFilter}
-                onChange={(e) => setSkuFilter(e.target.value)}
-                placeholder="Type to filter variants…"
-              />
-            </label>
-            {skuFilter.trim() && filteredOnly.length === 0 ? (
-              <div className="grn-missing">
-                <p>
-                  No SKU matches “{skuFilter.trim()}”. Create it in Product Master — this GRN stays as a
-                  draft.
-                </p>
-                <button type="button" className="btn" onClick={goCreateMissingProduct}>
-                  Create product
-                </button>
-              </div>
-            ) : null}
-          </div>
-
           <div className="grn-lines">
             <div className="grn-line grn-line--head" aria-hidden>
-              <span>SKU / variant</span>
+              <span>Product</span>
               <span>Qty</span>
               <span>Purchase ₹</span>
               <span>Line total</span>
@@ -561,23 +637,70 @@ function GrnEntryPageInner() {
             </div>
             {inward.lines.map((line, index) => {
               const total = lineTotal(line.quantity, line.purchasePrice);
+              const stockRow = line.productVariantId ? resolveStock(line.productVariantId) : null;
+              const isMulti = Boolean(stockRow?.is_multicolour);
+              const splits = line.colorSplits || [];
+              const splitSum = colorSplitsQty(splits);
+              const lineQty = Math.trunc(Number(line.quantity) || 0);
+              const splitOk = !isMulti || (splitSum > 0 && splitSum === lineQty);
               return (
-                <div className="grn-line" key={`grn-line-${index}`}>
-                  <label>
-                    <span className="grn-mobile-label">SKU / variant</span>
-                    <select
+                <div
+                  className={`grn-line${isMulti ? " grn-line--multicolour" : ""}`}
+                  key={`grn-line-${index}`}
+                >
+                  <div className="grn-sku-field">
+                    <span className="grn-mobile-label">Product</span>
+
+                    {stockRow ? (
+                      <div className="grn-sku-chip">
+                        <div className="grn-sku-chip-copy">
+                          <strong>{stockRow.product_name}</strong>
+                          <span>
+                            {stockRow.is_multicolour
+                              ? "Multi-colour"
+                              : stockRow.product_color || "—"}
+                            {" · "}
+                            {stockRow.sku || "no-sku"}
+                            {" · "}
+                            On hand {stockRow.stock_quantity}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="grn-sku-chip-change"
+                          onClick={() => openSkuPicker(index)}
+                        >
+                          Change
+                        </button>
+                        <button
+                          type="button"
+                          className="grn-sku-chip-clear"
+                          aria-label="Clear product"
+                          onClick={() => clearSku(index)}
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className="grn-sku-open"
+                        onClick={() => openSkuPicker(index)}
+                      >
+                        <Search size={16} aria-hidden />
+                        <span>Select product…</span>
+                      </button>
+                    )}
+
+                    <input
+                      tabIndex={-1}
+                      aria-hidden
+                      className="grn-sku-required"
                       required
                       value={line.productVariantId}
-                      onChange={(e) => updateLine(index, { productVariantId: e.target.value })}
-                    >
-                      <option value="">Select SKU / variant</option>
-                      {skuSelectOptions.map((row) => (
-                        <option key={`${row.variant_id}-${index}`} value={row.variant_id}>
-                          {row.product_name} · {row.sku || "no-sku"} · on hand {row.stock_quantity}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                      onChange={() => undefined}
+                    />
+                  </div>
                   <label>
                     <span className="grn-mobile-label">Qty</span>
                     <input
@@ -586,7 +709,9 @@ function GrnEntryPageInner() {
                       min={1}
                       step={1}
                       value={line.quantity}
+                      readOnly={isMulti}
                       onChange={(e) => updateLine(index, { quantity: e.target.value })}
+                      title={isMulti ? "Qty is the sum of colour counts below" : undefined}
                     />
                   </label>
                   <label>
@@ -620,6 +745,64 @@ function GrnEntryPageInner() {
                     <Trash2 size={15} />
                     <span>Remove</span>
                   </button>
+
+                  {isMulti ? (
+                    <div className={`grn-color-splits${splitOk ? "" : " is-mismatch"}`}>
+                      <div className="grn-color-splits-head">
+                        <strong>Colour-wise qty</strong>
+                        <span className={splitOk ? "muted" : "grn-split-warn"}>
+                          Sum {splitSum} / line {lineQty}
+                          {!splitOk ? " — must match" : ""}
+                        </span>
+                      </div>
+                      {splits.map((split, splitIndex) => (
+                        <div className="grn-color-split" key={`split-${index}-${splitIndex}`}>
+                          <ColorField
+                            id={`grn-colour-${index}-${splitIndex}`}
+                            value={split.color}
+                            onChange={(color) => updateColorSplit(index, splitIndex, { color })}
+                            required
+                          />
+                          <input
+                            type="number"
+                            min={1}
+                            step={1}
+                            value={split.quantity}
+                            onChange={(e) =>
+                              updateColorSplit(index, splitIndex, { quantity: e.target.value })
+                            }
+                            placeholder="Qty"
+                            required
+                          />
+                          <button
+                            type="button"
+                            className="admin-action-btn"
+                            disabled={splits.length <= 1}
+                            onClick={() =>
+                              updateLine(index, {
+                                colorSplits: splits.filter((_, i) => i !== splitIndex)
+                              })
+                            }
+                            aria-label="Remove colour"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        className="btn admin-ghost-btn"
+                        onClick={() =>
+                          updateLine(index, {
+                            colorSplits: [...splits, blankColorSplit()]
+                          })
+                        }
+                      >
+                        <Plus size={14} />
+                        Add colour
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               );
             })}
@@ -628,8 +811,14 @@ function GrnEntryPageInner() {
 
         <div className="grn-footer">
           <div className="grn-footer-totals">
-            <span>Lines total</span>
+            <span>Lines</span>
             <strong>{formatMoney(linesTotal)}</strong>
+            <span>Discount</span>
+            <strong>-{formatMoney(Number(inward.discountAmount) || 0)}</strong>
+            <span>Tax</span>
+            <strong>{formatMoney(Number(inward.taxAmount) || 0)}</strong>
+            <span>Grand</span>
+            <strong>{formatMoney(grandTotal)}</strong>
             <span>Invoice</span>
             <strong>
               {inward.invoiceAmount ? formatMoney(Number(inward.invoiceAmount) || 0) : "—"}
@@ -658,6 +847,16 @@ function GrnEntryPageInner() {
           </div>
         </div>
       </form>
+
+      <ProductPickModal
+        open={pickerOpen != null}
+        onClose={closeSkuPicker}
+        onSelect={chooseSku}
+        onCreateProduct={() => {
+          closeSkuPicker();
+          goCreateMissingProduct();
+        }}
+      />
     </>
   );
 }

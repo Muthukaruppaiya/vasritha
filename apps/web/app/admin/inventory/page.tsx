@@ -22,6 +22,10 @@ import {
   AdminPanel
 } from "../../../components/admin/admin-ui";
 import { AdminFormModal } from "../../../components/admin/admin-form-modal";
+import {
+  ProductPickModal,
+  type ProductPickRow
+} from "../../../components/admin/product-pick-modal";
 import { adminFetch, formatDate, getAdminUser } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
 import {
@@ -40,6 +44,8 @@ type StockRow = {
   product_id: string;
   product_name: string;
   product_status: string;
+  product_color?: string | null;
+  is_multicolour?: boolean;
   hsn_code?: string | null;
   gst_rate?: string | number | null;
   category_id: string | null;
@@ -124,6 +130,8 @@ function AdminInventoryPageInner() {
   const [page, setPage] = useState(0);
   const [labelLayout, setLabelLayout] = useState<LabelLayout>("set2");
   const [adjustOpen, setAdjustOpen] = useState(false);
+  const [adjustPickerOpen, setAdjustPickerOpen] = useState(false);
+  const [adjustPicked, setAdjustPicked] = useState<ProductPickRow | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
   const [adjust, setAdjust] = useState(blankAdjust);
@@ -183,6 +191,23 @@ function AdminInventoryPageInner() {
 
   const openAdjust = (variantId = "") => {
     setAdjust(blankAdjust(variantId));
+    const fromStock = variantId
+      ? (data?.stock || []).find((s) => s.variant_id === variantId) || null
+      : null;
+    setAdjustPicked(
+      fromStock
+        ? {
+            variant_id: fromStock.variant_id,
+            product_id: fromStock.product_id,
+            product_name: fromStock.product_name,
+            sku: fromStock.sku,
+            variant_name: fromStock.variant_name,
+            product_color: fromStock.product_color,
+            is_multicolour: fromStock.is_multicolour,
+            stock_quantity: fromStock.stock_quantity
+          }
+        : null
+    );
     setFormError("");
     setAdjustOpen(true);
   };
@@ -618,33 +643,58 @@ function AdminInventoryPageInner() {
       <AdminFormModal
         open={adjustOpen}
         title="Adjust stock"
-        eyebrow="Corrections only"
         submitLabel="Post adjustment"
         savingLabel="Posting…"
         saving={saving}
         error={formError}
-        onClose={() => setAdjustOpen(false)}
+        onClose={() => {
+          setAdjustOpen(false);
+          setAdjustPickerOpen(false);
+        }}
         onSubmit={onAdjustSubmit}
       >
-        <p className="admin-span-2 muted inv-modal-hint">
-          Prefer Receive (GRN) for new stock. Use Adjust for opening balance, damage, or count corrections.
-          Sales are deducted automatically from POS / online orders.
-        </p>
-        <label className="admin-span-2">
-          <span>Variant</span>
-          <select
+        <div className="admin-span-2 grn-sku-field">
+          {adjustPicked ? (
+            <div className="grn-sku-chip">
+              <div className="grn-sku-chip-copy">
+                <strong>{adjustPicked.product_name}</strong>
+                <span>
+                  {adjustPicked.is_multicolour
+                    ? "Multi-colour"
+                    : adjustPicked.product_color || "—"}
+                  {" · "}
+                  {adjustPicked.sku || "no-sku"}
+                  {" · "}
+                  On hand {adjustPicked.stock_quantity}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="grn-sku-chip-change"
+                onClick={() => setAdjustPickerOpen(true)}
+              >
+                Change
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              className="grn-sku-open"
+              onClick={() => setAdjustPickerOpen(true)}
+            >
+              <Search size={16} aria-hidden />
+              <span>Select product…</span>
+            </button>
+          )}
+          <input
+            tabIndex={-1}
+            aria-hidden
+            className="grn-sku-required"
             required
             value={adjust.productVariantId}
-            onChange={(e) => setAdjust((f) => ({ ...f, productVariantId: e.target.value }))}
-          >
-            <option value="">Select variant</option>
-            {(data?.stock || []).map((row) => (
-              <option key={row.variant_id} value={row.variant_id}>
-                {row.product_name} · {row.sku || "no-sku"} · qty {row.stock_quantity}
-              </option>
-            ))}
-          </select>
-        </label>
+            onChange={() => undefined}
+          />
+        </div>
         <label>
           <span>Type</span>
           <select value={adjust.type} onChange={(e) => setAdjust((f) => ({ ...f, type: e.target.value }))}>
@@ -660,18 +710,26 @@ function AdminInventoryPageInner() {
             type="number"
             value={adjust.quantity}
             onChange={(e) => setAdjust((f) => ({ ...f, quantity: e.target.value }))}
-            placeholder={adjust.type === "manual_adjustment" ? "e.g. -2 or 3" : "e.g. 5"}
           />
         </label>
         <label className="admin-span-2">
-          <span>Note / reason</span>
+          <span>Note</span>
           <input
             value={adjust.note}
             onChange={(e) => setAdjust((f) => ({ ...f, note: e.target.value }))}
-            placeholder="Required for audits — e.g. stock count, damaged"
           />
         </label>
       </AdminFormModal>
+
+      <ProductPickModal
+        open={adjustPickerOpen}
+        onClose={() => setAdjustPickerOpen(false)}
+        onSelect={(row) => {
+          setAdjustPicked(row);
+          setAdjust((f) => ({ ...f, productVariantId: row.variant_id }));
+          setAdjustPickerOpen(false);
+        }}
+      />
     </>
   );
 }

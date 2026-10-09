@@ -19,6 +19,7 @@ import {
 } from "../../../../../lib/product-status";
 import type { AppRole } from "../../../../../lib/auth/rbac";
 import { ensureProductRestockSchema } from "../../../../../lib/order-courier";
+import { ensureColourName } from "../../../../../lib/colours";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -33,6 +34,7 @@ const ALLOWED_FIELDS = [
   "short_name",
   "short_description",
   "color",
+  "is_multicolour",
   "description",
   "category_id",
   "subcategory_id",
@@ -203,6 +205,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if ("restock_expected" in normalized) {
     normalized.restock_expected = Boolean(normalized.restock_expected);
   }
+  if ("is_multicolour" in normalized) {
+    normalized.is_multicolour = Boolean(normalized.is_multicolour);
+    if (normalized.is_multicolour) {
+      normalized.color = "";
+    }
+  }
   if ("subcategory_id" in normalized) {
     normalized.subcategory_id = emptyToNull(normalized.subcategory_id);
   }
@@ -243,6 +251,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         return fail("This product already has child designs; clear those first before nesting it");
       }
     }
+  }
+
+  if ("color" in normalized && normalized.color) {
+    await ensureColourName(String(normalized.color));
   }
 
   for (const key of ALLOWED_FIELDS) {

@@ -6,6 +6,7 @@ import { ensureGstSchema, resolveSaleGstRate, summariseInclusiveLines } from "..
 import { getPurchasableStock } from "../../../../lib/cart-reservations";
 import { ensureBrandsSchema, resolveBrandId } from "../../../../lib/brands";
 import { quoteShipping } from "../../../../lib/shipping";
+import { nextDocumentNumber } from "../../../../lib/document-numbers";
 
 type OrderRow = {
   id: string;
@@ -295,7 +296,7 @@ export async function POST(request: NextRequest) {
   const shippingAmount = shippingQuote.shipping_amount;
   const total = Number((taxSummary.payable + shippingAmount).toFixed(2));
 
-  const orderNumber = `VAS-${Date.now().toString().slice(-8)}`;
+  const orderNumber = await nextDocumentNumber("online");
   const brandId = await resolveBrandId(null);
   const order = await queryOne<{
     id: string;

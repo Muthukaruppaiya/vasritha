@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { fail, ok, requirePermission, writeAuditLog } from "../../../../../lib/auth/api";
 import { query, queryOne, withTransaction } from "../../../../../lib/db/pool";
+import { getSellerGstProfile } from "../../../../../lib/gst";
 import { earnLoyaltyForPaidOrder } from "../../../../../lib/loyalty";
 import { requireScopedShopId } from "../../../../../lib/shop-scope";
 
@@ -131,6 +132,8 @@ export async function POST(request: NextRequest) {
     /* best-effort */
   }
 
+  const seller = await getSellerGstProfile(order.shop_id);
+
   return ok({
     order_id: orderId,
     order_number: order.order_number,
@@ -138,6 +141,9 @@ export async function POST(request: NextRequest) {
     customer_phone: order.pos_customer_phone,
     invoice_amount: total,
     collected: collectAmount,
+    method,
+    collected_at: new Date().toISOString(),
+    seller,
     ...result,
     loyalty
   });

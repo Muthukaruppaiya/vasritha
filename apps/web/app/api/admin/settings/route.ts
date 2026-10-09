@@ -42,6 +42,11 @@ const ALLOWED_FIELDS = [
   "company_state",
   "company_state_code",
   "prices_inclusive_of_gst",
+  "doc_prefix_invoice",
+  "doc_prefix_grn",
+  "doc_prefix_online",
+  "doc_number_pad",
+  "doc_number_year_mode",
   "staff_login_security_enabled",
   "staff_login_require_ip",
   "staff_login_require_device",
@@ -59,6 +64,8 @@ export async function GET() {
   await ensureShippingSchema();
   const { ensureExchangePolicySchema } = await import("../../../../lib/exchange-policy");
   await ensureExchangePolicySchema();
+  const { ensureDocumentNumberSchema } = await import("../../../../lib/document-numbers");
+  await ensureDocumentNumberSchema();
   const data = await queryOne(`select * from site_settings limit 1`);
   return ok(data);
 }
@@ -73,12 +80,43 @@ export async function PATCH(request: NextRequest) {
   await ensureShippingSchema();
   const { ensureExchangePolicySchema } = await import("../../../../lib/exchange-policy");
   await ensureExchangePolicySchema();
+  const { ensureDocumentNumberSchema } = await import("../../../../lib/document-numbers");
+  await ensureDocumentNumberSchema();
 
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return fail("Invalid body");
 
   const existing = await queryOne<{ id: string }>(`select id from site_settings limit 1`);
   if (!existing) return fail("Settings row missing", 404);
+
+  if ("doc_prefix_invoice" in body) {
+    body.doc_prefix_invoice = String(body.doc_prefix_invoice || "VAS")
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "")
+      .slice(0, 12) || "VAS";
+  }
+  if ("doc_prefix_grn" in body) {
+    body.doc_prefix_grn = String(body.doc_prefix_grn || "GRN")
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "")
+      .slice(0, 12) || "GRN";
+  }
+  if ("doc_prefix_online" in body) {
+    body.doc_prefix_online = String(body.doc_prefix_online || "VAS")
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "")
+      .slice(0, 12) || "VAS";
+  }
+  if ("doc_number_pad" in body) {
+    const pad = Math.trunc(Number(body.doc_number_pad));
+    body.doc_number_pad = Number.isFinite(pad) ? Math.min(8, Math.max(2, pad)) : 3;
+  }
+  if ("doc_number_year_mode" in body) {
+    body.doc_number_year_mode = body.doc_number_year_mode === "fy" ? "fy" : "calendar";
+  }
 
   const updates: string[] = [];
   const values: unknown[] = [];
