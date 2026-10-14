@@ -15,7 +15,7 @@ import { AdminFormModal } from "../../../components/admin/admin-form-modal";
 import { adminFetch, adminUpload, formatDate } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
 import { ROLE_META, ROLE_ORDER, type AppRole } from "../../../lib/auth/rbac";
-import { previewDocumentNumber } from "../../../lib/document-numbers";
+import { previewDocumentNumber } from "../../../lib/document-numbers-format";
 
 type Settings = {
   site_name: string | null;

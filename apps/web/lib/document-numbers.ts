@@ -2,16 +2,23 @@ import type { QueryResultRow } from "pg";
 import { query, queryOne } from "./db/pool";
 import { ensureCompanySettingsSchema } from "./company-settings";
 import { skipEnsureIfRelationExists } from "./schema-bootstrap";
+import {
+  buildDocumentNumber,
+  DOC_NUMBER_DEFAULTS,
+  previewDocumentNumber,
+  resolveDocYearKey,
+  sanitizeDocPad,
+  sanitizeDocPrefix,
+  type DocNumberKind,
+  type DocNumberSettings
+} from "./document-numbers-format";
 
-export type DocNumberKind = "invoice" | "grn" | "online";
-
-export type DocNumberSettings = {
-  doc_prefix_invoice: string;
-  doc_prefix_grn: string;
-  doc_prefix_online: string;
-  doc_number_pad: number;
-  doc_number_year_mode: "calendar" | "fy";
-};
+export type { DocNumberKind, DocNumberSettings };
+export {
+  buildDocumentNumber,
+  previewDocumentNumber,
+  resolveDocYearKey
+} from "./document-numbers-format";
 
 type DbClient = {
   query: <T extends QueryResultRow = QueryResultRow>(
@@ -24,13 +31,7 @@ type DbClient = {
   ) => Promise<T | null>;
 };
 
-const DEFAULTS: DocNumberSettings = {
-  doc_prefix_invoice: "VAS",
-  doc_prefix_grn: "GRN",
-  doc_prefix_online: "VAS",
-  doc_number_pad: 3,
-  doc_number_year_mode: "calendar"
-};
+const DEFAULTS = DOC_NUMBER_DEFAULTS;
 
 let schemaReady: Promise<void> | null = null;
 
@@ -68,57 +69,6 @@ export async function ensureDocumentNumberSchema() {
   return schemaReady;
 }
 
-function sanitizePrefix(raw: string | null | undefined, fallback: string) {
-  const cleaned = String(raw || "")
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "")
-    .slice(0, 12);
-  return cleaned || fallback;
-}
-
-function sanitizePad(raw: unknown) {
-  const n = Math.trunc(Number(raw));
-  if (!Number.isFinite(n)) return DEFAULTS.doc_number_pad;
-  return Math.min(8, Math.max(2, n));
-}
-
-export function resolveDocYearKey(
-  mode: "calendar" | "fy",
-  now = new Date(),
-  fyStartMonth = 4
-): string {
-  if (mode !== "fy") return String(now.getFullYear());
-  const month = now.getMonth() + 1;
-  const year = now.getFullYear();
-  const start = Math.min(12, Math.max(1, Math.trunc(fyStartMonth) || 4));
-  // Indian FY: Apr–Mar → year key is the FY starting calendar year.
-  return String(month >= start ? year : year - 1);
-}
-
-export function buildDocumentNumber(prefix: string, yearKey: string, seq: number, pad: number) {
-  const safePad = sanitizePad(pad);
-  const safePrefix = sanitizePrefix(prefix, "DOC");
-  return `${safePrefix}${yearKey}-${String(Math.max(1, seq)).padStart(safePad, "0")}`;
-}
-
-export function previewDocumentNumber(
-  settings: Partial<DocNumberSettings>,
-  kind: DocNumberKind,
-  seq = 1,
-  now = new Date()
-) {
-  const prefix =
-    kind === "grn"
-      ? sanitizePrefix(settings.doc_prefix_grn, DEFAULTS.doc_prefix_grn)
-      : kind === "online"
-        ? sanitizePrefix(settings.doc_prefix_online, DEFAULTS.doc_prefix_online)
-        : sanitizePrefix(settings.doc_prefix_invoice, DEFAULTS.doc_prefix_invoice);
-  const mode = settings.doc_number_year_mode === "fy" ? "fy" : "calendar";
-  const yearKey = resolveDocYearKey(mode, now);
-  return buildDocumentNumber(prefix, yearKey, seq, sanitizePad(settings.doc_number_pad));
-}
-
 export async function getDocNumberSettings(): Promise<DocNumberSettings> {
   await ensureDocumentNumberSchema();
   const row = await queryOne<{
@@ -134,10 +84,10 @@ export async function getDocNumberSettings(): Promise<DocNumberSettings> {
      limit 1`
   );
   return {
-    doc_prefix_invoice: sanitizePrefix(row?.doc_prefix_invoice, DEFAULTS.doc_prefix_invoice),
-    doc_prefix_grn: sanitizePrefix(row?.doc_prefix_grn, DEFAULTS.doc_prefix_grn),
-    doc_prefix_online: sanitizePrefix(row?.doc_prefix_online, DEFAULTS.doc_prefix_online),
-    doc_number_pad: sanitizePad(row?.doc_number_pad),
+    doc_prefix_invoice: sanitizeDocPrefix(row?.doc_prefix_invoice, DEFAULTS.doc_prefix_invoice),
+    doc_prefix_grn: sanitizeDocPrefix(row?.doc_prefix_grn, DEFAULTS.doc_prefix_grn),
+    doc_prefix_online: sanitizeDocPrefix(row?.doc_prefix_online, DEFAULTS.doc_prefix_online),
+    doc_number_pad: sanitizeDocPad(row?.doc_number_pad),
     doc_number_year_mode: row?.doc_number_year_mode === "fy" ? "fy" : "calendar"
   };
 }
