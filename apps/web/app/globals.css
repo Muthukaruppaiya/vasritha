@@ -14,6 +14,14 @@
   --mocha-deep:#573426;
   --header-fg:#fffaf5;
   --site-header-h:148px;
+  --font-heading:"Playfair Display",serif;
+  --font-body:Manrope,sans-serif;
+  --font-ta:"Noto Sans Tamil",sans-serif;
+  --font-ml:"Noto Sans Malayalam",sans-serif;
+  --font-kn:"Noto Sans Kannada",sans-serif;
+  --font-hi:"Noto Sans Devanagari",sans-serif;
+  --font-pa:"Noto Sans Gurmukhi",sans-serif;
+  --font-gu:"Noto Sans Gujarati",sans-serif;
   --font-price:var(--font-heading),serif;
   /* Ops UI density */
   --admin-bg:#f4efe8;

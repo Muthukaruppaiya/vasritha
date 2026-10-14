@@ -1,14 +1,4 @@
 import type { Metadata } from "next";
-import {
-  Playfair_Display,
-  Manrope,
-  Noto_Sans_Tamil,
-  Noto_Sans_Malayalam,
-  Noto_Sans_Kannada,
-  Noto_Sans_Devanagari,
-  Noto_Sans_Gurmukhi,
-  Noto_Sans_Gujarati
-} from "next/font/google";
 import { ScrollRevealInit } from "../components/scroll-reveal";
 import { SmoothScroll } from "../components/smooth-scroll";
 import { StorefrontI18n } from "../components/storefront-i18n";
@@ -17,38 +7,24 @@ import { LoyaltyPopup } from "../components/loyalty-popup";
 import { WhatsAppFloat } from "../components/whatsapp-float";
 import "./globals.css";
 
-const heading = Playfair_Display({ subsets: ["latin"], variable: "--font-heading" });
-const body = Manrope({ subsets: ["latin"], variable: "--font-body" });
-const tamil = Noto_Sans_Tamil({
-  subsets: ["tamil"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-ta"
-});
-const malayalam = Noto_Sans_Malayalam({
-  subsets: ["malayalam"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-ml"
-});
-const kannada = Noto_Sans_Kannada({
-  subsets: ["kannada"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-kn"
-});
-const hindi = Noto_Sans_Devanagari({
-  subsets: ["devanagari"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-hi"
-});
-const punjabi = Noto_Sans_Gurmukhi({
-  subsets: ["gurmukhi"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-pa"
-});
-const gujarati = Noto_Sans_Gujarati({
-  subsets: ["gujarati"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-gu"
-});
+/**
+ * Fonts load at runtime via Google CSS (see <link> below), not next/font/google.
+ * next/font/google intermittently fails Turbopack builds when Google returns
+ * extensionless /l/font?kit=…&skey=… URLs (vercel/next.js#99114).
+ */
+const GOOGLE_FONTS_CSS =
+  "https://fonts.googleapis.com/css2?" +
+  [
+    "family=Manrope:wght@400;500;600;700",
+    "family=Noto+Sans+Devanagari:wght@400;500;600;700",
+    "family=Noto+Sans+Gujarati:wght@400;500;600;700",
+    "family=Noto+Sans+Gurmukhi:wght@400;500;600;700",
+    "family=Noto+Sans+Kannada:wght@400;500;600;700",
+    "family=Noto+Sans+Malayalam:wght@400;500;600;700",
+    "family=Noto+Sans+Tamil:wght@400;500;600;700",
+    "family=Playfair+Display:wght@400;500;600;700;800"
+  ].join("&") +
+  "&display=swap";
 
 export const metadata: Metadata = {
   title: "Vasritha | Timeless Elegance",
@@ -61,10 +37,12 @@ export const dynamic = "force-dynamic";
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body
-        className={`${heading.variable} ${body.variable} ${tamil.variable} ${malayalam.variable} ${kannada.variable} ${hindi.variable} ${punjabi.variable} ${gujarati.variable}`}
-        suppressHydrationWarning
-      >
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link rel="stylesheet" href={GOOGLE_FONTS_CSS} />
+      </head>
+      <body suppressHydrationWarning>
         <StorefrontI18n>
           <SmoothScroll>
             {children}
