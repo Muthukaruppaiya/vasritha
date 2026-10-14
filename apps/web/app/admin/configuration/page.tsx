@@ -329,6 +329,15 @@ export default function AdminConfigurationPage() {
             ? "Edit showcase media"
             : "Add showcase media";
 
+  const addActionLabel =
+    tab === "offers"
+      ? "Add offer message"
+      : tab === "hero"
+        ? "Add hero slide"
+        : tab === "status"
+          ? "Add status story"
+          : "Add showcase media";
+
   return (
     <>
       <AdminPageHeader
@@ -336,9 +345,15 @@ export default function AdminConfigurationPage() {
         title="Configuration"
         description="Offer bar, hero slides, status stories, and showcase media."
         actions={
-          <button type="button" className="btn" onClick={openCreate}>
-            <Plus size={15} />
-            Add
+          <button
+            type="button"
+            className="admin-icon-tip admin-action-btn--primary"
+            onClick={openCreate}
+            data-tooltip={addActionLabel}
+            aria-label={addActionLabel}
+          >
+            <Plus size={17} strokeWidth={2.2} />
+            <span>{addActionLabel}</span>
           </button>
         }
       />

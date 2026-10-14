@@ -314,9 +314,15 @@ export default function AdminLoyaltyPage() {
         title="Loyalty"
         description="Rules for points and milestones, plus the storefront loyalty popup."
         actions={
-          <button type="button" className="btn" onClick={openCreate}>
-            <Plus size={16} />
-            New rule
+          <button
+            type="button"
+            className="admin-icon-tip admin-action-btn--primary"
+            onClick={openCreate}
+            data-tooltip="New rule"
+            aria-label="New rule"
+          >
+            <Plus size={17} strokeWidth={2.2} />
+            <span>New rule</span>
           </button>
         }
       />

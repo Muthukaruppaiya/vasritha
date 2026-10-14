@@ -31,6 +31,15 @@ function clip(value: string, max: number) {
   return `${clean.slice(0, max - 1)}…`;
 }
 
+/** Line-item amounts: no ₹, no comma (e.g. 4190) for tight thermal columns. */
+function formatAmount(value: number | string | null | undefined) {
+  const n = Number(value ?? 0);
+  if (!Number.isFinite(n)) return "0";
+  const whole = Math.abs(n - Math.round(n)) < 0.005;
+  if (whole) return String(Math.round(n));
+  return n.toFixed(2);
+}
+
 /** GST bill: A4 tax invoice for online orders; 3″ (80mm) thermal roll for POS. */
 export function InvoiceBill({ data, id = "vasritha-invoice-bill" }: Props) {
   if (data.channel === "online") {
@@ -38,7 +47,13 @@ export function InvoiceBill({ data, id = "vasritha-invoice-bill" }: Props) {
   }
 
   const isPos = data.channel === "pos";
-  const discount = Number(data.discount_amount || 0);
+  const combinedDiscount = Math.max(0, Number(data.discount_amount || 0));
+  let exchangeCredit = Math.max(0, Number(data.exchange_credit_amount || 0));
+  let cashierDiscount = Math.max(0, Number(data.cashier_discount_amount || 0));
+  // Legacy bills: only discount_amount was stored (exchange was folded into it).
+  if (exchangeCredit <= 0.009 && cashierDiscount <= 0.009 && combinedDiscount > 0.009) {
+    cashierDiscount = combinedDiscount;
+  }
   const shipping = Number(data.shipping_amount || 0);
   const lines = Array.isArray(data.items) ? data.items : [];
   const seller = data.seller;
@@ -131,8 +146,8 @@ export function InvoiceBill({ data, id = "vasritha-invoice-bill" }: Props) {
                     {meta ? <span>{clip(meta, 40)}</span> : null}
                   </td>
                   <td className="is-qty">{item.quantity}</td>
-                  <td className="is-rate">{formatMoney(item.unit_price)}</td>
-                  <td className="is-amt">{formatMoney(item.line_total)}</td>
+                  <td className="is-rate">{formatAmount(item.unit_price)}</td>
+                  <td className="is-amt">{formatAmount(item.line_total)}</td>
                 </tr>
               );
             })
@@ -149,10 +164,16 @@ export function InvoiceBill({ data, id = "vasritha-invoice-bill" }: Props) {
           <span>Amount</span>
           <b>{formatMoney(data.subtotal)}</b>
         </div>
-        {discount > 0 ? (
+        {cashierDiscount > 0.009 ? (
           <div>
             <span>Discount</span>
-            <b>-{formatMoney(discount)}</b>
+            <b>-{formatMoney(cashierDiscount)}</b>
+          </div>
+        ) : null}
+        {exchangeCredit > 0.009 ? (
+          <div>
+            <span>Credit</span>
+            <b>-{formatMoney(exchangeCredit)}</b>
           </div>
         ) : null}
         {!isPos && shipping > 0 ? (

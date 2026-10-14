@@ -348,6 +348,7 @@ export const ROLE_PERMISSIONS: Record<AppRole, Permission[]> = {
 export const ADMIN_NAV_PERMISSIONS: Record<string, Permission[]> = {
   "/admin": ["dashboard:all", "dashboard:ops", "dashboard:finance"],
   "/admin/products": ["products:manage", "products:read"],
+  "/admin/products/new": ["products:manage"],
   "/admin/categories": ["categories:manage", "products:manage"],
   "/admin/orders": ["orders:view", "orders:manage", "orders:fulfill"],
   "/admin/billing": ["pos:create", "invoices:print"],

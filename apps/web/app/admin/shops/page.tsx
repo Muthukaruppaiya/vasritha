@@ -171,9 +171,15 @@ export default function AdminShopsPage() {
         title="Shops"
         description="Add more store locations over time. POS bills and stock movements can be tagged to a shop."
         actions={
-          <button type="button" className="btn" onClick={openCreate}>
-            <Plus size={15} />
-            Add shop
+          <button
+            type="button"
+            className="admin-icon-tip admin-action-btn--primary"
+            onClick={openCreate}
+            data-tooltip="Add shop"
+            aria-label="Add shop"
+          >
+            <Plus size={17} strokeWidth={2.2} />
+            <span>Add shop</span>
           </button>
         }
       />

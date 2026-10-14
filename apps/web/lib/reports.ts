@@ -112,7 +112,7 @@ export async function buildSalesReport(filters: ReportFilters = {}): Promise<Rep
   const params: unknown[] = [range.from, range.to];
   const where = [
     `o.created_at::date between $1::date and $2::date`,
-    `coalesce(o.status,'') not in ('cancelled')`
+    `coalesce(o.status::text,'') not in ('cancelled')`
   ];
 
   if (filters.q?.trim()) {
@@ -135,11 +135,11 @@ export async function buildSalesReport(filters: ReportFilters = {}): Promise<Rep
   }
   if (filters.order_status?.trim()) {
     params.push(filters.order_status.trim().toLowerCase());
-    where.push(`lower(coalesce(o.status,'')) = $${params.length}`);
+    where.push(`lower(coalesce(o.status::text,'')) = $${params.length}`);
   }
   if (filters.payment_status?.trim()) {
     params.push(filters.payment_status.trim().toLowerCase());
-    where.push(`lower(coalesce(o.payment_status,'')) = $${params.length}`);
+    where.push(`lower(coalesce(o.payment_status::text,'')) = $${params.length}`);
   }
   if (filters.product?.trim()) {
     params.push(`%${filters.product.trim()}%`);
@@ -181,7 +181,7 @@ export async function buildSalesReport(filters: ReportFilters = {}): Promise<Rep
     quantity: string;
   }>(
     `select o.id as order_id, o.order_number, o.created_at, o.subtotal, o.discount_amount, o.tax_amount,
-            o.total_amount, o.payment_status, coalesce(o.status,'') as status,
+            o.total_amount, o.payment_status, coalesce(o.status::text,'') as status,
             coalesce(nullif(o.pos_customer_name,''), c.full_name, 'Walk-in') as customer_name,
             coalesce((select sum(p.amount) from payments p where p.order_id = o.id and p.status = 'paid'),0)::text as paid_sum,
             (select p.provider from payments p where p.order_id = o.id and p.status = 'paid' order by p.created_at desc limit 1) as provider,
@@ -270,11 +270,11 @@ export async function buildOrderReport(filters: ReportFilters = {}): Promise<Rep
   }
   if (filters.order_status?.trim()) {
     params.push(filters.order_status.trim().toLowerCase());
-    where.push(`lower(coalesce(o.status,'')) = $${params.length}`);
+    where.push(`lower(coalesce(o.status::text,'')) = $${params.length}`);
   }
   if (filters.payment_status?.trim()) {
     params.push(filters.payment_status.trim().toLowerCase());
-    where.push(`lower(coalesce(o.payment_status,'')) = $${params.length}`);
+    where.push(`lower(coalesce(o.payment_status::text,'')) = $${params.length}`);
   }
   if (filters.payment_method?.trim()) {
     params.push(filters.payment_method.trim().toLowerCase());
@@ -293,7 +293,7 @@ export async function buildOrderReport(filters: ReportFilters = {}): Promise<Rep
     channel: string;
     provider: string | null;
   }>(
-    `select o.order_number, o.created_at, o.total_amount, o.payment_status, coalesce(o.status,'') as status,
+    `select o.order_number, o.created_at, o.total_amount, o.payment_status, coalesce(o.status::text,'') as status,
             coalesce(o.channel,'online') as channel,
             coalesce(nullif(o.pos_customer_name,''), c.full_name, 'Walk-in') as customer_name,
             (select p.provider from payments p where p.order_id = o.id and p.status = 'paid' order by p.created_at desc limit 1) as provider
@@ -540,7 +540,7 @@ export async function buildProductSalesReport(filters: ReportFilters = {}): Prom
   const where = [
     `o.payment_status = 'paid'`,
     `o.created_at::date between $1::date and $2::date`,
-    `coalesce(o.status,'') not in ('cancelled')`
+    `coalesce(o.status::text,'') not in ('cancelled')`
   ];
   if (filters.product?.trim() || filters.q?.trim()) {
     const term = (filters.product || filters.q || "").trim();
@@ -657,7 +657,7 @@ export async function buildCategorySalesReport(filters: ReportFilters = {}): Pro
   const where = [
     `o.payment_status = 'paid'`,
     `o.created_at::date between $1::date and $2::date`,
-    `coalesce(o.status,'') not in ('cancelled')`
+    `coalesce(o.status::text,'') not in ('cancelled')`
   ];
   if (filters.category?.trim() || filters.q?.trim()) {
     params.push(`%${(filters.category || filters.q || "").trim()}%`);
@@ -758,7 +758,7 @@ export async function buildCollectionsReport(filters: ReportFilters = {}): Promi
      join orders o on o.id = p.order_id
      where p.status = 'paid'
        and p.created_at::date between $1::date and $2::date
-       and coalesce(o.status,'') not in ('cancelled')
+       and coalesce(o.status::text,'') not in ('cancelled')
      group by coalesce(p.provider, 'other')`,
     [range.from, range.to]
   );
@@ -909,7 +909,7 @@ export async function buildCustomerReport(filters: ReportFilters = {}): Promise<
   const params: unknown[] = [range.from, range.to];
   const where = [
     `o.created_at::date between $1::date and $2::date`,
-    `coalesce(o.status,'') not in ('cancelled')`
+    `coalesce(o.status::text,'') not in ('cancelled')`
   ];
   if (filters.q?.trim() || filters.customer?.trim()) {
     params.push(`%${(filters.q || filters.customer || "").trim()}%`);
@@ -1276,7 +1276,7 @@ export async function buildProfitReport(filters: ReportFilters = {}): Promise<Re
        ),0)::text as returns
      from orders
      where created_at::date between $1::date and $2::date
-       and coalesce(status,'') not in ('cancelled')`,
+       and coalesce(status::text,'') not in ('cancelled')`,
     [range.from, range.to]
   );
 

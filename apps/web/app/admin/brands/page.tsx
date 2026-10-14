@@ -148,9 +148,15 @@ export default function AdminBrandsPage() {
         title="Brands"
         description="Sales brand plugins. Customer storefronts use these names; internal ops stay Sukadhaa."
         actions={
-          <button type="button" className="btn" onClick={openCreate}>
-            <Plus size={15} />
-            Add brand
+          <button
+            type="button"
+            className="admin-icon-tip admin-action-btn--primary"
+            onClick={openCreate}
+            data-tooltip="Add brand"
+            aria-label="Add brand"
+          >
+            <Plus size={17} strokeWidth={2.2} />
+            <span>Add brand</span>
           </button>
         }
       />

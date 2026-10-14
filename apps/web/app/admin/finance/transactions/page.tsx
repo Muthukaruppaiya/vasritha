@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Filter } from "lucide-react";
 import {
   AdminAlert,
   AdminBadge,
@@ -83,8 +84,14 @@ export default function FinanceTransactionsPage() {
           <span>Search</span>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Entry / party / ref" />
         </label>
-        <button className="btn" type="submit">
-          Apply
+        <button
+          type="submit"
+          className="admin-icon-tip admin-action-btn--primary"
+          data-tooltip="Apply"
+          aria-label="Apply"
+        >
+          <Filter size={16} strokeWidth={2} />
+          <span>Apply</span>
         </button>
       </form>
       {error ? <AdminAlert>{error}</AdminAlert> : null}

@@ -444,11 +444,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Fold exchange credit into discount for payable (capped at new-items subtotal).
+    // Keep a split so the bill can label Discount vs Credit separately.
     const cashierDiscount = discountAmount;
     const totalDiscount = Math.min(
       subtotal,
       Math.round((cashierDiscount + exchangeCredit) * 100) / 100
     );
+    // Apply exchange credit first, then cashier discount (both capped by totalDiscount).
+    const appliedExchangeCredit = Math.min(exchangeCredit, totalDiscount);
+    const appliedCashierDiscount = Math.round((totalDiscount - appliedExchangeCredit) * 100) / 100;
     discountAmount = totalDiscount;
 
     const taxSummary = summariseInclusiveLines(
@@ -484,6 +488,8 @@ export async function POST(request: NextRequest) {
         total_amount: string;
         subtotal: string;
         discount_amount: string;
+        cashier_discount_amount: string;
+        exchange_credit_amount: string;
         tax_amount: string;
         payment_status: string;
         status: string;
@@ -495,10 +501,12 @@ export async function POST(request: NextRequest) {
       }>(
         `insert into orders (
            order_number, customer_id, shipping_address_id, status, payment_status,
-           subtotal, discount_amount, tax_amount, shipping_amount, total_amount, channel,
+           subtotal, discount_amount, cashier_discount_amount, exchange_credit_amount,
+           tax_amount, shipping_amount, total_amount, channel,
            shop_id, brand_id, pos_customer_name, pos_customer_phone, pos_customer_email
-         ) values ($1, $2, null, $3, $4, $5, $6, $7, 0, $8, 'pos', $9, $10, $11, $12, $13)
-         returning id, order_number, created_at, total_amount, subtotal, discount_amount, tax_amount, payment_status, status, channel,
+         ) values ($1, $2, null, $3, $4, $5, $6, $7, $8, $9, 0, $10, 'pos', $11, $12, $13, $14, $15)
+         returning id, order_number, created_at, total_amount, subtotal, discount_amount,
+                   cashier_discount_amount, exchange_credit_amount, tax_amount, payment_status, status, channel,
                    shop_id, brand_id, pos_customer_name, pos_customer_phone, pos_customer_email`,
         [
           orderNumber,
@@ -507,6 +515,8 @@ export async function POST(request: NextRequest) {
           paymentStatus,
           subtotal,
           discountAmount,
+          appliedCashierDiscount,
+          appliedExchangeCredit,
           taxSummary.gst,
           total,
           shopId,
@@ -720,6 +730,8 @@ export async function POST(request: NextRequest) {
         amountPaid,
         balanceDue,
         discountAmount,
+        cashierDiscount: appliedCashierDiscount,
+        exchangeCredit: appliedExchangeCredit,
         customerName: customer.name,
         customerPhone: customer.phone,
         customerId

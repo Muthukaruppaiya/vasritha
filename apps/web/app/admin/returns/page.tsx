@@ -108,8 +108,9 @@ export default function AdminReturnsPage() {
                         {(NEXT[row.status] || []).map((status) => {
                           const action = STATUS_ACTION[status];
                           const Icon = action?.icon;
+                          const label = action?.label || `Mark ${status}`;
                           const className = [
-                            "admin-action-btn",
+                            "admin-icon-tip",
                             action?.primary ? "admin-action-btn--primary" : "",
                             action?.danger ? "admin-action-btn--danger" : ""
                           ]
@@ -121,11 +122,11 @@ export default function AdminReturnsPage() {
                               type="button"
                               className={className}
                               onClick={() => void update(row.id, status)}
-                              title={action?.label || `Mark ${status}`}
-                              aria-label={`${action?.label || `Mark ${status}`} for ${row.return_number}`}
+                              data-tooltip={label}
+                              aria-label={`${label} for ${row.return_number}`}
                             >
-                              {Icon ? <Icon size={14} strokeWidth={2} /> : null}
-                              <span>{action?.label || `Mark ${status}`}</span>
+                              {Icon ? <Icon size={16} strokeWidth={2} /> : null}
+                              <span>{label}</span>
                             </button>
                           );
                         })}

@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
     sku: string | null;
     price: string;
     color: string | null;
+    variant_name: string | null;
     hsn_code: string | null;
     label_size: "accessory" | "dress" | null;
     compare_at_price: string | null;
@@ -67,6 +68,7 @@ export async function GET(request: NextRequest) {
        p.sku,
        p.price::text as price,
        coalesce(nullif(trim(i.color), ''), nullif(trim(p.color), '')) as color,
+       pv.name as variant_name,
        p.hsn_code,
        p.label_size::text as label_size,
        p.compare_at_price::text as compare_at_price,
@@ -74,6 +76,7 @@ export async function GET(request: NextRequest) {
        i.date_added::text as date_added
      from product_items i
      join products p on p.id = i.product_id
+     left join product_variants pv on pv.id = i.variant_id
      left join categories c on c.id = p.category_id
      where ${where.join(" and ")}
      order by i.date_added desc, i.seq asc

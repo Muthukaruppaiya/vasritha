@@ -64,9 +64,14 @@ export default function LoginLogDetailPage() {
         title="Login event"
         description="Full detail for a single sign-in attempt."
         actions={
-          <Link className="btn ghost" href="/admin/login-log">
-            <ArrowLeft size={15} />
-            Back to log
+          <Link
+            className="admin-icon-tip"
+            href="/admin/login-log"
+            data-tooltip="Back to log"
+            aria-label="Back to login log"
+          >
+            <ArrowLeft size={16} strokeWidth={2} />
+            <span>Back to log</span>
           </Link>
         }
       />

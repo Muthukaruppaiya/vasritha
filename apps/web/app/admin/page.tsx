@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   IndianRupee,
   Package,
@@ -31,7 +31,6 @@ import {
 } from "../../components/admin/admin-ui";
 import { formatMoney, formatDate } from "../../lib/admin-api";
 import { useAdminQuery } from "../../hooks/use-admin-query";
-import { PERIOD_OPTIONS } from "../../lib/finance-period";
 import { CATEGORY_LABELS } from "../../lib/finance-labels";
 
 type DashboardData = {
@@ -175,11 +174,6 @@ const quickLinks = [
   { href: "/admin/settings", label: "Settings", icon: Settings }
 ];
 
-const DASH_PERIODS = PERIOD_OPTIONS.filter((p) =>
-  ["today", "yesterday", "this_week", "this_month", "previous_month", "this_year", "custom"].includes(
-    p.value
-  )
-);
 
 function activityLabel(action: string, entityType: string) {
   const entity = entityType.replace(/_/g, " ");
@@ -217,20 +211,12 @@ function Metric({
 }
 
 export default function AdminDashboardPage() {
-  const [period, setPeriod] = useState("this_month");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
-
   const path = useMemo(() => {
-    const params = new URLSearchParams({ period });
-    if (period === "custom") {
-      if (from) params.set("from", from);
-      if (to) params.set("to", to);
-    }
+    const params = new URLSearchParams({ period: "this_month" });
     return `/api/admin/dashboard?${params.toString()}`;
-  }, [period, from, to]);
+  }, []);
 
-  const { data, error, loading, reload } = useAdminQuery<DashboardData>(path);
+  const { data, error, loading } = useAdminQuery<DashboardData>(path);
 
   const heroStats = data
     ? [
@@ -271,66 +257,11 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="admin-dashboard">
-      <form
-        className="admin-toolbar"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void reload();
-        }}
-      >
-        <label>
-          <span>Period</span>
-          <select value={period} onChange={(e) => setPeriod(e.target.value)}>
-            {DASH_PERIODS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        {period === "custom" ? (
-          <>
-            <label>
-              <span>From</span>
-              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-            </label>
-            <label>
-              <span>To</span>
-              <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-            </label>
-          </>
-        ) : null}
-        <button className="btn" type="submit">
-          Apply
-        </button>
-      </form>
-
       {loading && <AdminLoading />}
       {error && <p className="admin-alert admin-alert--error">{error}</p>}
 
       {data && (
         <>
-          <section className="admin-dash-hero">
-            <div>
-              <p className="admin-dash-kicker">Boutique overview</p>
-              <h2>Business dashboard</h2>
-              <p className="muted">
-                Live numbers from orders, billing, payments, purchases, expenses and inventory.
-              </p>
-            </div>
-            <div className="admin-dash-hero-actions">
-              <Link href="/admin/orders" className="admin-dash-chip">
-                Online Orders <ArrowUpRight size={14} />
-              </Link>
-              <Link href="/admin/billing" className="admin-dash-chip">
-                Store POS <ArrowUpRight size={14} />
-              </Link>
-              <Link href="/admin/finance" className="admin-dash-chip">
-                Finance <ArrowUpRight size={14} />
-              </Link>
-            </div>
-          </section>
-
           <section className="admin-stats">
             {heroStats.map((stat) => {
               const Icon = stat.icon;

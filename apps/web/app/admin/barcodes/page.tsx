@@ -51,6 +51,7 @@ type BarcodeItem = {
   sku: string | null;
   price: string;
   color: string | null;
+  variant_name?: string | null;
   hsn_code?: string | null;
   label_size: "accessory" | "dress" | null;
   compare_at_price: string | null;
@@ -157,7 +158,7 @@ function BarcodesPageInner() {
           tag: item.tag,
           seq: item.seq,
           price: item.price,
-          sizeLabel: item.color,
+          sizeLabel: item.variant_name || null,
           labelSize,
           productName: item.product_name,
           shortName: item.short_name || undefined,
@@ -261,21 +262,25 @@ function BarcodesPageInner() {
           <div className="grn-line-actions">
             <button
               type="button"
-              className="btn"
+              className="admin-icon-tip admin-action-btn--primary"
               disabled={busy || !selectedRows.length}
               onClick={() => void printItems(selectedRows)}
+              data-tooltip="Print selected"
+              aria-label="Print selected barcodes"
             >
-              <Printer size={15} />
-              Print selected
+              <Printer size={16} strokeWidth={2} />
+              <span>Print selected</span>
             </button>
             <button
               type="button"
-              className="btn admin-ghost-btn"
+              className="admin-icon-tip"
               disabled={busy || !rows.length}
               onClick={() => void printItems(rows.filter((row) => !row.label_printed))}
+              data-tooltip="Print all unprinted"
+              aria-label="Print all unprinted barcodes"
             >
-              <Printer size={15} />
-              Print all unprinted
+              <CheckSquare size={16} strokeWidth={2} />
+              <span>Print all unprinted</span>
             </button>
           </div>
         }

@@ -413,21 +413,46 @@ export default function AdminOrdersPage() {
               ? ` · ${bulkAdvanceable.length} can advance`
               : " · none can advance"}
           </span>
-          <div className="orders-bulk-actions">
+          <div className="orders-bulk-actions admin-bulk-actions">
             <button
               type="button"
-              className="btn"
+              className="admin-icon-tip admin-action-btn--primary"
               disabled={bulkBusy || !bulkAdvanceable.length}
               onClick={() => void advanceSelected()}
+              data-tooltip={
+                bulkBusy
+                  ? "Updating…"
+                  : bulkSameNext
+                    ? `Mark ${statusLabel(bulkSameNext)}`
+                    : "Advance selected"
+              }
+              aria-label={
+                bulkBusy
+                  ? "Updating…"
+                  : bulkSameNext
+                    ? `Mark ${statusLabel(bulkSameNext)}`
+                    : "Advance selected"
+              }
             >
-              {bulkBusy
-                ? "Updating…"
-                : bulkSameNext
-                  ? `Mark ${statusLabel(bulkSameNext)}`
-                  : "Advance selected"}
+              <ChevronRight size={16} strokeWidth={2} />
+              <span>
+                {bulkBusy
+                  ? "Updating…"
+                  : bulkSameNext
+                    ? `Mark ${statusLabel(bulkSameNext)}`
+                    : "Advance selected"}
+              </span>
             </button>
-            <button type="button" className="btn ghost" disabled={bulkBusy} onClick={() => setSelectedIds([])}>
-              Clear
+            <button
+              type="button"
+              className="admin-icon-tip admin-bulk-clear"
+              disabled={bulkBusy}
+              onClick={() => setSelectedIds([])}
+              data-tooltip="Clear selection"
+              aria-label="Clear selection"
+            >
+              <X size={16} strokeWidth={2} />
+              <span>Clear</span>
             </button>
           </div>
         </div>
@@ -878,21 +903,35 @@ export default function AdminOrdersPage() {
                 </div>
               ) : null}
               <div className="orders-print-bar orders-print-bar--row">
-                <button type="button" className="btn" onClick={() => printSlips("invoice")}>
-                  <Printer size={14} />
-                  Print bill
+                <button
+                  type="button"
+                  className="admin-icon-tip admin-action-btn--primary"
+                  onClick={() => printSlips("invoice")}
+                  data-tooltip="Print bill"
+                  aria-label="Print bill"
+                >
+                  <Printer size={16} strokeWidth={2} />
+                  <span>Print bill</span>
                 </button>
                 <button
                   type="button"
-                  className="btn ghost"
+                  className="admin-icon-tip"
                   onClick={() => printSlips("courier")}
+                  data-tooltip="Print courier"
+                  aria-label="Print courier label"
                 >
-                  <Truck size={14} />
-                  Print courier
+                  <Truck size={16} strokeWidth={2} />
+                  <span>Print courier</span>
                 </button>
-                <button type="button" className="btn" onClick={() => printSlips("both")}>
-                  <Printer size={14} />
-                  Print both
+                <button
+                  type="button"
+                  className="admin-icon-tip"
+                  onClick={() => printSlips("both")}
+                  data-tooltip="Print both"
+                  aria-label="Print bill and courier"
+                >
+                  <Printer size={16} strokeWidth={2} />
+                  <span>Print both</span>
                 </button>
               </div>
               <p className="tvs-print-hint muted">

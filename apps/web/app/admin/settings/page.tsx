@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Plus } from "lucide-react";
+import { Ban, Check, Plus } from "lucide-react";
 import {
   AdminAlert,
   AdminBadge,
@@ -368,7 +368,7 @@ export default function AdminSettingsPage() {
           tab === "roles" ? (
             <button
               type="button"
-              className="btn"
+              className="admin-icon-tip admin-action-btn--primary"
               onClick={() => {
                 setRoleError("");
                 setRoleForm({
@@ -379,9 +379,11 @@ export default function AdminSettingsPage() {
                 });
                 setRoleModalOpen(true);
               }}
+              data-tooltip="New role"
+              aria-label="New role"
             >
-              <Plus size={15} />
-              New role
+              <Plus size={17} strokeWidth={2.2} />
+              <span>New role</span>
             </button>
           ) : null
         }
@@ -1078,29 +1080,35 @@ export default function AdminSettingsPage() {
                     {device.status !== "approved" ? (
                       <button
                         type="button"
-                        className="admin-action-btn admin-action-btn--compact"
+                        className="admin-icon-tip admin-action-btn admin-action-btn--compact admin-action-btn--primary"
                         onClick={() =>
                           void adminFetch("/api/admin/settings/login-devices", {
                             method: "PATCH",
                             json: { id: device.id, status: "approved" }
                           }).then(() => devicesQuery.reload())
                         }
+                        data-tooltip="Approve"
+                        aria-label={`Approve device ${device.label || device.id}`}
                       >
-                        Approve
+                        <Check size={15} strokeWidth={2} />
+                        <span>Approve</span>
                       </button>
                     ) : null}
                     {device.status !== "blocked" ? (
                       <button
                         type="button"
-                        className="admin-action-btn admin-action-btn--danger admin-action-btn--compact"
+                        className="admin-icon-tip admin-action-btn admin-action-btn--danger admin-action-btn--compact"
                         onClick={() =>
                           void adminFetch("/api/admin/settings/login-devices", {
                             method: "PATCH",
                             json: { id: device.id, status: "blocked" }
                           }).then(() => devicesQuery.reload())
                         }
+                        data-tooltip="Block"
+                        aria-label={`Block device ${device.label || device.id}`}
                       >
-                        Block
+                        <Ban size={15} strokeWidth={2} />
+                        <span>Block</span>
                       </button>
                     ) : null}
                   </span>

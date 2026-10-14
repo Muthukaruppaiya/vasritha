@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { ExternalLink, FileDown, FileSpreadsheet, Play } from "lucide-react";
 import {
   AdminAlert,
   AdminBarList,
@@ -11,6 +12,7 @@ import {
   AdminPanel
 } from "../../../../components/admin/admin-ui";
 import { formatDate, formatMoney } from "../../../../lib/admin-api";
+import { downloadAdminExport } from "../../../../lib/download-export";
 import { useAdminQuery } from "../../../../hooks/use-admin-query";
 import { OPS_PLATFORM_NAME } from "../../../../lib/platform";
 
@@ -69,9 +71,44 @@ export default function FinanceReportsHubPage() {
         title="Boutique finance reports"
         description="Quick finance snapshots. For full filterable / exportable boutique reports, use the Reports module."
         actions={
-          <Link className="btn" href="/admin/reports">
-            Open Reports module
-          </Link>
+          <>
+            <Link
+              className="admin-icon-tip"
+              href="/admin/reports"
+              data-tooltip="Open Reports module"
+              aria-label="Open Reports module"
+            >
+              <ExternalLink size={16} strokeWidth={2} />
+              <span>Reports</span>
+            </Link>
+            {(["csv", "xlsx", "pdf"] as const).map((fmt) => {
+              const label = fmt === "xlsx" ? "Excel" : fmt.toUpperCase();
+              const Icon = fmt === "xlsx" ? FileSpreadsheet : FileDown;
+              return (
+                <button
+                  key={fmt}
+                  type="button"
+                  className="admin-icon-tip"
+                  data-tooltip={`Export ${label}`}
+                  aria-label={`Export ${label}`}
+                  onClick={() => {
+                    const params = new URLSearchParams({ type, format: fmt });
+                    if (from) params.set("from", from);
+                    if (to) params.set("to", to);
+                    void downloadAdminExport(
+                      `/api/admin/finance/reports?${params.toString()}`,
+                      `finance-${type}.${fmt}`
+                    ).catch((err) =>
+                      window.alert(err instanceof Error ? err.message : "Export failed")
+                    );
+                  }}
+                >
+                  <Icon size={16} strokeWidth={2} />
+                  <span>{label}</span>
+                </button>
+              );
+            })}
+          </>
         }
       />
 
@@ -115,8 +152,14 @@ export default function FinanceReportsHubPage() {
           <span>To</span>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
         </label>
-        <button className="btn" type="submit">
-          Run
+        <button
+          type="submit"
+          className="admin-icon-tip admin-action-btn--primary"
+          data-tooltip="Run"
+          aria-label="Run report"
+        >
+          <Play size={16} strokeWidth={2} />
+          <span>Run</span>
         </button>
       </form>
 

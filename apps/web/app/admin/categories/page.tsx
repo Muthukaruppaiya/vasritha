@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { ImagePlus, Pencil, Plus, Trash2 } from "lucide-react";
+import { EyeOff, Globe, ImagePlus, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   AdminAlert,
   AdminEmpty,
@@ -386,9 +386,15 @@ export default function AdminCategoriesPage() {
         title="Categories"
         description="Organize the storefront into departments and subcategories with banner images."
         actions={
-          <button type="button" className="btn" onClick={openCreate}>
-            <Plus size={15} />
-            New category
+          <button
+            type="button"
+            className="admin-icon-tip admin-action-btn--primary"
+            onClick={openCreate}
+            data-tooltip="New category"
+            aria-label="New category"
+          >
+            <Plus size={17} strokeWidth={2.2} />
+            <span>New category</span>
           </button>
         }
       />
@@ -482,8 +488,14 @@ export default function AdminCategoriesPage() {
                     className="admin-action-btn"
                     onClick={() => void onTogglePublish(category)}
                     title={category.is_published === false ? "Publish category" : "Unpublish category"}
+                    data-tooltip={category.is_published === false ? "Publish category" : "Unpublish category"}
                     aria-label={`${category.is_published === false ? "Publish" : "Unpublish"} ${category.name}`}
                   >
+                    {category.is_published === false ? (
+                      <Globe size={14} strokeWidth={2} />
+                    ) : (
+                      <EyeOff size={14} strokeWidth={2} />
+                    )}
                     <span>{category.is_published === false ? "Publish" : "Unpublish"}</span>
                   </button>
                   <button

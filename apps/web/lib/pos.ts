@@ -33,6 +33,15 @@ export async function ensurePosSchema() {
     alter table public.orders
       add column if not exists pos_customer_email text
   `);
+  // Split combined discount_amount for invoice labels (Discount vs Exchange credit).
+  await query(`
+    alter table public.orders
+      add column if not exists cashier_discount_amount numeric(12,2) not null default 0
+  `);
+  await query(`
+    alter table public.orders
+      add column if not exists exchange_credit_amount numeric(12,2) not null default 0
+  `);
   posSchemaReady = true;
 }
 

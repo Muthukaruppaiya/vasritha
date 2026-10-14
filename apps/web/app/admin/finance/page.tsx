@@ -7,6 +7,7 @@ import {
   ArrowUpRight,
   Landmark,
   LineChart,
+  Filter,
   RefreshCw,
   Wallet
 } from "lucide-react";
@@ -88,22 +89,29 @@ export default function FinanceDashboardPage() {
         title="Boutique finance"
         description="Simple shop money view — sales, purchases, expenses, dues and cash. Built on your existing orders and billing."
         actions={
-          <button type="button" className="btn" disabled={syncing} onClick={() => void syncAll()}>
-            <RefreshCw size={15} />
-            {syncing ? "Syncing…" : "Sync from sales"}
+          <button
+            type="button"
+            className="admin-icon-tip admin-action-btn--primary"
+            disabled={syncing}
+            onClick={() => void syncAll()}
+            data-tooltip={syncing ? "Syncing…" : "Sync from sales"}
+            aria-label="Sync from sales"
+          >
+            <RefreshCw size={16} strokeWidth={2} />
+            <span>{syncing ? "Syncing…" : "Sync"}</span>
           </button>
         }
       />
 
       <form
-        className="admin-toolbar"
+        className="pm-toolbar"
         onSubmit={(e) => {
           e.preventDefault();
           void reload();
         }}
       >
-        <label>
-          <span>Period</span>
+        <label className="pm-sort">
+          <span className="sr-only">Period</span>
           <select value={period} onChange={(e) => setPeriod(e.target.value)}>
             {PERIOD_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -124,8 +132,14 @@ export default function FinanceDashboardPage() {
             </label>
           </>
         ) : null}
-        <button className="btn" type="submit">
-          Apply
+        <button
+          type="submit"
+          className="admin-icon-tip admin-action-btn--primary"
+          data-tooltip="Apply"
+          aria-label="Apply"
+        >
+          <Filter size={16} strokeWidth={2} />
+          <span>Apply</span>
         </button>
       </form>
 

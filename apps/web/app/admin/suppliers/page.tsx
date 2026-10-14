@@ -213,9 +213,15 @@ export default function AdminSuppliersPage() {
         title="Supplier Master"
         description="Maintain suppliers with GSTIN, PAN, and bank details. Select them when posting GRN / inward stock."
         actions={
-          <button type="button" className="btn" onClick={openCreate}>
-            <Plus size={15} />
-            Add supplier
+          <button
+            type="button"
+            className="admin-icon-tip admin-action-btn--primary"
+            onClick={openCreate}
+            data-tooltip="Add supplier"
+            aria-label="Add supplier"
+          >
+            <Plus size={17} strokeWidth={2.2} />
+            <span>Add supplier</span>
           </button>
         }
       />

@@ -10,6 +10,7 @@ import {
   PackagePlus,
   Plus,
   Printer,
+  RefreshCw,
   Search,
   Trash2,
   Truck,
@@ -256,7 +257,7 @@ function GrnEntryPageInner() {
     const idx = emptyIdx >= 0 ? emptyIdx : Math.max(0, inward.lines.length - 1);
     const next: GrnDraft = { ...inward, focusLineIndex: idx };
     saveGrnDraft(next);
-    window.location.href = "/admin/products?fromGrn=1";
+    window.location.href = "/admin/products/new?fromGrn=1";
   };
 
   const submitGrn = async (approveNow = false) => {
@@ -491,8 +492,15 @@ function GrnEntryPageInner() {
                   </span>
                   {selectedSupplier.phone ? <span>{selectedSupplier.phone}</span> : null}
                 </div>
-                <button type="button" className="btn admin-ghost-btn" onClick={() => void reloadSuppliers()}>
-                  Refresh list
+                <button
+                  type="button"
+                  className="admin-icon-tip"
+                  onClick={() => void reloadSuppliers()}
+                  data-tooltip="Refresh list"
+                  aria-label="Refresh supplier list"
+                >
+                  <RefreshCw size={16} strokeWidth={2} />
+                  <span>Refresh list</span>
                 </button>
               </div>
             ) : (
@@ -602,13 +610,19 @@ function GrnEntryPageInner() {
           title="Lines"
           actions={
             <div className="grn-line-actions">
-              <button type="button" className="btn admin-ghost-btn" onClick={goCreateMissingProduct}>
-                <PackagePlus size={15} />
-                New SKU
+              <button
+                type="button"
+                className="admin-icon-tip"
+                onClick={goCreateMissingProduct}
+                data-tooltip="New SKU"
+                aria-label="New SKU"
+              >
+                <PackagePlus size={16} strokeWidth={2} />
+                <span>New SKU</span>
               </button>
               <button
                 type="button"
-                className="btn"
+                className="admin-icon-tip admin-action-btn--primary"
                 onClick={() =>
                   persistDraft({
                     ...inward,
@@ -618,9 +632,11 @@ function GrnEntryPageInner() {
                     ]
                   })
                 }
+                data-tooltip="Add line"
+                aria-label="Add line"
               >
-                <Plus size={15} />
-                Add line
+                <Plus size={16} strokeWidth={2} />
+                <span>Add line</span>
               </button>
             </div>
           }
@@ -791,15 +807,17 @@ function GrnEntryPageInner() {
                       ))}
                       <button
                         type="button"
-                        className="btn admin-ghost-btn"
+                        className="admin-icon-tip"
                         onClick={() =>
                           updateLine(index, {
                             colorSplits: [...splits, blankColorSplit()]
                           })
                         }
+                        data-tooltip="Add colour"
+                        aria-label="Add colour"
                       >
-                        <Plus size={14} />
-                        Add colour
+                        <Plus size={16} strokeWidth={2} />
+                        <span>Add colour</span>
                       </button>
                     </div>
                   ) : null}
@@ -825,8 +843,15 @@ function GrnEntryPageInner() {
             </strong>
           </div>
           <div className="grn-footer-actions">
-            <button type="button" className="btn admin-ghost-btn" onClick={startNewGrn}>
-              New GRN
+            <button
+              type="button"
+              className="admin-icon-tip"
+              onClick={startNewGrn}
+              data-tooltip="New GRN"
+              aria-label="New GRN"
+            >
+              <FilePlus2 size={16} strokeWidth={2} />
+              <span>New GRN</span>
             </button>
             <Link className="btn admin-ghost-btn" href="/admin/inventory">
               Cancel

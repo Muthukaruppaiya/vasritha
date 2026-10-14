@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { Pencil, Plus, RefreshCw } from "lucide-react";
+import { Filter, Pencil, Plus, RefreshCw } from "lucide-react";
 import {
   AdminAlert,
   AdminBadge,
@@ -199,41 +199,57 @@ export function FinancePaymentsPanel({
             {direction === "in" ? (
               <button
                 type="button"
-                className="btn ghost"
+                className="admin-icon-tip"
                 disabled={syncing}
                 onClick={() => void syncOrders()}
+                data-tooltip={syncing ? "Syncing…" : "Sync paid orders"}
+                aria-label="Sync paid orders"
               >
-                <RefreshCw size={15} />
-                {syncing ? "Syncing…" : "Sync paid orders"}
+                <RefreshCw size={16} strokeWidth={2} />
+                <span>{syncing ? "Syncing…" : "Sync"}</span>
               </button>
             ) : null}
-            <button type="button" className="btn" onClick={openCreate}>
-              <Plus size={15} />
-              New entry
+            <button
+              type="button"
+              className="admin-icon-tip admin-action-btn--primary"
+              onClick={openCreate}
+              data-tooltip="New entry"
+              aria-label="New entry"
+            >
+              <Plus size={17} strokeWidth={2.2} />
+              <span>New</span>
             </button>
           </>
         }
       />
 
       <form
-        className="admin-toolbar"
+        className="pm-toolbar"
         onSubmit={(e) => {
           e.preventDefault();
           setSubmittedQ(q.trim());
         }}
       >
-        <label>
-          <span>From</span>
+        <div className="admin-search-field pm-toolbar-search">
+          <input
+            placeholder="Search entry no, party, reference…"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            aria-label="Search payments"
+          />
+        </div>
+        <label className="pm-sort">
+          <span className="sr-only">From</span>
           <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
         </label>
-        <label>
-          <span>To</span>
+        <label className="pm-sort">
+          <span className="sr-only">To</span>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
         </label>
-        <label>
-          <span>Status</span>
+        <label className="pm-sort">
+          <span className="sr-only">Status</span>
           <select value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="all">All</option>
+            <option value="all">All statuses</option>
             {STATUSES.map((s) => (
               <option key={s} value={s}>
                 {s}
@@ -241,16 +257,14 @@ export function FinancePaymentsPanel({
             ))}
           </select>
         </label>
-        <label className="admin-grow">
-          <span>Search</span>
-          <input
-            placeholder="Entry no, party, reference…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-          />
-        </label>
-        <button className="btn" type="submit">
-          Apply
+        <button
+          type="submit"
+          className="admin-icon-tip admin-action-btn--primary"
+          data-tooltip="Apply"
+          aria-label="Apply"
+        >
+          <Filter size={16} strokeWidth={2} />
+          <span>Apply</span>
         </button>
       </form>
 

@@ -327,17 +327,27 @@ function AdminGrnApprovalsInner() {
               <b>{selected.size}</b> selected
             </span>
             <div className="admin-bulk-actions">
-              <button type="button" disabled={bulkBusy} onClick={() => void bulkApprove()}>
-                <CheckCircle2 size={14} />
-                {bulkBusy ? "Approving…" : "Bulk approve"}
+              <button
+                type="button"
+                className="admin-icon-tip admin-action-btn--primary"
+                disabled={bulkBusy}
+                onClick={() => void bulkApprove()}
+                data-tooltip={bulkBusy ? "Approving…" : "Bulk approve"}
+                aria-label={bulkBusy ? "Approving…" : "Bulk approve"}
+              >
+                <CheckCircle2 size={15} strokeWidth={2} />
+                <span>{bulkBusy ? "Approving…" : "Bulk approve"}</span>
               </button>
               <button
                 type="button"
-                className="admin-bulk-clear"
+                className="admin-icon-tip admin-bulk-clear"
                 disabled={bulkBusy}
                 onClick={clearSelection}
+                data-tooltip="Clear selection"
+                aria-label="Clear selection"
               >
-                Clear
+                <X size={15} strokeWidth={2} />
+                <span>Clear</span>
               </button>
             </div>
           </div>
@@ -635,29 +645,46 @@ function AdminGrnApprovalsInner() {
               </div>
 
               <div className="admin-modal-actions">
-                <button type="button" className="admin-ghost-btn" onClick={closeDetails}>
-                  Close
+                <button
+                  type="button"
+                  className="admin-icon-tip"
+                  onClick={closeDetails}
+                  data-tooltip="Close"
+                  aria-label="Close"
+                >
+                  <X size={16} strokeWidth={2} />
+                  <span>Close</span>
                 </button>
                 <button
                   type="button"
-                  className="admin-ghost-btn"
+                  className="admin-icon-tip"
                   onClick={() => void printGrn(detail.id)}
                   disabled={printingId === detail.id}
+                  data-tooltip={printingId === detail.id ? "Printing…" : "Print"}
+                  aria-label={printingId === detail.id ? "Printing…" : "Print GRN"}
                 >
-                  <Printer size={14} />
-                  {printingId === detail.id ? "Printing…" : "Print"}
+                  <Printer size={16} strokeWidth={2} />
+                  <span>{printingId === detail.id ? "Printing…" : "Print"}</span>
                 </button>
                 {canApprove && detail.status === "pending_approval" ? (
                   <button
                     type="button"
-                    className="btn"
+                    className="admin-icon-tip admin-action-btn--primary"
                     disabled={bulkBusy || approvingId === detail.id}
+                    data-tooltip={
+                      approvingId === detail.id || bulkBusy ? "Approving…" : "Approve GRN"
+                    }
+                    aria-label={
+                      approvingId === detail.id || bulkBusy ? "Approving…" : "Approve GRN"
+                    }
                     onClick={() =>
                       void approveIds([detail.id], `Approve ${detail.grn_number}?`)
                     }
                   >
-                    <CheckCircle2 size={14} />
-                    {approvingId === detail.id || bulkBusy ? "Approving…" : "Approve GRN"}
+                    <CheckCircle2 size={16} strokeWidth={2} />
+                    <span>
+                      {approvingId === detail.id || bulkBusy ? "Approving…" : "Approve GRN"}
+                    </span>
                   </button>
                 ) : null}
               </div>

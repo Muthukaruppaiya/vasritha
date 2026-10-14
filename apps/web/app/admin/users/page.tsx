@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Search, Trash2 } from "lucide-react";
 import {
   AdminAlert,
   AdminBadge,
@@ -232,9 +232,15 @@ export default function AdminUsersPage() {
         title="Users"
         description="Create staff accounts, assign a role and store. Store-bound users only see that shop’s stock and bills."
         actions={
-          <button type="button" className="btn" onClick={openCreate}>
-            <Plus size={15} />
-            New user
+          <button
+            type="button"
+            className="admin-icon-tip admin-action-btn--primary"
+            onClick={openCreate}
+            data-tooltip="New user"
+            aria-label="New user"
+          >
+            <Plus size={17} strokeWidth={2.2} />
+            <span>New user</span>
           </button>
         }
       />
@@ -254,8 +260,14 @@ export default function AdminUsersPage() {
             onChange={(e) => setQ(e.target.value)}
           />
         </label>
-        <button className="btn" type="submit">
-          Search
+        <button
+          type="submit"
+          className="admin-icon-tip admin-action-btn--primary"
+          data-tooltip="Search"
+          aria-label="Search users"
+        >
+          <Search size={16} strokeWidth={2} />
+          <span>Search</span>
         </button>
       </form>
 

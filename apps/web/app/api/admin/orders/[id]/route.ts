@@ -10,6 +10,7 @@ import {
 } from "../../../../../lib/gst";
 import { ensureOrderCourierSchema } from "../../../../../lib/order-courier";
 import { resolveShopScope } from "../../../../../lib/shop-scope";
+import { ensurePosSchema } from "../../../../../lib/pos";
 
 export async function GET(
   request: NextRequest,
@@ -25,6 +26,7 @@ export async function GET(
 
   await ensureGstSchema();
   await ensureOrderCourierSchema();
+  await ensurePosSchema();
 
   const { id } = await context.params;
   const order = await queryOne<{
@@ -36,6 +38,8 @@ export async function GET(
     payment_status: string;
     subtotal: string;
     discount_amount: string;
+    cashier_discount_amount: string;
+    exchange_credit_amount: string;
     tax_amount: string;
     shipping_amount: string;
     total_amount: string;
@@ -52,6 +56,8 @@ export async function GET(
     `select o.id, o.order_number, o.customer_id, o.shipping_address_id,
             o.status, o.payment_status, o.subtotal,
             coalesce(o.discount_amount, 0) as discount_amount,
+            coalesce(o.cashier_discount_amount, 0) as cashier_discount_amount,
+            coalesce(o.exchange_credit_amount, 0) as exchange_credit_amount,
             o.tax_amount, o.shipping_amount, o.total_amount,
             coalesce(o.channel, 'online') as channel, o.shop_id, o.created_at,
             o.courier_name, o.courier_awb, o.courier_note,
@@ -181,8 +187,38 @@ export async function GET(
     interState
   );
 
+  // Older exchange bills may only have combined discount_amount — recover credit from return notes.
+  let cashierDiscount = Number(order.cashier_discount_amount || 0);
+  let exchangeCredit = Number(order.exchange_credit_amount || 0);
+  const combinedDiscount = Number(order.discount_amount || 0);
+  if (exchangeCredit <= 0 && cashierDiscount <= 0 && combinedDiscount > 0) {
+    const exchangeNote = await queryOne<{ admin_notes: string | null }>(
+      `select admin_notes
+       from order_returns
+       where request_type = 'exchange'
+         and (
+           reason ilike '%' || $1 || '%'
+           or admin_notes ilike '%' || $1 || '%'
+         )
+       order by created_at desc
+       limit 1`,
+      [order.order_number]
+    ).catch(() => null);
+    const match = String(exchangeNote?.admin_notes || "").match(
+      /Return credit\s*₹?\s*([0-9]+(?:\.[0-9]+)?)/i
+    );
+    if (match) {
+      exchangeCredit = Math.min(combinedDiscount, Number(match[1]));
+      cashierDiscount = Math.round((combinedDiscount - exchangeCredit) * 100) / 100;
+    } else {
+      cashierDiscount = combinedDiscount;
+    }
+  }
+
   return ok({
     ...order,
+    cashier_discount_amount: cashierDiscount,
+    exchange_credit_amount: exchangeCredit,
     payment,
     shipping_address: address,
     seller,

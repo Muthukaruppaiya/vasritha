@@ -114,9 +114,14 @@ export function InvoiceDirectory({
             onChange={(e) => setQ(e.target.value)}
           />
         </label>
-        <button className="btn" type="submit">
-          <Search size={15} />
-          Search
+        <button
+          type="submit"
+          className="admin-icon-tip admin-action-btn--primary"
+          data-tooltip="Search"
+          aria-label="Search invoices"
+        >
+          <Search size={16} strokeWidth={2} />
+          <span>Search</span>
         </button>
       </form>
 
@@ -202,19 +207,27 @@ export function InvoiceDirectory({
             <div className="pos-invoice-actions">
               <button
                 type="button"
-                className="btn"
+                className="admin-icon-tip admin-action-btn--primary"
+                data-tooltip="Print bill"
+                aria-label="Print bill"
                 onClick={() => {
                   if (!isStore) document.body.classList.add("print-a4-invoice");
                   window.print();
                   window.setTimeout(() => document.body.classList.remove("print-a4-invoice"), 500);
                 }}
               >
-                <Printer size={14} />
-                Print bill
+                <Printer size={16} strokeWidth={2} />
+                <span>Print bill</span>
               </button>
-              <button type="button" className="admin-ghost-btn" onClick={() => setSelected(null)}>
-                <X size={14} />
-                Close
+              <button
+                type="button"
+                className="admin-icon-tip"
+                onClick={() => setSelected(null)}
+                data-tooltip="Close"
+                aria-label="Close"
+              >
+                <X size={16} strokeWidth={2} />
+                <span>Close</span>
               </button>
             </div>
             <p className="tvs-print-hint muted">

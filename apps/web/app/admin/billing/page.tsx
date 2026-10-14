@@ -66,6 +66,8 @@ type InvoiceOrder = {
   created_at: string;
   subtotal: string;
   discount_amount: string;
+  cashier_discount_amount?: string | number | null;
+  exchange_credit_amount?: string | number | null;
   total_amount: string;
   payment_status: string;
   status: string;
@@ -941,20 +943,29 @@ export default function AdminBillingPage() {
           </Link>
           <button
             type="button"
-            className="btn admin-ghost-btn"
+            className="admin-icon-tip"
             disabled={busy}
+            data-tooltip="Exchange"
+            aria-label="Exchange"
             onClick={() => {
               setExchangeBrowseOpen(true);
               setExchangeQuery("");
               void searchExchangeInvoices("");
             }}
           >
-            <ArrowLeftRight size={15} />
-            Exchange
+            <ArrowLeftRight size={16} strokeWidth={2} />
+            <span>Exchange</span>
           </button>
-          <button type="button" className="btn admin-ghost-btn" onClick={clearSale} disabled={busy}>
-            <Plus size={15} />
-            New sale
+          <button
+            type="button"
+            className="admin-icon-tip"
+            onClick={clearSale}
+            disabled={busy}
+            data-tooltip="New sale"
+            aria-label="New sale"
+          >
+            <Plus size={16} strokeWidth={2} />
+            <span>New sale</span>
           </button>
         </div>
       </header>
@@ -975,9 +986,15 @@ export default function AdminBillingPage() {
                     disabled={busy}
                   />
                 </label>
-                <button className="btn" type="submit" disabled={busy || lookingUp}>
-                  <Search size={14} />
-                  {lookingUp ? "…" : "Add"}
+                <button
+                  type="submit"
+                  className="admin-icon-tip admin-action-btn--primary"
+                  disabled={busy || lookingUp}
+                  data-tooltip={lookingUp ? "Adding…" : "Add"}
+                  aria-label={lookingUp ? "Adding to cart" : "Add to cart"}
+                >
+                  <Plus size={16} strokeWidth={2} />
+                  <span>Add</span>
                 </button>
               </form>
               {lookupError ? <AdminAlert>{lookupError}</AdminAlert> : null}
@@ -1455,8 +1472,15 @@ export default function AdminBillingPage() {
                   inputMode="search"
                 />
               </label>
-              <button className="btn" type="submit" disabled={exchangeBusy}>
-                {exchangeBusy ? "…" : "Search"}
+              <button
+                type="submit"
+                className="admin-icon-tip admin-action-btn--primary"
+                disabled={exchangeBusy}
+                data-tooltip="Search"
+                aria-label="Search exchange invoices"
+              >
+                <Search size={16} strokeWidth={2} />
+                <span>Search</span>
               </button>
             </form>
             <p className="muted" style={{ margin: "8px 0 0", fontSize: "0.78rem" }}>
@@ -1595,13 +1619,25 @@ export default function AdminBillingPage() {
             <div className="tvs-receipt-preview-label">Shop bill · 3″ (80mm) thermal · auto-cut</div>
             <InvoiceBill data={lastInvoice} id="pos-invoice-print" />
             <div className="pos-invoice-actions">
-              <button type="button" className="btn" onClick={() => window.print()}>
-                <Printer size={14} />
-                Print bill
+              <button
+                type="button"
+                className="admin-icon-tip admin-action-btn--primary"
+                onClick={() => window.print()}
+                data-tooltip="Print bill"
+                aria-label="Print bill"
+              >
+                <Printer size={16} strokeWidth={2} />
+                <span>Print bill</span>
               </button>
-              <button type="button" className="btn ghost" onClick={() => setLastInvoice(null)}>
-                <X size={14} />
-                Close
+              <button
+                type="button"
+                className="admin-icon-tip"
+                onClick={() => setLastInvoice(null)}
+                data-tooltip="Close"
+                aria-label="Close"
+              >
+                <X size={16} strokeWidth={2} />
+                <span>Close</span>
               </button>
             </div>
             <p className="tvs-print-hint muted">

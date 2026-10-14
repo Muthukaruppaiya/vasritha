@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { Wallet } from "lucide-react";
 import {
   AdminAlert,
   AdminBadge,
@@ -69,8 +70,15 @@ export default function FinanceCashBankPage() {
         title="Cash &amp; Bank"
         description="Cash in hand and bank/UPI wallets. Set opening balance once; balances update from synced sales, expenses and supplier payments."
         actions={
-          <button type="button" className="btn" onClick={() => setOpen(true)}>
-            Add wallet
+          <button
+            type="button"
+            className="admin-icon-tip admin-action-btn--primary"
+            onClick={() => setOpen(true)}
+            data-tooltip="Add wallet"
+            aria-label="Add wallet"
+          >
+            <Wallet size={17} strokeWidth={2.2} />
+            <span>Add wallet</span>
           </button>
         }
       />

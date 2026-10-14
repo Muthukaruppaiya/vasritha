@@ -1,9 +1,10 @@
-import { barcodeDataUrl, escapePrintHtml } from "./print-barcodes";
+import { jsPDF } from "jspdf";
+import JsBarcode from "jsbarcode";
 
 /** DB / API values (kept for compatibility). */
 export type LabelSizeCode = "dress" | "accessory";
 
-/** Print layout: 2-set = 50x25mm (2/row), 3-set = 35x22mm (3/row). */
+/** Print layout: 2-set = 50x25mm (2/row), 3-set = 34x25mm (3/row). */
 export type LabelLayout = "set2" | "set3";
 
 export function labelSizeToLayout(size: LabelSizeCode | string | null | undefined): LabelLayout {
@@ -29,7 +30,7 @@ export const LABEL_LAYOUT_OPTIONS: Array<{
   {
     value: "set3",
     code: "accessory",
-    label: "3-set - 35x22 mm",
+    label: "3-set - 34x25 mm",
     hint: "3 labels per row"
   }
 ];
@@ -67,137 +68,243 @@ export type StickerProductMeta = {
 
 type LayoutSpec = {
   cols: number;
-  tagW: string;
-  tagH: string;
-  barH: number;
-  barW: number;
-  brandPx: string;
-  codePx: string;
-  pricePx: string;
-  barMm: string;
+  tagW: number;
+  tagH: number;
 };
 
 const LAYOUT: Record<LabelLayout, LayoutSpec> = {
-  set2: {
-    cols: 2,
-    tagW: "50mm",
-    tagH: "25mm",
-    barH: 42,
-    barW: 1.35,
-    brandPx: "9px",
-    codePx: "7px",
-    pricePx: "10px",
-    barMm: "8.8mm"
-  },
-  set3: {
-    cols: 3,
-    tagW: "35mm",
-    tagH: "22mm",
-    barH: 34,
-    barW: 1.2,
-    brandPx: "7px",
-    codePx: "5.5px",
-    pricePx: "8px",
-    barMm: "7.2mm"
-  }
+  set2: { cols: 2, tagW: 50, tagH: 25 },
+  set3: { cols: 3, tagW: 34, tagH: 25 }
 };
 
-/** Price like Rs. 27000/- ? ASCII so thermal printers never show "?" for the rupee mark. */
+/** 203 dpi ≈ 8 dots per mm. */
+const DOTS_PER_MM = 8;
+
+type LabelCard = {
+  brand: string;
+  codeLabel: string;
+  colorLabel: string;
+  sizeLabel: string;
+  priceLabel: string;
+  scanValue: string;
+};
+
+/** Arial regular, center — sizes scale for 2-up vs 3-up. */
+const LABEL_DPI = 203;
+const LINE_GAP = Math.round(DOTS_PER_MM * 0.6);
+
+function ptToDots(pt: number) {
+  return Math.round((pt * LABEL_DPI) / 72);
+}
+
+function ptFont(sizeDots: number) {
+  return `400 ${sizeDots}px Arial, Helvetica, sans-serif`;
+}
+
 function formatPrice(value: number | string) {
   const n = Number(value || 0);
-  const whole = Number.isFinite(n) && Math.abs(n - Math.round(n)) < 0.005;
+  if (!Number.isFinite(n)) return "";
+  const whole = Math.abs(n - Math.round(n)) < 0.005;
   const amount = whole
-    ? Math.round(n).toLocaleString("en-IN")
-    : n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    ? String(Math.round(n))
+    : n.toFixed(2);
   return `Rs. ${amount}/-`;
 }
 
-function printDocument(html: string) {
-  return new Promise<void>((resolve, reject) => {
-    const existing = document.getElementById("vasritha-print-frame");
-    existing?.remove();
+function isHiddenSize(value: string) {
+  const v = value.trim().toUpperCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+  return (
+    !v ||
+    v === "FREE SIZE" ||
+    v === "FREESIZE" ||
+    v === "FS" ||
+    v === "FREE" ||
+    v === "ONE SIZE" ||
+    v === "ONESIZE" ||
+    v === "DEFAULT" ||
+    v === "N A" ||
+    v === "NA" ||
+    v === "-"
+  );
+}
 
-    const frame = document.createElement("iframe");
-    frame.id = "vasritha-print-frame";
-    frame.setAttribute("aria-hidden", "true");
-    frame.style.position = "fixed";
-    frame.style.right = "0";
-    frame.style.bottom = "0";
-    frame.style.width = "0";
-    frame.style.height = "0";
-    frame.style.border = "0";
-    document.body.appendChild(frame);
+/** Show size only when present and not free / one / default size. */
+function resolveSizeLabel(sizeLabel: string | null | undefined) {
+  const direct = String(sizeLabel || "").trim();
+  if (!direct || isHiddenSize(direct)) return "";
+  return direct.toUpperCase();
+}
 
-    const doc = frame.contentDocument;
-    if (!doc) {
-      frame.remove();
-      reject(new Error("Could not open the print view"));
-      return;
+/** Draw CODE128 as solid black rectangles (no gray edges for the driver to dither). */
+function drawBarcode(
+  ctx: CanvasRenderingContext2D,
+  value: string,
+  x: number,
+  y: number,
+  maxW: number,
+  h: number
+) {
+  const probe = document.createElement("canvas");
+  JsBarcode(probe, value, {
+    format: "CODE128",
+    width: 1,
+    height: 10,
+    margin: 0,
+    displayValue: false,
+    background: "#ffffff",
+    lineColor: "#000000"
+  });
+
+  let moduleDots = Math.max(1, Math.floor(maxW / probe.width));
+  if (moduleDots < 2 && probe.width * 2 <= maxW) moduleDots = 2;
+
+  const src = document.createElement("canvas");
+  JsBarcode(src, value, {
+    format: "CODE128",
+    width: moduleDots,
+    height: 10,
+    margin: 0,
+    displayValue: false,
+    background: "#ffffff",
+    lineColor: "#000000"
+  });
+  const sctx = src.getContext("2d");
+  if (!sctx) return;
+  const row = sctx.getImageData(0, 0, src.width, 1).data;
+
+  const drawW = Math.min(src.width, maxW);
+  const x0 = Math.round(x + (maxW - drawW) / 2);
+  const y0 = Math.round(y);
+  ctx.fillStyle = "#000000";
+
+  let col = 0;
+  while (col < drawW) {
+    const black = row[col * 4]! < 128;
+    let end = col + 1;
+    while (end < drawW && row[end * 4]! < 128 === black) end += 1;
+    if (black) ctx.fillRect(x0 + col, y0, end - col, h);
+    col = end;
+  }
+}
+
+function fitText(ctx: CanvasRenderingContext2D, text: string, maxW: number) {
+  let value = text;
+  while (value.length > 1 && ctx.measureText(value).width > maxW) {
+    value = value.slice(0, -1);
+  }
+  return value === text ? value : `${value.slice(0, -1)}…`;
+}
+
+function drawLabelText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxW: number,
+  sizeDots: number
+) {
+  ctx.font = ptFont(sizeDots);
+  const label = fitText(ctx, text, maxW);
+  ctx.fillStyle = "#000000";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  ctx.fillText(label, Math.round(x), Math.round(y));
+  return sizeDots;
+}
+
+function binarizeCanvas(canvas: HTMLCanvasElement) {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  const image = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const { data } = image;
+  for (let i = 0; i < data.length; i += 4) {
+    const luma = data[i]! * 0.299 + data[i + 1]! * 0.587 + data[i + 2]! * 0.114;
+    const v = luma < 160 ? 0 : 255;
+    data[i] = v;
+    data[i + 1] = v;
+    data[i + 2] = v;
+    data[i + 3] = 255;
+  }
+  ctx.putImageData(image, 0, 0);
+}
+
+/**
+ * VASRITHA · barcode · code · colour · size (skip free size) · price
+ * Layout auto-fits 2-up (50×25) and 3-up (34×25).
+ */
+function renderRowCanvas(spec: LayoutSpec, cards: LabelCard[]) {
+  const labelW = spec.tagW * DOTS_PER_MM;
+  const labelH = spec.tagH * DOTS_PER_MM;
+  const canvas = document.createElement("canvas");
+  canvas.width = labelW * spec.cols;
+  canvas.height = labelH;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Could not prepare labels for printing");
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.imageSmoothingEnabled = false;
+
+  // 3-up is tighter; 2-up can use more room.
+  const tight = spec.cols >= 3;
+  const pad = tight ? 7 : 9;
+  const textPt = tight ? 6.5 : 7.5;
+  const pricePt = tight ? 7.5 : 9;
+  const textDots = ptToDots(textPt);
+  const priceDots = ptToDots(pricePt);
+  const barH = tight ? 50 : 58;
+
+  cards.forEach((card, col) => {
+    const x0 = col * labelW;
+    const cx = x0 + labelW / 2;
+    const innerW = labelW - pad * 2;
+
+    const afterBarcode: Array<{ text: string; size: number }> = [
+      { text: card.codeLabel, size: textDots }
+    ];
+    const color = card.colorLabel.trim();
+    const size =
+      card.sizeLabel && card.sizeLabel.toUpperCase() !== color.toUpperCase()
+        ? card.sizeLabel.trim()
+        : "";
+    // On narrow 3-up, colour + size share one line so price still fits.
+    if (color && size && tight) {
+      afterBarcode.push({
+        text: `${color.toUpperCase()} · ${size.toUpperCase()}`,
+        size: textDots
+      });
+    } else {
+      if (color) afterBarcode.push({ text: color.toUpperCase(), size: textDots });
+      if (size) afterBarcode.push({ text: size.toUpperCase(), size: textDots });
+    }
+    if (card.priceLabel) {
+      afterBarcode.push({ text: card.priceLabel, size: priceDots });
     }
 
-    doc.open();
-    doc.write(html);
-    doc.close();
+    const afterH = afterBarcode.reduce((sum, line) => sum + line.size + LINE_GAP, 0);
+    const contentH = textDots + LINE_GAP + barH + LINE_GAP + afterH;
+    let y = Math.max(3, Math.round((labelH - contentH) / 2));
 
-    const runPrint = () => {
-      const win = frame.contentWindow;
-      if (!win) {
-        frame.remove();
-        reject(new Error("Could not open the print view"));
-        return;
-      }
-      win.focus();
-      win.print();
-      window.setTimeout(() => {
-        frame.remove();
-        resolve();
-      }, 800);
-    };
+    drawLabelText(ctx, card.brand.toUpperCase(), cx, y, innerW, textDots);
+    y += textDots + LINE_GAP;
 
-    const images = Array.from(doc.images);
-    if (!images.length) {
-      window.setTimeout(runPrint, 80);
-      return;
-    }
-    let left = images.length;
-    const done = () => {
-      left -= 1;
-      if (left <= 0) window.setTimeout(runPrint, 50);
-    };
-    for (const img of images) {
-      if (img.complete) done();
-      else {
-        img.addEventListener("load", done);
-        img.addEventListener("error", done);
-      }
+    drawBarcode(ctx, card.scanValue, x0 + pad, y, innerW, barH);
+    y += barH + LINE_GAP;
+
+    for (const line of afterBarcode) {
+      drawLabelText(ctx, line.text, cx, y, innerW, line.size);
+      y += line.size + LINE_GAP;
     }
   });
+
+  binarizeCanvas(canvas);
+  return canvas;
 }
 
-function stickerHtml(input: {
-  brand: string;
-  price: string;
-  codeLabel: string;
-  colorLabel?: string;
-  barcodeSrc: string;
-  barcodeAlt: string;
-}) {
-  const colorLine = input.colorLabel
-    ? `<div class="sale-tag-color">${escapePrintHtml(input.colorLabel)}</div>`
-    : "";
-  return `<article class="sale-tag">
-    <strong class="sale-tag-brand">${escapePrintHtml(input.brand)}</strong>
-    <img class="sale-tag-barcode" src="${input.barcodeSrc}" alt="${escapePrintHtml(input.barcodeAlt)}" />
-    <div class="sale-tag-code">${escapePrintHtml(input.codeLabel)}</div>
-    ${colorLine}
-    <div class="sale-tag-price">${escapePrintHtml(input.price)}</div>
-  </article>`;
-}
-
+/** Simple label print — no rotation / printer property UI. */
 export async function printProductStickers(input: {
   brand?: string;
   price: number | string;
-  /** Preferred: set2 | set3. Falls back from labelSize dress/accessory. */
   layout?: LabelLayout;
   labelSize?: LabelSizeCode;
   meta?: StickerProductMeta;
@@ -207,6 +314,12 @@ export async function printProductStickers(input: {
     throw new Error("No unique barcodes to print. Save stock first, or inward more pieces.");
   }
 
+  try {
+    window.localStorage.removeItem("vasritha.labelPrintRotation");
+  } catch {
+    /* ignore */
+  }
+
   const brand =
     (input.brand || input.meta?.brand || "VASRITHA").replace(/\s+BOUTIQUE$/i, "").trim() ||
     "VASRITHA";
@@ -214,168 +327,214 @@ export async function printProductStickers(input: {
   const defaultLayout = input.layout || labelSizeToLayout(input.labelSize || "dress");
   const spec = LAYOUT[defaultLayout];
 
-  const cards: string[] = [];
+  const cards: LabelCard[] = [];
   for (const raw of input.items) {
     const scanValue = String(raw.barcode || raw.unit_code || "")
       .replace(/[^A-Za-z0-9]/g, "")
       .toUpperCase();
     if (!scanValue) continue;
 
-    const price = raw.price != null ? formatPrice(raw.price) : defaultPrice;
-    const codeLabel = String(raw.unit_code || raw.barcode || raw.sku || scanValue).trim();
-    const colorLabel = String(
-      raw.color || raw.sizeLabel || input.meta?.color || ""
-    ).trim();
-    const barcodeSrc = barcodeDataUrl(scanValue, spec.barH, spec.barW);
+    const unitCode = String(raw.unit_code || raw.barcode || raw.sku || scanValue).trim();
+    const priceLabel =
+      raw.price != null && raw.price !== "" ? formatPrice(raw.price) : defaultPrice;
 
-    cards.push(
-      stickerHtml({
-        brand,
-        price,
-        codeLabel,
-        colorLabel: colorLabel || undefined,
-        barcodeSrc,
-        barcodeAlt: scanValue
-      })
-    );
+    cards.push({
+      brand,
+      codeLabel: unitCode,
+      colorLabel: String(raw.color || input.meta?.color || "").trim(),
+      sizeLabel: resolveSizeLabel(raw.sizeLabel),
+      priceLabel,
+      scanValue
+    });
   }
 
   if (!cards.length) {
     throw new Error("Barcode values are invalid for printing.");
   }
 
-  const rows: string[] = [];
-  for (let i = 0; i < cards.length; i += spec.cols) {
-    const slice = cards.slice(i, i + spec.cols);
-    while (slice.length < spec.cols) {
-      slice.push(`<td class="sale-tag-cell sale-tag-cell--blank" aria-hidden="true"></td>`);
-    }
-    const cells = slice.map((card) =>
-      card.startsWith("<td")
-        ? card
-        : `<td class="sale-tag-cell">${card}</td>`
-    );
-    rows.push(`<tr class="sale-tag-row">${cells.join("")}</tr>`);
+  const pageW = spec.tagW * spec.cols;
+  const pageH = spec.tagH;
+  const rowCount = Math.ceil(cards.length / spec.cols);
+  const rows: HTMLCanvasElement[] = [];
+  for (let row = 0; row < rowCount; row += 1) {
+    rows.push(renderRowCanvas(spec, cards.slice(row * spec.cols, row * spec.cols + spec.cols)));
   }
 
-  await printDocument(
-    `<!doctype html><html><head><title>Vasritha stickers</title>
-    <style>
-      @page { size: auto; margin: 4mm; }
-      * { box-sizing: border-box; }
-      html, body {
-        margin: 0;
-        padding: 0;
-        background: #fff;
-        color: #000;
-      }
-      body { font-family: Arial, Helvetica, sans-serif; }
-      /* Table rows keep whole stickers together across page breaks */
-      .sheet {
-        border-collapse: collapse;
-        border-spacing: 0;
-        width: calc(${spec.cols} * ${spec.tagW} + ${(spec.cols - 1) * 2}mm);
-        max-width: 100%;
-        margin: 0;
-        padding: 0;
-      }
-      .sale-tag-row {
-        page-break-inside: avoid;
-        break-inside: avoid;
-      }
-      .sale-tag-cell {
-        width: ${spec.tagW};
-        height: ${spec.tagH};
-        padding: 0 1mm 2mm 0;
-        vertical-align: top;
-        page-break-inside: avoid;
-        break-inside: avoid;
-      }
-      .sale-tag-cell--blank {
-        visibility: hidden;
-      }
-      .sale-tag {
-        width: ${spec.tagW};
-        height: ${spec.tagH};
-        margin: 0;
-        padding: 1mm 1.4mm;
-        background: #fff;
-        border: 0;
-        overflow: hidden;
-        text-align: center;
-      }
-      .sale-tag-brand {
-        display: block;
-        font-family: Georgia, "Times New Roman", Times, serif;
-        font-size: ${spec.brandPx};
-        font-weight: 700;
-        letter-spacing: 0.04em;
-        line-height: 1.05;
-        text-transform: uppercase;
-        color: #000;
-        margin: 0 0 0.4mm;
-      }
-      .sale-tag-barcode {
-        display: block;
-        width: 96%;
-        max-width: 96%;
-        height: ${spec.barMm};
-        margin: 0 auto 0.4mm;
-        object-fit: contain;
-        object-position: center;
-        image-rendering: crisp-edges;
-        -ms-interpolation-mode: nearest-neighbor;
-      }
-      .sale-tag-code {
-        display: block;
-        font-size: ${spec.codePx};
-        font-weight: 600;
-        letter-spacing: 0.02em;
-        line-height: 1.05;
-        color: #000;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        max-width: 100%;
-        margin: 0 0 0.3mm;
-      }
-      .sale-tag-color {
-        display: block;
-        font-size: calc(${spec.codePx} * 0.92);
-        font-weight: 500;
-        letter-spacing: 0.01em;
-        line-height: 1.05;
-        color: #000;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        max-width: 100%;
-        margin: 0 0 0.25mm;
-      }
-      .sale-tag-price {
-        display: block;
-        font-size: ${spec.pricePx};
-        font-weight: 800;
-        letter-spacing: 0.01em;
-        line-height: 1;
-        color: #000;
-        white-space: nowrap;
-        margin: 0;
-      }
-      @media print {
-        html, body { margin: 0; }
-        .sale-tag-row,
-        .sale-tag-cell {
-          page-break-inside: avoid !important;
-          break-inside: avoid !important;
-        }
-        .sale-tag-barcode {
-          -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
-        }
-      }
-    </style></head><body>
-    <table class="sheet"><tbody>${rows.join("")}</tbody></table>
-    </body></html>`
-  );
+  const doc = new jsPDF({
+    orientation: "landscape",
+    unit: "mm",
+    format: [pageW, pageH],
+    compress: true
+  });
+  // Empty metadata so the print dialog does not show a title/header.
+  doc.setProperties({ title: "", subject: "", author: "", creator: "" });
+  rows.forEach((canvas, row) => {
+    if (row > 0) doc.addPage([pageW, pageH], "landscape");
+    doc.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, pageW, pageH, undefined, "NONE");
+  });
+
+  const pdfUrl = URL.createObjectURL(doc.output("blob"));
+  showLabelPreview({
+    pdfUrl,
+    fileName: `labels-${defaultLayout}-${Date.now()}.pdf`,
+    pageW,
+    pageH,
+    rows
+  });
+}
+
+function showLabelPreview(input: {
+  pdfUrl: string;
+  fileName: string;
+  pageW: number;
+  pageH: number;
+  rows: HTMLCanvasElement[];
+}) {
+  document.getElementById("vasritha-label-preview")?.remove();
+  document.getElementById("vasritha-label-print-frame")?.remove();
+
+  const overlay = document.createElement("div");
+  overlay.id = "vasritha-label-preview";
+  overlay.style.cssText =
+    "position:fixed;inset:0;z-index:100000;background:rgba(20,12,6,.55);display:flex;align-items:center;justify-content:center;padding:16px;";
+
+  const panel = document.createElement("div");
+  panel.style.cssText =
+    "background:#fff;border-radius:14px;width:min(760px,100%);max-height:92vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.3);font-family:Arial,Helvetica,sans-serif;";
+
+  const head = document.createElement("div");
+  head.style.cssText =
+    "display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid #eee;";
+
+  const title = document.createElement("strong");
+  const rowCount = input.rows.length;
+  title.textContent = `Labels · ${input.pageW} × ${input.pageH} mm · ${rowCount} row${rowCount === 1 ? "" : "s"}`;
+  title.style.cssText = "font-size:15px;color:#2b1a10;";
+
+  const actions = document.createElement("div");
+  actions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;";
+
+  const makeBtn = (label: string, primary = false) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = label;
+    btn.style.cssText = primary
+      ? "background:#422314;color:#fff;border:0;border-radius:999px;padding:8px 16px;font-weight:700;cursor:pointer;"
+      : "background:#fff;color:#422314;border:1px solid #d8c7b6;border-radius:999px;padding:8px 16px;font-weight:600;cursor:pointer;";
+    return btn;
+  };
+
+  const printBtn = makeBtn("Print", true);
+  const downloadBtn = makeBtn("Download PDF");
+  const closeBtn = makeBtn("Close");
+
+  const preview = document.createElement("div");
+  preview.style.cssText =
+    "overflow:auto;padding:16px;background:#f4f4f4;display:flex;flex-direction:column;gap:10px;align-items:center;max-height:min(60vh,520px);";
+  for (const canvas of input.rows) {
+    const img = document.createElement("img");
+    img.src = canvas.toDataURL("image/png");
+    img.alt = "Label row";
+    img.style.cssText =
+      "width:min(100%,520px);height:auto;background:#fff;image-rendering:pixelated;box-shadow:0 1px 4px rgba(0,0,0,.12);";
+    preview.appendChild(img);
+  }
+
+  const close = () => {
+    overlay.remove();
+    document.getElementById("vasritha-label-print-frame")?.remove();
+    window.setTimeout(() => URL.revokeObjectURL(input.pdfUrl), 60_000);
+  };
+
+  const tip = document.createElement("div");
+  tip.style.cssText =
+    "padding:8px 16px;font-size:12px;color:#5c4030;background:#faf6f1;border-bottom:1px solid #eee;line-height:1.45;";
+  tip.innerHTML =
+    `Crisp bitmap print · Paper <b>${input.pageW} × ${input.pageH} mm</b> · Scale <b>100%</b> · Margins <b>None</b> · ` +
+    "More settings → <b>Headers and footers OFF</b> (once). Printer Graphics → Dithering <b>None</b>.";
+
+  printBtn.addEventListener("click", () => printLabelRows(input.rows, input.pageW, input.pageH));
+  downloadBtn.addEventListener("click", () => {
+    const a = document.createElement("a");
+    a.href = input.pdfUrl;
+    a.download = input.fileName;
+    a.click();
+  });
+  closeBtn.addEventListener("click", close);
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) close();
+  });
+
+  actions.append(printBtn, downloadBtn, closeBtn);
+  head.append(title, actions);
+  panel.append(head, tip, preview);
+  overlay.append(panel);
+  document.body.appendChild(overlay);
+}
+
+/**
+ * Print PNG rows directly (not PDF). PDF re-encoding softens bars/text.
+ * Turn Headers/footers off once in Chrome for this printer.
+ */
+function printLabelRows(rows: HTMLCanvasElement[], pageW: number, pageH: number) {
+  if (!rows.length) return;
+  document.getElementById("vasritha-label-print-frame")?.remove();
+
+  const frame = document.createElement("iframe");
+  frame.id = "vasritha-label-print-frame";
+  frame.title = " ";
+  frame.style.cssText =
+    "position:fixed;left:12px;bottom:12px;width:520px;height:360px;border:1px solid #ccc;border-radius:8px;background:#fff;z-index:100001;box-shadow:0 8px 24px rgba(0,0,0,.2);";
+  document.body.appendChild(frame);
+
+  const doc = frame.contentDocument;
+  const win = frame.contentWindow;
+  if (!doc || !win) {
+    frame.remove();
+    window.alert("Could not open the print dialog.");
+    return;
+  }
+
+  const pages = rows
+    .map((canvas) => `<div class="page"><img src="${canvas.toDataURL("image/png")}" alt="" /></div>`)
+    .join("");
+
+  doc.open();
+  doc.write(`<!DOCTYPE html>
+<html><head><meta charset="utf-8" /><title>&nbsp;</title>
+<style>
+  @page { size: ${pageW}mm ${pageH}mm; margin: 0; }
+  * { margin: 0; padding: 0; }
+  html, body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .page { width: ${pageW}mm; height: ${pageH}mm; overflow: hidden; page-break-after: always; }
+  .page:last-child { page-break-after: auto; }
+  img { display: block; width: ${pageW}mm; height: ${pageH}mm; image-rendering: pixelated; image-rendering: crisp-edges; }
+</style></head><body>${pages}</body></html>`);
+  doc.close();
+
+  const runPrint = () => {
+    try {
+      win.focus();
+      win.print();
+    } catch {
+      window.alert("Could not open the print dialog.");
+    } finally {
+      window.setTimeout(() => document.getElementById("vasritha-label-print-frame")?.remove(), 2500);
+    }
+  };
+
+  Promise.all(
+    Array.from(doc.images).map(
+      (img) =>
+        new Promise<void>((resolve) => {
+          if (img.complete && img.naturalWidth > 0) return resolve();
+          img.onload = () => resolve();
+          img.onerror = () => resolve();
+        })
+    )
+  ).then(() => {
+    win.requestAnimationFrame(() => {
+      win.requestAnimationFrame(() => window.setTimeout(runPrint, 300));
+    });
+  });
 }

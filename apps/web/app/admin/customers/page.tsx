@@ -65,9 +65,14 @@ export default function AdminCustomersPage() {
             onChange={(e) => setQ(e.target.value)}
           />
         </label>
-        <button className="btn" type="submit">
-          <Search size={15} />
-          Search
+        <button
+          type="submit"
+          className="admin-icon-tip admin-action-btn--primary"
+          data-tooltip="Search"
+          aria-label="Search customers"
+        >
+          <Search size={16} strokeWidth={2} />
+          <span>Search</span>
         </button>
       </form>
 

@@ -155,41 +155,47 @@ export default function AdminCmsPage() {
     tab === "banners" ? (
       <button
         type="button"
-        className="btn"
+        className="admin-icon-tip admin-action-btn--primary"
         onClick={() => {
           setFormError("");
           setBannerForm(blankBanner());
           setBannerModalOpen(true);
         }}
+        data-tooltip="New banner"
+        aria-label="New banner"
       >
-        <Plus size={15} />
-        New banner
+        <Plus size={17} strokeWidth={2.2} />
+        <span>New banner</span>
       </button>
     ) : tab === "pages" ? (
       <button
         type="button"
-        className="btn"
+        className="admin-icon-tip admin-action-btn--primary"
         onClick={() => {
           setFormError("");
           setPageForm(blankPage());
           setPageModalOpen(true);
         }}
+        data-tooltip="New page"
+        aria-label="New page"
       >
-        <Plus size={15} />
-        New page
+        <Plus size={17} strokeWidth={2.2} />
+        <span>New page</span>
       </button>
     ) : tab === "sections" ? (
       <button
         type="button"
-        className="btn"
+        className="admin-icon-tip admin-action-btn--primary"
         onClick={() => {
           setFormError("");
           setSectionForm(blankSection());
           setSectionModalOpen(true);
         }}
+        data-tooltip="New section"
+        aria-label="New section"
       >
-        <Plus size={15} />
-        New section
+        <Plus size={17} strokeWidth={2.2} />
+        <span>New section</span>
       </button>
     ) : null;
 

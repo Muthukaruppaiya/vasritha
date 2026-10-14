@@ -152,9 +152,15 @@ export function ProductPickModal({
               <div className="grn-sku-empty">
                 {debounced.length >= 2 ? <p className="muted">No matches</p> : null}
                 {debounced.length >= 2 && onCreateProduct ? (
-                  <button type="button" className="btn" onClick={onCreateProduct}>
-                    <PackagePlus size={14} />
-                    Create product
+                  <button
+                    type="button"
+                    className="admin-icon-tip admin-action-btn--primary"
+                    onClick={onCreateProduct}
+                    data-tooltip="Create product"
+                    aria-label="Create product"
+                  >
+                    <PackagePlus size={16} strokeWidth={2} />
+                    <span>Create product</span>
                   </button>
                 ) : null}
               </div>

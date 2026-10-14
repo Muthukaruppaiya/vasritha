@@ -5,7 +5,11 @@ import { useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import {
   ArrowDownToLine,
+  ChevronLeft,
+  ChevronRight,
   ClipboardCheck,
+  Download,
+  Package,
   PackagePlus,
   Pencil,
   Printer,
@@ -27,6 +31,7 @@ import {
   type ProductPickRow
 } from "../../../components/admin/product-pick-modal";
 import { adminFetch, formatDate, getAdminUser } from "../../../lib/admin-api";
+import { downloadAdminExport } from "../../../lib/download-export";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
 import {
   LABEL_LAYOUT_OPTIONS,
@@ -306,43 +311,29 @@ function AdminInventoryPageInner() {
               <SlidersHorizontal size={16} strokeWidth={2} />
               <span>Adjust stock</span>
             </button>
+            {(["xlsx", "csv", "pdf"] as const).map((fmt) => (
+              <button
+                key={fmt}
+                type="button"
+                className="admin-icon-tip"
+                data-tooltip={`Export ${fmt === "xlsx" ? "Excel" : fmt.toUpperCase()}`}
+                aria-label={`Export inventory ${fmt}`}
+                onClick={() => {
+                  void downloadAdminExport(
+                    `/api/admin/inventory/export?format=${fmt}`,
+                    `inventory.${fmt}`
+                  ).catch((err) =>
+                    window.alert(err instanceof Error ? err.message : "Export failed")
+                  );
+                }}
+              >
+                <Download size={16} strokeWidth={2} />
+                <span>{fmt === "xlsx" ? "Excel" : fmt.toUpperCase()}</span>
+              </button>
+            ))}
           </>
         }
       />
-
-      <section className="inv-flow" aria-label="Inventory workflow">
-        <div className="inv-flow-step">
-          <span className="inv-flow-num">1</span>
-          <div>
-            <strong>Product Master</strong>
-            <p>Create the product (name, SKU, price, images).</p>
-          </div>
-        </div>
-        <div className="inv-flow-arrow" aria-hidden>
-          →
-        </div>
-        <div className="inv-flow-step is-current">
-          <span className="inv-flow-num">2</span>
-          <div>
-            <strong>GRN entry → approvals</strong>
-            <p>
-              <Link href="/admin/inventory/grn">Enter GRN</Link>
-              {" · "}
-              <Link href="/admin/inventory/approvals">Approve</Link> to release stock.
-            </p>
-          </div>
-        </div>
-        <div className="inv-flow-arrow" aria-hidden>
-          →
-        </div>
-        <div className="inv-flow-step">
-          <span className="inv-flow-num">3</span>
-          <div>
-            <strong>Sell / adjust</strong>
-            <p>POS &amp; online reduce stock; use Adjust for corrections.</p>
-          </div>
-        </div>
-      </section>
 
       {grnPosted ? <AdminAlert tone="ok">GRN posted successfully. Stock updated.</AdminAlert> : null}
 
@@ -462,8 +453,14 @@ function AdminInventoryPageInner() {
         )}
         {!loading && !summary?.skuCount ? (
           <div className="inv-empty-actions">
-            <Link className="btn" href="/admin/products">
-              Go to Product Master
+            <Link
+              className="admin-icon-tip admin-action-btn--primary"
+              href="/admin/products"
+              data-tooltip="Go to Product Master"
+              aria-label="Go to Product Master"
+            >
+              <Package size={16} strokeWidth={2} />
+              <span>Product Master</span>
             </Link>
           </div>
         ) : null}
@@ -546,7 +543,7 @@ function AdminInventoryPageInner() {
                         </button>
                         <Link
                           className="admin-action-btn"
-                          href={`/admin/products?focus=${row.product_id}`}
+                          href={`/admin/products/${row.product_id}/edit`}
                           data-tooltip="Edit product"
                           aria-label={`Edit product ${row.product_name}`}
                         >
@@ -572,22 +569,28 @@ function AdminInventoryPageInner() {
               <div className="inv-pagination">
                 <button
                   type="button"
-                  className="btn admin-ghost-btn"
+                  className="admin-icon-tip"
                   disabled={page <= 0 || loading}
+                  data-tooltip="Previous page"
+                  aria-label="Previous page"
                   onClick={() => setPage((p) => Math.max(0, p - 1))}
                 >
-                  Previous
+                  <ChevronLeft size={16} strokeWidth={2} />
+                  <span>Previous</span>
                 </button>
                 <span className="muted">
                   Page {page + 1} / {pageCount}
                 </span>
                 <button
                   type="button"
-                  className="btn admin-ghost-btn"
+                  className="admin-icon-tip"
                   disabled={page + 1 >= pageCount || loading}
+                  data-tooltip="Next page"
+                  aria-label="Next page"
                   onClick={() => setPage((p) => p + 1)}
                 >
-                  Next
+                  <ChevronRight size={16} strokeWidth={2} />
+                  <span>Next</span>
                 </button>
               </div>
             ) : null}

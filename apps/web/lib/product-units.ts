@@ -21,6 +21,8 @@ export type ProductItem = {
   date_sold: string | null;
   bill_id: string | null;
   label_printed: boolean;
+  /** Variant name — used as size on labels when not free size. */
+  variant_name?: string | null;
 };
 
 type Db = {
@@ -344,7 +346,11 @@ export async function recordPriceHistory(productId: string, price: number) {
 
 export async function listProductItems(productId: string) {
   return query<ProductItem>(
-    `select * from product_items where product_id = $1 order by seq asc`,
+    `select i.*, pv.name as variant_name
+     from product_items i
+     left join product_variants pv on pv.id = i.variant_id
+     where i.product_id = $1
+     order by i.seq asc`,
     [productId]
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { Ban, Check, Plus } from "lucide-react";
 import {
   AdminAlert,
   AdminBadge,
@@ -68,8 +69,15 @@ export default function FinanceAccountsPage() {
         title="Chart of accounts"
         description="Asset, liability, equity, income and expense accounts. System accounts can be deactivated but not deleted."
         actions={
-          <button type="button" className="btn" onClick={() => setOpen(true)}>
-            New account
+          <button
+            type="button"
+            className="admin-icon-tip admin-action-btn--primary"
+            onClick={() => setOpen(true)}
+            data-tooltip="New account"
+            aria-label="New account"
+          >
+            <Plus size={17} strokeWidth={2.2} />
+            <span>New account</span>
           </button>
         }
       />
@@ -103,8 +111,19 @@ export default function FinanceAccountsPage() {
                       </AdminBadge>
                     </td>
                     <td>
-                      <button type="button" className="admin-action-btn" onClick={() => void toggleActive(row)}>
-                        {row.is_active ? "Deactivate" : "Activate"}
+                      <button
+                        type="button"
+                        className="admin-icon-tip admin-action-btn"
+                        onClick={() => void toggleActive(row)}
+                        data-tooltip={row.is_active ? "Deactivate" : "Activate"}
+                        aria-label={`${row.is_active ? "Deactivate" : "Activate"} ${row.name}`}
+                      >
+                        {row.is_active ? (
+                          <Ban size={15} strokeWidth={2} />
+                        ) : (
+                          <Check size={15} strokeWidth={2} />
+                        )}
+                        <span>{row.is_active ? "Deactivate" : "Activate"}</span>
                       </button>
                     </td>
                   </tr>

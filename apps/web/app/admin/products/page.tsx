@@ -2,14 +2,17 @@
 
 import { useMemo, useRef, useState, useEffect, Suspense } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Archive,
   CheckCircle2,
+  ChevronDown,
+  Download,
   ExternalLink,
   Eye,
   EyeOff,
   FileSpreadsheet,
+  Filter,
   GitBranchPlus,
   MoreHorizontal,
   Package,
@@ -22,6 +25,7 @@ import {
   Trash2,
   Upload,
   Warehouse,
+  X,
   XCircle
 } from "lucide-react";
 import {
@@ -32,15 +36,9 @@ import {
   AdminPanel,
   statusTone
 } from "../../../components/admin/admin-ui";
-import {
-  blankProductForm,
-  ProductFormImage,
-  ProductFormModal,
-  ProductFormValues,
-  ProductParentOption
-} from "../../../components/admin/product-form-modal";
 import { ProductDetailModal } from "../../../components/admin/product-detail-modal";
 import { adminFetch, formatMoney, getAdminToken, getAdminUser } from "../../../lib/admin-api";
+import { downloadAdminExport } from "../../../lib/download-export";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
 import { productListThumb } from "../../../lib/category-images";
 
@@ -120,6 +118,7 @@ export default function AdminProductsPage() {
 }
 
 function AdminProductsPageInner() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const focusId = searchParams.get("focus") || "";
   const fromGrn = searchParams.get("fromGrn") === "1";
@@ -134,6 +133,8 @@ function AdminProductsPageInner() {
   const [priceMin, setPriceMin] = useState("");
   const [priceMax, setPriceMax] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("newest");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -143,12 +144,6 @@ function AdminProductsPageInner() {
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
 
-  const [modalOpen, setModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState<"create" | "edit">("create");
-  const [formValues, setFormValues] = useState<ProductFormValues>(blankProductForm());
-  const [formImages, setFormImages] = useState<ProductFormImage[]>([]);
-  const [formInternalImages, setFormInternalImages] = useState<ProductFormImage[]>([]);
-  const [loadingEdit, setLoadingEdit] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const focusOpened = useRef(false);
 
@@ -156,6 +151,16 @@ function AdminProductsPageInner() {
     const t = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
     return () => window.clearTimeout(t);
   }, [search]);
+
+  useEffect(() => {
+    if (!exportOpen) return;
+    const onDoc = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest?.(".pm-export-menu")) setExportOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [exportOpen]);
 
   const productsPath = useMemo(() => {
     const params = new URLSearchParams();
@@ -185,34 +190,8 @@ function AdminProductsPageInner() {
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [products]);
 
-  const parentOptions = useMemo<ProductParentOption[]>(() => {
-    return (products || [])
-      .filter((row) => !row.parent_product_id)
-      .map((row) => ({
-        id: row.id,
-        name: row.name,
-        sku: row.sku,
-        color: row.color
-      }));
-  }, [products]);
-
   const openCreateChild = (parent: Product) => {
-    setModalMode("create");
-    setFormValues({
-      ...blankProductForm(parent.category_id || categories?.[0]?.id || ""),
-      category_id: parent.category_id,
-      subcategory_id: parent.subcategory_id || "",
-      parent_product_id: parent.id,
-      color: parent.is_multicolour ? "" : parent.color || "",
-      is_multicolour: Boolean(parent.is_multicolour),
-      label_size: parent.label_size === "accessory" ? "accessory" : "dress",
-      sku_prefix: "VAS",
-      name: `${parent.name} · design`,
-      short_name: parent.short_name || ""
-    });
-    setFormImages([]);
-    setFormInternalImages([]);
-    setModalOpen(true);
+    router.push(`/admin/products/new?parent=${encodeURIComponent(parent.id)}`);
   };
 
   const filtered = useMemo(() => {
@@ -275,18 +254,18 @@ function AdminProductsPageInner() {
     sortBy
   ]);
 
-  const hasActiveFilters = Boolean(
-    search ||
-      statusFilter ||
-      categoryFilter ||
-      subcategoryFilter ||
-      colorFilter ||
-      stockFilter ||
-      featuredFilter ||
-      priceMin ||
-      priceMax ||
-      sortBy !== "newest"
-  );
+  const advancedFilterCount = [
+    statusFilter,
+    categoryFilter,
+    subcategoryFilter,
+    colorFilter,
+    stockFilter,
+    featuredFilter,
+    priceMin,
+    priceMax
+  ].filter(Boolean).length;
+
+  const hasActiveFilters = Boolean(search || advancedFilterCount || sortBy !== "newest");
 
   const catalogueStats = useMemo(() => {
     const list = products || [];
@@ -342,20 +321,10 @@ function AdminProductsPageInner() {
 
   const clearSelection = () => setSelected(new Set());
 
-  const openCreate = () => {
-    setModalMode("create");
-    setFormValues(blankProductForm(categories?.[0]?.id || ""));
-    setFormImages([]);
-    setFormInternalImages([]);
-    setModalOpen(true);
-  };
-
   useEffect(() => {
-    if (!fromGrn || !categories?.length) return;
-    openCreate();
-    // open once when landing from GRN
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fromGrn, categories?.length]);
+    if (!fromGrn) return;
+    router.replace("/admin/products/new?fromGrn=1");
+  }, [fromGrn, router]);
 
   useEffect(() => {
     if (!menuOpenId) return;
@@ -368,78 +337,15 @@ function AdminProductsPageInner() {
     return () => document.removeEventListener("mousedown", onPointerDown);
   }, [menuOpenId]);
 
-  const openEdit = async (productId: string) => {
-    setLoadingEdit(true);
-    const result = await adminFetch<
-      Product & {
-        product_images?: Array<{ id: string; storage_path: string; image_kind?: string }>;
-        internal_images?: Array<{ id: string; storage_path: string; image_kind?: string }>;
-        tag?: string | null;
-        sku_prefix?: string | null;
-        label_size?: "accessory" | "dress";
-        image_upload_token?: string;
-      }
-    >(`/api/admin/products/${productId}`);
-    setLoadingEdit(false);
-
-    if (result.error || !result.data) return;
-
-    const product = result.data;
-    setModalMode("edit");
-    setFormValues({
-      id: product.id,
-      name: product.name,
-      slug: product.slug,
-      sku: product.sku || `VAS-${product.id.slice(0, 8).toUpperCase()}`,
-      barcode:
-        product.barcode ||
-        (product.sku || `VAS${product.id.slice(0, 8)}`).replace(/[^A-Za-z0-9]/g, "").toUpperCase(),
-      tag: product.tag || product.sku || "",
-      sku_prefix: product.sku_prefix || "VAS",
-      label_size: product.label_size === "accessory" ? "accessory" : "dress",
-      image_upload_token: product.image_upload_token,
-      category_id: product.category_id,
-      subcategory_id: product.subcategory_id || "",
-      parent_product_id: product.parent_product_id || "",
-      price: String(product.price ?? ""),
-      compare_at_price: product.compare_at_price ? String(product.compare_at_price) : "",
-      hsn_code: product.hsn_code || "",
-      gst_rate: String(product.gst_rate ?? 5),
-      stock_quantity: String(product.stock_quantity ?? 0),
-      status: product.status,
-      short_name: product.short_name || "",
-      short_description: product.short_description || "",
-      color: product.color || "",
-      is_multicolour: Boolean(product.is_multicolour),
-      description: product.description || "",
-      is_featured: Boolean(product.is_featured),
-      restock_expected: Boolean(
-        (product as { restock_expected?: boolean }).restock_expected
-      )
-    });
-    setFormImages(
-      (product.product_images || []).map((image) => ({
-        id: image.id,
-        storage_path: image.storage_path,
-        kind: "website" as const
-      }))
-    );
-    setFormInternalImages(
-      (product.internal_images || []).map((image) => ({
-        id: image.id,
-        storage_path: image.storage_path,
-        kind: "internal" as const
-      }))
-    );
-    setModalOpen(true);
+  const openEdit = (productId: string) => {
+    router.push(`/admin/products/${productId}/edit`);
   };
 
   useEffect(() => {
-    if (!focusId || loading || focusOpened.current) return;
-    if (!(products || []).some((row) => row.id === focusId)) return;
+    if (!focusId || focusOpened.current) return;
     focusOpened.current = true;
-    void openEdit(focusId);
-  }, [focusId, loading, products]);
+    router.replace(`/admin/products/${focusId}/edit`);
+  }, [focusId, router]);
 
   const updateStatus = async (id: string, nextStatus: string) => {
     const result = await adminFetch(`/api/admin/products/${id}`, {
@@ -564,18 +470,20 @@ function AdminProductsPageInner() {
   };
 
   return (
-    <>
+    <div className="pm-page">
       <AdminPageHeader
         eyebrow="Catalogue"
         title="Product Master"
-        description="Create and edit what you sell. New products wait for manager approval before they appear on the website or POS."
         actions={
           <>
             {pendingCount > 0 ? (
               <button
                 type="button"
                 className="admin-icon-tip"
-                onClick={() => setStatusFilter("pending_approval")}
+                onClick={() => {
+                  setStatusFilter("pending_approval");
+                  setFiltersOpen(true);
+                }}
                 data-tooltip="Pending approval"
                 aria-label={`${pendingCount} products pending approval`}
               >
@@ -590,7 +498,6 @@ function AdminProductsPageInner() {
               aria-label="Inventory"
             >
               <Warehouse size={16} strokeWidth={2} />
-              <span>Inventory</span>
             </Link>
             <Link
               className="admin-icon-tip"
@@ -599,43 +506,80 @@ function AdminProductsPageInner() {
               aria-label="Print barcodes"
             >
               <Printer size={16} strokeWidth={2} />
-              <span>Print barcodes</span>
             </Link>
-            <a
+            <div className={`pm-export-menu${exportOpen ? " is-open" : ""}`}>
+              <button
+                type="button"
+                className="admin-icon-tip"
+                data-tooltip="Export"
+                aria-label="Export"
+                aria-expanded={exportOpen}
+                onClick={() => setExportOpen((v) => !v)}
+              >
+                <Download size={16} strokeWidth={2} />
+              </button>
+              {exportOpen ? (
+                <div className="pm-export-dropdown" role="menu">
+                  {(["xlsx", "csv", "pdf"] as const).map((fmt) => (
+                    <button
+                      key={fmt}
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setExportOpen(false);
+                        void downloadAdminExport(
+                          `/api/admin/products/export?format=${fmt}`,
+                          `products.${fmt}`
+                        ).catch((err) =>
+                          window.alert(err instanceof Error ? err.message : "Export failed")
+                        );
+                      }}
+                    >
+                      {fmt === "xlsx" ? "Excel (.xlsx)" : fmt.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <button
+              type="button"
               className="admin-icon-tip"
-              href="/samples/product-import-sample.xls"
-              download="vasritha-product-import-sample.xls"
-              data-tooltip="Sample Excel"
-              aria-label="Download sample Excel"
+              data-tooltip="Download import template"
+              aria-label="Download Excel import template"
+              onClick={() => {
+                void downloadAdminExport(
+                  "/api/admin/products/import/template",
+                  "vasritha-product-import-template.xlsx"
+                ).catch((err) =>
+                  setImportError(err instanceof Error ? err.message : "Could not download template")
+                );
+              }}
             >
               <FileSpreadsheet size={16} strokeWidth={2} />
-              <span>Sample Excel</span>
-            </a>
+            </button>
             <button
               type="button"
               className="admin-icon-tip"
               disabled={importBusy}
               onClick={() => importInputRef.current?.click()}
-              data-tooltip={importBusy ? "Importing…" : "Import bulk data"}
+              data-tooltip={importBusy ? "Importing…" : "Import Excel / CSV"}
               aria-label="Import bulk data"
             >
               <Upload size={16} strokeWidth={2} />
-              <span>{importBusy ? "Importing…" : "Import bulk data"}</span>
             </button>
-            <button
-              type="button"
+            <Link
               className="admin-icon-tip admin-action-btn--primary"
-              onClick={openCreate}
+              href="/admin/products/new"
               data-tooltip="New product"
               aria-label="New product"
             >
               <Plus size={17} strokeWidth={2.2} />
               <span>New product</span>
-            </button>
+            </Link>
             <input
               ref={importInputRef}
               type="file"
-              accept=".csv,.xls,text/csv,application/vnd.ms-excel"
+              accept=".csv,.xls,.xlsx,.xlsm,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               hidden
               onChange={(e) => void onImportFile(e.target.files)}
             />
@@ -643,106 +587,50 @@ function AdminProductsPageInner() {
         }
       />
 
-      <section className="inv-flow" aria-label="Product master workflow">
-        <div className="inv-flow-step is-current">
-          <span className="inv-flow-num">1</span>
-          <div>
-            <strong>Product Master</strong>
-            <p>Create / edit catalogue items.</p>
-          </div>
-        </div>
-        <div className="inv-flow-arrow" aria-hidden>
-          →
-        </div>
-        <Link className="inv-flow-step inv-flow-step--link" href="/admin/inventory/grn">
-          <span className="inv-flow-num">2</span>
-          <div>
-            <strong>GRN entry</strong>
-            <p>Enter inward, then approve separately.</p>
-          </div>
-        </Link>
-        <div className="inv-flow-arrow" aria-hidden>
-          →
-        </div>
-        <Link className="inv-flow-step inv-flow-step--link" href="/admin/barcodes">
-          <span className="inv-flow-num">3</span>
-          <div>
-            <strong>Print barcodes</strong>
-            <p>Label stickers on the print desk.</p>
-          </div>
-        </Link>
-        <div className="inv-flow-arrow" aria-hidden>
-          →
-        </div>
-        <div className="inv-flow-step">
-          <span className="inv-flow-num">4</span>
-          <div>
-            <strong>Sell</strong>
-            <p>POS &amp; website sell available stock.</p>
-          </div>
-        </div>
-      </section>
-
-      <div className="inv-summary catalogue-summary">
-        <button
-          type="button"
-          className="inv-summary-card inv-summary-card--btn"
-          onClick={clearFilters}
-        >
-          <Package size={16} />
-          <div>
-            <span>Products</span>
-            <strong>{catalogueStats.total}</strong>
-          </div>
+      <div className="pm-stats">
+        <button type="button" className="pm-stat" onClick={clearFilters}>
+          <span>Products</span>
+          <strong>{catalogueStats.total}</strong>
         </button>
         <button
           type="button"
-          className="inv-summary-card inv-summary-card--btn inv-summary-card--ok"
+          className="pm-stat pm-stat--ok"
           onClick={() => {
             setStatusFilter("active");
             setStockFilter("");
+            setFiltersOpen(true);
           }}
         >
-          <CheckCircle2 size={16} />
-          <div>
-            <span>Active</span>
-            <strong>{catalogueStats.active}</strong>
-          </div>
+          <span>Active</span>
+          <strong>{catalogueStats.active}</strong>
         </button>
         <button
           type="button"
-          className="inv-summary-card inv-summary-card--btn inv-summary-card--warn"
+          className="pm-stat pm-stat--warn"
           onClick={() => {
             setStockFilter("low");
             setStatusFilter("");
+            setFiltersOpen(true);
           }}
         >
-          <Warehouse size={16} />
-          <div>
-            <span>Low stock</span>
-            <strong>{catalogueStats.low}</strong>
-          </div>
+          <span>Low</span>
+          <strong>{catalogueStats.low}</strong>
         </button>
         <button
           type="button"
-          className="inv-summary-card inv-summary-card--btn inv-summary-card--danger"
+          className="pm-stat pm-stat--danger"
           onClick={() => {
             setStockFilter("out");
             setStatusFilter("");
+            setFiltersOpen(true);
           }}
         >
-          <PackageSearch size={16} />
-          <div>
-            <span>Out of stock</span>
-            <strong>{catalogueStats.out}</strong>
-          </div>
+          <span>Out</span>
+          <strong>{catalogueStats.out}</strong>
         </button>
-        <Link className="inv-summary-card inv-summary-card--btn" href="/admin/barcodes">
-          <Printer size={16} />
-          <div>
-            <span>Barcodes</span>
-            <strong>{catalogueStats.barcodes}</strong>
-          </div>
+        <Link className="pm-stat" href="/admin/barcodes">
+          <span>Barcodes</span>
+          <strong>{catalogueStats.barcodes}</strong>
         </Link>
       </div>
 
@@ -753,147 +641,184 @@ function AdminProductsPageInner() {
         </div>
       )}
 
-      <div className="admin-filter-panel">
-        <div className="admin-filter-panel-head">
-          <div>
-            <strong>Filters</strong>
-            <p className="muted">Search and narrow the catalogue</p>
-          </div>
-          {hasActiveFilters ? (
-            <button type="button" className="admin-ghost-btn admin-filter-reset" onClick={clearFilters}>
-              <RotateCcw size={14} />
-              Reset
+      <div className="pm-toolbar">
+        <div className="admin-search-field pm-toolbar-search">
+          <Search size={15} aria-hidden="true" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search name, SKU, colour, barcode…"
+            aria-label="Search products"
+          />
+          {search ? (
+            <button
+              type="button"
+              className="pm-search-clear"
+              aria-label="Clear search"
+              onClick={() => setSearch("")}
+            >
+              <X size={14} />
             </button>
           ) : null}
         </div>
 
-        <div className="admin-filter-grid">
-          <label className="admin-filter-search">
-            <span>Search</span>
-            <div className="admin-search-field">
-              <Search size={15} aria-hidden="true" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Name, code, colour, barcode…"
-              />
-            </div>
-          </label>
+        <button
+          type="button"
+          className={`pm-filter-toggle${filtersOpen || advancedFilterCount ? " is-active" : ""}`}
+          aria-expanded={filtersOpen}
+          onClick={() => setFiltersOpen((v) => !v)}
+        >
+          <Filter size={15} />
+          <span>Filters</span>
+          {advancedFilterCount > 0 ? (
+            <em className="pm-filter-count">{advancedFilterCount}</em>
+          ) : null}
+          <ChevronDown size={14} className={filtersOpen ? "is-open" : undefined} />
+        </button>
 
-          <label>
-            <span>Status</span>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-              <option value="">All statuses</option>
-              <option value="pending_approval">Pending approval</option>
-              <option value="rejected">Rejected</option>
-              <option value="draft">Draft</option>
-              <option value="active">Active</option>
-              <option value="archived">Archived</option>
-            </select>
-          </label>
+        <label className="pm-sort">
+          <span className="sr-only">Sort by</span>
+          <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortKey)}>
+            <option value="newest">Newest</option>
+            <option value="name">Name A–Z</option>
+            <option value="price-asc">Price ↑</option>
+            <option value="price-desc">Price ↓</option>
+            <option value="stock">Stock ↑</option>
+          </select>
+        </label>
 
-          <label>
-            <span>Category</span>
-            <select
-              value={categoryFilter}
-              onChange={(e) => {
-                setCategoryFilter(e.target.value);
-                setSubcategoryFilter("");
-              }}
-            >
-              <option value="">All categories</option>
-              {(categories || []).map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-          </label>
+        {hasActiveFilters ? (
+          <button type="button" className="pm-reset" onClick={clearFilters}>
+            <RotateCcw size={14} />
+            Reset
+          </button>
+        ) : null}
 
-          <label>
-            <span>Subcategory</span>
-            <select
-              value={subcategoryFilter}
-              onChange={(e) => setSubcategoryFilter(e.target.value)}
-              disabled={!categoryFilter}
-            >
-              <option value="">All subcategories</option>
-              {((categories || []).find((c) => c.id === categoryFilter)?.subcategories || []).map(
-                (item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                )
-              )}
-            </select>
-          </label>
-
-          <label>
-            <span>Colour</span>
-            <select value={colorFilter} onChange={(e) => setColorFilter(e.target.value)}>
-              <option value="">All colours</option>
-              {colourOptions.map((color) => (
-                <option key={color} value={color}>
-                  {color}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            <span>Stock</span>
-            <select value={stockFilter} onChange={(e) => setStockFilter(e.target.value)}>
-              <option value="">All stock levels</option>
-              <option value="in">In stock</option>
-              <option value="low">Low stock (≤ {LOW_STOCK_THRESHOLD})</option>
-              <option value="out">Out of stock</option>
-            </select>
-          </label>
-
-          <label>
-            <span>Fast selling</span>
-            <select value={featuredFilter} onChange={(e) => setFeaturedFilter(e.target.value)}>
-              <option value="">All products</option>
-              <option value="yes">Fast selling only</option>
-              <option value="no">Not fast selling</option>
-            </select>
-          </label>
-
-          <label>
-            <span>Price range (₹)</span>
-            <div className="admin-range-field">
-              <input
-                type="number"
-                min="0"
-                inputMode="numeric"
-                value={priceMin}
-                onChange={(e) => setPriceMin(e.target.value)}
-                placeholder="Min"
-              />
-              <span className="admin-range-sep">–</span>
-              <input
-                type="number"
-                min="0"
-                inputMode="numeric"
-                value={priceMax}
-                onChange={(e) => setPriceMax(e.target.value)}
-                placeholder="Max"
-              />
-            </div>
-          </label>
-
-          <label>
-            <span>Sort by</span>
-            <select value={sortBy} onChange={(e) => setSortBy(e.target.value as SortKey)}>
-              <option value="newest">Newest first</option>
-              <option value="name">Name A–Z</option>
-              <option value="price-asc">Price: low to high</option>
-              <option value="price-desc">Price: high to low</option>
-              <option value="stock">Stock: low to high</option>
-            </select>
-          </label>
-        </div>
+        <span className="pm-result-count muted">{filtered.length} shown</span>
       </div>
+
+      {filtersOpen ? (
+        <div className="admin-filter-panel pm-filter-panel">
+          <div className="admin-filter-panel-head">
+            <div>
+              <strong>Filters</strong>
+              <p className="muted">Narrow by status, category, stock, and more</p>
+            </div>
+            <button
+              type="button"
+              className="admin-ghost-btn admin-filter-reset"
+              onClick={() => setFiltersOpen(false)}
+            >
+              <X size={14} />
+              Close
+            </button>
+          </div>
+
+          <div className="admin-filter-grid">
+            <label>
+              <span>Status</span>
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <option value="">All statuses</option>
+                <option value="pending_approval">Pending approval</option>
+                <option value="rejected">Rejected</option>
+                <option value="draft">Draft</option>
+                <option value="active">Active</option>
+                <option value="archived">Archived</option>
+              </select>
+            </label>
+
+            <label>
+              <span>Category</span>
+              <select
+                value={categoryFilter}
+                onChange={(e) => {
+                  setCategoryFilter(e.target.value);
+                  setSubcategoryFilter("");
+                }}
+              >
+                <option value="">All categories</option>
+                {(categories || []).map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              <span>Subcategory</span>
+              <select
+                value={subcategoryFilter}
+                onChange={(e) => setSubcategoryFilter(e.target.value)}
+                disabled={!categoryFilter}
+              >
+                <option value="">All subcategories</option>
+                {((categories || []).find((c) => c.id === categoryFilter)?.subcategories || []).map(
+                  (item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  )
+                )}
+              </select>
+            </label>
+
+            <label>
+              <span>Colour</span>
+              <select value={colorFilter} onChange={(e) => setColorFilter(e.target.value)}>
+                <option value="">All colours</option>
+                {colourOptions.map((color) => (
+                  <option key={color} value={color}>
+                    {color}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              <span>Stock</span>
+              <select value={stockFilter} onChange={(e) => setStockFilter(e.target.value)}>
+                <option value="">All stock levels</option>
+                <option value="in">In stock</option>
+                <option value="low">Low stock (≤ {LOW_STOCK_THRESHOLD})</option>
+                <option value="out">Out of stock</option>
+              </select>
+            </label>
+
+            <label>
+              <span>Fast selling</span>
+              <select value={featuredFilter} onChange={(e) => setFeaturedFilter(e.target.value)}>
+                <option value="">All products</option>
+                <option value="yes">Fast selling only</option>
+                <option value="no">Not fast selling</option>
+              </select>
+            </label>
+
+            <label>
+              <span>Price range (₹)</span>
+              <div className="admin-range-field">
+                <input
+                  type="number"
+                  min="0"
+                  inputMode="numeric"
+                  value={priceMin}
+                  onChange={(e) => setPriceMin(e.target.value)}
+                  placeholder="Min"
+                />
+                <span className="admin-range-sep">–</span>
+                <input
+                  type="number"
+                  min="0"
+                  inputMode="numeric"
+                  value={priceMax}
+                  onChange={(e) => setPriceMax(e.target.value)}
+                  placeholder="Max"
+                />
+              </div>
+            </label>
+          </div>
+        </div>
+      ) : null}
 
       {selected.size > 0 && (
         <div className="admin-bulk-bar">
@@ -901,65 +826,102 @@ function AdminProductsPageInner() {
             <b>{selected.size}</b> selected
           </span>
           <div className="admin-bulk-actions">
-            <Link className="admin-bulk-link" href={bulkBarcodeHref}>
-              <Printer size={14} />
-              Print barcodes
+            <Link
+              className="admin-bulk-link admin-icon-tip"
+              href={bulkBarcodeHref}
+              data-tooltip="Print barcodes"
+              aria-label="Print barcodes for selected"
+            >
+              <Printer size={15} strokeWidth={2} />
+              <span>Print barcodes</span>
             </Link>
             {canApproveProducts ? (
               <>
                 <button
                   type="button"
+                  className="admin-icon-tip"
                   disabled={bulkBusy}
                   onClick={() => void bulkUpdateStatus("active")}
+                  data-tooltip="Approve"
+                  aria-label="Approve selected"
                 >
-                  <CheckCircle2 size={14} />
-                  Approve
+                  <CheckCircle2 size={15} strokeWidth={2} />
+                  <span>Approve</span>
                 </button>
                 <button
                   type="button"
+                  className="admin-icon-tip"
                   disabled={bulkBusy}
                   onClick={() => void bulkUpdateStatus("rejected")}
+                  data-tooltip="Reject"
+                  aria-label="Reject selected"
                 >
-                  <XCircle size={14} />
-                  Reject
+                  <XCircle size={15} strokeWidth={2} />
+                  <span>Reject</span>
                 </button>
               </>
             ) : (
               <button
                 type="button"
+                className="admin-icon-tip"
                 disabled={bulkBusy}
                 onClick={() => void bulkUpdateStatus("pending_approval")}
+                data-tooltip="Submit for approval"
+                aria-label="Submit selected for approval"
               >
-                <CheckCircle2 size={14} />
-                Submit for approval
+                <CheckCircle2 size={15} strokeWidth={2} />
+                <span>Submit for approval</span>
               </button>
             )}
-            <button type="button" disabled={bulkBusy} onClick={() => void bulkUpdateStatus("draft")}>
-              <EyeOff size={14} />
-              Move to draft
-            </button>
-            <button type="button" disabled={bulkBusy} onClick={() => void bulkUpdateStatus("archived")}>
-              <Archive size={14} />
-              Archive
+            <button
+              type="button"
+              className="admin-icon-tip"
+              disabled={bulkBusy}
+              onClick={() => void bulkUpdateStatus("draft")}
+              data-tooltip="Move to draft"
+              aria-label="Move selected to draft"
+            >
+              <EyeOff size={15} strokeWidth={2} />
+              <span>Move to draft</span>
             </button>
             <button
               type="button"
-              className="is-danger"
+              className="admin-icon-tip"
+              disabled={bulkBusy}
+              onClick={() => void bulkUpdateStatus("archived")}
+              data-tooltip="Archive"
+              aria-label="Archive selected"
+            >
+              <Archive size={15} strokeWidth={2} />
+              <span>Archive</span>
+            </button>
+            <button
+              type="button"
+              className="admin-icon-tip admin-action-btn--danger"
               disabled={bulkBusy}
               onClick={() => void bulkDeleteProducts()}
+              data-tooltip="Delete"
+              aria-label="Delete selected"
             >
-              <Trash2 size={14} />
-              Delete
+              <Trash2 size={15} strokeWidth={2} />
+              <span>Delete</span>
             </button>
-            <button type="button" className="admin-bulk-clear" onClick={clearSelection}>
-              Clear
+            <button
+              type="button"
+              className="admin-icon-tip admin-bulk-clear"
+              onClick={clearSelection}
+              data-tooltip="Clear selection"
+              aria-label="Clear selection"
+            >
+              <X size={15} strokeWidth={2} />
+              <span>Clear</span>
             </button>
           </div>
         </div>
       )}
 
-      <AdminPanel title={`Catalogue · ${filtered.length} shown`}>
-        {(loading || loadingEdit) && <AdminLoading />}
+      <AdminPanel title="Catalogue">
+        {loading && <AdminLoading />}
         {error && <AdminAlert>{error}</AdminAlert>}
         {!loading && !error && !filtered.length && (
           <div className="admin-empty admin-empty-rich">
@@ -971,14 +933,26 @@ function AdminProductsPageInner() {
                 : "Create your first product to populate the storefront."}
             </p>
             {products?.length ? (
-              <button type="button" className="admin-ghost-btn" onClick={clearFilters}>
-                <RotateCcw size={14} />
-                Reset filters
+              <button
+                type="button"
+                className="admin-icon-tip"
+                onClick={clearFilters}
+                data-tooltip="Reset filters"
+                aria-label="Reset filters"
+              >
+                <RotateCcw size={16} strokeWidth={2} />
+                <span>Reset filters</span>
               </button>
             ) : (
-              <button type="button" className="btn" onClick={openCreate}>
-                + New product
-              </button>
+              <Link
+                className="admin-icon-tip admin-action-btn--primary"
+                href="/admin/products/new"
+                data-tooltip="New product"
+                aria-label="New product"
+              >
+                <Plus size={17} strokeWidth={2.2} />
+                <span>New product</span>
+              </Link>
             )}
           </div>
         )}
@@ -1125,7 +1099,7 @@ function AdminProductsPageInner() {
                         <button
                           type="button"
                           className="admin-action-btn"
-                          onClick={() => void openEdit(product.id)}
+                          onClick={() => openEdit(product.id)}
                           data-tooltip="Edit"
                           aria-label={`Edit ${product.name}`}
                         >
@@ -1303,35 +1277,9 @@ function AdminProductsPageInner() {
         onClose={() => setDetailId(null)}
         onEdit={(id) => {
           setDetailId(null);
-          void openEdit(id);
+          openEdit(id);
         }}
       />
-
-      <ProductFormModal
-        open={modalOpen}
-        mode={modalMode}
-        categories={categories || []}
-        parentOptions={parentOptions}
-        initial={formValues}
-        initialImages={formImages}
-        initialInternalImages={formInternalImages}
-        onClose={() => {
-          setModalOpen(false);
-          if (fromGrn) {
-            window.location.href = "/admin/inventory/grn?resumeGrn=1";
-          }
-        }}
-        onSaved={(created) => {
-          void reload();
-          if (fromGrn) {
-            const variant = created?.defaultVariantId
-              ? `&newVariant=${encodeURIComponent(created.defaultVariantId)}`
-              : "";
-            window.location.href = `/admin/inventory/grn?resumeGrn=1${variant}`;
-            return;
-          }
-        }}
-      />
-    </>
+    </div>
   );
 }

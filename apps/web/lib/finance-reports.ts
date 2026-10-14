@@ -48,7 +48,7 @@ export async function buildFinanceDashboard(input?: {
        from orders
        where payment_status = 'paid'
          and created_at::date = $1::date
-         and coalesce(status,'') not in ('cancelled')`,
+         and coalesce(status::text,'') not in ('cancelled')`,
       [today.from]
     ),
     listCashAccounts(true),
@@ -56,7 +56,7 @@ export async function buildFinanceDashboard(input?: {
       `select count(*)::text as count, coalesce(sum(total_amount),0)::text as total
        from orders
        where payment_status = 'pending'
-         and coalesce(status, '') not in ('cancelled')`
+         and coalesce(status::text,'') not in ('cancelled')`
     ).catch(() => ({ count: "0", total: "0" })),
     query<{ day: string; total: string }>(
       `select to_char(date_trunc('day', o.created_at), 'DD Mon') as day,
@@ -143,7 +143,7 @@ export async function listReceivables(filters: { from?: string; to?: string; q?:
   const params: unknown[] = [];
   const where = [
     `o.payment_status in ('pending', 'failed')`,
-    `coalesce(o.status, '') not in ('cancelled')`
+    `coalesce(o.status::text,'') not in ('cancelled')`
   ];
   if (filters.from) {
     params.push(filters.from);
@@ -345,7 +345,7 @@ export async function buildBalanceSheet(input?: { asOf?: string }) {
   const ar = await queryOne<{ total: string }>(
     `select coalesce(sum(total_amount),0)::text as total
      from orders
-     where payment_status = 'pending' and coalesce(status,'') not in ('cancelled')`
+     where payment_status = 'pending' and coalesce(status::text,'') not in ('cancelled')`
   );
   const apRows = await listFinanceEntries({
     direction: "out",
@@ -434,7 +434,7 @@ export async function buildSalesFinanceReport(filters: { from?: string; to?: str
      from orders o
      left join customers c on c.id = o.customer_id
      where o.created_at::date between $1::date and $2::date
-       and coalesce(o.status,'') not in ('cancelled')
+       and coalesce(o.status::text,'') not in ('cancelled')
      order by o.created_at desc
      limit 500`,
     [range.from, range.to]
@@ -552,7 +552,7 @@ export async function buildSalesByPaymentMethod(filters: { from?: string; to?: s
      join orders o on o.id = p.order_id
      where p.status = 'paid'
        and p.created_at::date between $1::date and $2::date
-       and coalesce(o.status,'') not in ('cancelled')
+       and coalesce(o.status::text,'') not in ('cancelled')
      group by coalesce(p.provider, 'other')
      order by sum(p.amount) desc`,
     [range.from, range.to]
@@ -591,7 +591,7 @@ export async function buildSalesByProduct(filters: { from?: string; to?: string 
      left join categories c on c.id = p.category_id
      where o.payment_status = 'paid'
        and o.created_at::date between $1::date and $2::date
-       and coalesce(o.status,'') not in ('cancelled')
+       and coalesce(o.status::text,'') not in ('cancelled')
      group by coalesce(p.name, oi.product_name, 'Item'), coalesce(c.name, 'Uncategorised')
      order by sum(oi.line_total) desc
      limit 200`,

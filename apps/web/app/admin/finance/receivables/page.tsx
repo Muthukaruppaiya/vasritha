@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { Filter } from "lucide-react";
 import {
   AdminAlert,
   AdminBadge,
@@ -78,8 +79,14 @@ export default function FinanceReceivablesPage() {
           <span>Search</span>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Order / customer" />
         </label>
-        <button className="btn" type="submit">
-          Apply
+        <button
+          type="submit"
+          className="admin-icon-tip admin-action-btn--primary"
+          data-tooltip="Apply"
+          aria-label="Apply"
+        >
+          <Filter size={16} strokeWidth={2} />
+          <span>Apply</span>
         </button>
       </form>
 

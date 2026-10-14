@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Printer, X } from "lucide-react";
+import { HandCoins, Printer, Search, X } from "lucide-react";
 import {
   AdminAlert,
   AdminBadge,
@@ -159,8 +159,14 @@ export default function PosCreditDuesPage() {
             placeholder="Invoice / mobile / customer name"
           />
         </label>
-        <button className="btn" type="submit">
-          Search
+        <button
+          type="submit"
+          className="admin-icon-tip admin-action-btn--primary"
+          data-tooltip="Search"
+          aria-label="Search dues"
+        >
+          <Search size={16} strokeWidth={2} />
+          <span>Search</span>
         </button>
       </form>
 
@@ -264,28 +270,37 @@ export default function PosCreditDuesPage() {
                               </select>
                               <button
                                 type="button"
-                                className="btn"
+                                className="admin-icon-tip admin-action-btn--primary"
                                 disabled={busy}
                                 onClick={() => void submitCollect(bill)}
+                                data-tooltip={busy ? "Collecting…" : "Collect"}
+                                aria-label={busy ? "Collecting…" : "Collect payment"}
                               >
-                                {busy ? "…" : "Collect"}
+                                <HandCoins size={16} strokeWidth={2} />
+                                <span>{busy ? "…" : "Collect"}</span>
                               </button>
                               <button
                                 type="button"
-                                className="btn admin-ghost-btn"
+                                className="admin-icon-tip"
                                 disabled={busy}
                                 onClick={() => setCollectingId(null)}
+                                data-tooltip="Cancel"
+                                aria-label="Cancel collect"
                               >
-                                Cancel
+                                <X size={16} strokeWidth={2} />
+                                <span>Cancel</span>
                               </button>
                             </div>
                           ) : (
                             <button
                               type="button"
-                              className="btn admin-ghost-btn"
+                              className="admin-icon-tip"
                               onClick={() => openCollect(bill)}
+                              data-tooltip="Collect"
+                              aria-label="Collect payment"
                             >
-                              Collect
+                              <HandCoins size={16} strokeWidth={2} />
+                              <span>Collect</span>
                             </button>
                           )}
                         </td>
@@ -304,13 +319,25 @@ export default function PosCreditDuesPage() {
           <div className="pos-invoice-sheet pos-invoice-sheet--a4">
             <CollectionReceipt data={receipt} id="dues-collection-print" />
             <div className="pos-invoice-actions">
-              <button type="button" className="btn" onClick={() => window.print()}>
-                <Printer size={14} />
-                Print receipt
+              <button
+                type="button"
+                className="admin-icon-tip admin-action-btn--primary"
+                onClick={() => window.print()}
+                data-tooltip="Print receipt"
+                aria-label="Print receipt"
+              >
+                <Printer size={16} strokeWidth={2} />
+                <span>Print receipt</span>
               </button>
-              <button type="button" className="btn ghost" onClick={() => setReceipt(null)}>
-                <X size={14} />
-                Close
+              <button
+                type="button"
+                className="admin-icon-tip"
+                onClick={() => setReceipt(null)}
+                data-tooltip="Close"
+                aria-label="Close"
+              >
+                <X size={16} strokeWidth={2} />
+                <span>Close</span>
               </button>
             </div>
           </div>

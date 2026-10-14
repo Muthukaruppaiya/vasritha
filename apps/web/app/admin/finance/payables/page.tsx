@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Check, Filter } from "lucide-react";
 import {
   AdminAlert,
   AdminBadge,
@@ -97,8 +98,14 @@ export default function FinancePayablesPage() {
           <span>Search</span>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Bill / supplier" />
         </label>
-        <button className="btn" type="submit">
-          Apply
+        <button
+          type="submit"
+          className="admin-icon-tip admin-action-btn--primary"
+          data-tooltip="Apply"
+          aria-label="Apply"
+        >
+          <Filter size={16} strokeWidth={2} />
+          <span>Apply</span>
         </button>
       </form>
 
@@ -166,11 +173,14 @@ export default function FinancePayablesPage() {
                       {row.status === "pending" ? (
                         <button
                           type="button"
-                          className="admin-action-btn"
+                          className="admin-icon-tip admin-action-btn"
                           disabled={busyId === row.entry_id}
                           onClick={() => void markPaid(row.entry_id)}
+                          data-tooltip="Mark paid"
+                          aria-label={`Mark paid ${row.entry_no}`}
                         >
-                          Mark paid
+                          <Check size={15} strokeWidth={2} />
+                          <span>Mark paid</span>
                         </button>
                       ) : (
                         "—"

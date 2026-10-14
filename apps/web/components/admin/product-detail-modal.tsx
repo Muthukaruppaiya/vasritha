@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import JsBarcode from "jsbarcode";
 import QRCode from "qrcode";
-import { Printer, Upload, X } from "lucide-react";
+import { Pencil, Printer, Upload, X } from "lucide-react";
 import { AdminBadge, AdminLoading, statusTone } from "./admin-ui";
 import { adminFetch, formatDate, formatMoney, getAdminToken } from "../../lib/admin-api";
 import { buildProductUploadPageUrl } from "../../lib/product-upload-url";
@@ -17,6 +17,7 @@ type ProductItem = {
   unit_code: string;
   barcode: string;
   color?: string | null;
+  variant_name?: string | null;
   status: string;
   damage_detail: string | null;
   date_added: string;
@@ -439,7 +440,7 @@ export function ProductDetailModal({
                                 tag: item.tag,
                                 seq: item.seq,
                                 color: pieceColor || null,
-                                sizeLabel: pieceColor || null
+                                sizeLabel: item.variant_name || null
                               };
                             })
                           })
@@ -517,7 +518,9 @@ export function ProductDetailModal({
                     </dl>
                     <button
                       type="button"
-                      className="btn"
+                      className="admin-icon-tip admin-action-btn--primary"
+                      data-tooltip="Print this sticker"
+                      aria-label="Print this sticker"
                       onClick={() => {
                         if (!data || !selected) return;
                         const pieceColor = (
@@ -542,14 +545,14 @@ export function ProductDetailModal({
                               tag: selected.tag,
                               seq: selected.seq,
                               color: pieceColor || null,
-                              sizeLabel: pieceColor || null
+                              sizeLabel: selected.variant_name || null
                             }
                           ]
                         });
                       }}
                     >
-                      <Printer size={14} />
-                      Print this sticker
+                      <Printer size={16} strokeWidth={2} />
+                      <span>Print this sticker</span>
                     </button>
                   </div>
                 ) : null}
@@ -558,12 +561,26 @@ export function ProductDetailModal({
           ) : null}
 
           <div className="admin-modal-actions">
-            <button type="button" className="admin-ghost-btn" onClick={onClose}>
-              Close
+            <button
+              type="button"
+              className="admin-icon-tip"
+              onClick={onClose}
+              data-tooltip="Close"
+              aria-label="Close"
+            >
+              <X size={16} strokeWidth={2} />
+              <span>Close</span>
             </button>
             {data ? (
-              <button type="button" className="btn" onClick={() => onEdit(data.id)}>
-                Edit product
+              <button
+                type="button"
+                className="admin-icon-tip admin-action-btn--primary"
+                onClick={() => onEdit(data.id)}
+                data-tooltip="Edit product"
+                aria-label="Edit product"
+              >
+                <Pencil size={16} strokeWidth={2} />
+                <span>Edit product</span>
               </button>
             ) : null}
           </div>

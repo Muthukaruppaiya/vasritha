@@ -20,6 +20,10 @@ export type ThermalReceiptData = {
   created_at: string;
   subtotal: string | number;
   discount_amount?: string | number;
+  /** Cashier / promotional discount only (not exchange). */
+  cashier_discount_amount?: string | number | null;
+  /** Value of returned items on an exchange bill. */
+  exchange_credit_amount?: string | number | null;
   tax_amount?: string | number;
   shipping_amount?: string | number;
   total_amount: string | number;
@@ -89,7 +93,12 @@ function formatReceiptDate(value: string) {
 
 export function ThermalReceipt({ data, id = "tvs-l46-receipt" }: Props) {
   const isPos = data.channel === "pos";
-  const discount = Number(data.discount_amount || 0);
+  const combinedDiscount = Math.max(0, Number(data.discount_amount || 0));
+  let exchangeCredit = Math.max(0, Number(data.exchange_credit_amount || 0));
+  let cashierDiscount = Math.max(0, Number(data.cashier_discount_amount || 0));
+  if (exchangeCredit <= 0.009 && cashierDiscount <= 0.009 && combinedDiscount > 0.009) {
+    cashierDiscount = combinedDiscount;
+  }
   const tax = Number(data.tax_amount || 0);
   const shipping = Number(data.shipping_amount || 0);
   const itemCount = data.items.reduce((sum, item) => sum + Number(item.quantity), 0);
@@ -231,10 +240,16 @@ export function ThermalReceipt({ data, id = "tvs-l46-receipt" }: Props) {
           <span>Subtotal</span>
           <b>{formatMoney(data.subtotal)}</b>
         </div>
-        {discount > 0 ? (
+        {cashierDiscount > 0.009 ? (
           <div>
             <span>Discount</span>
-            <b>-{formatMoney(discount)}</b>
+            <b>-{formatMoney(cashierDiscount)}</b>
+          </div>
+        ) : null}
+        {exchangeCredit > 0.009 ? (
+          <div>
+            <span>Credit</span>
+            <b>-{formatMoney(exchangeCredit)}</b>
           </div>
         ) : null}
         {!isPos && shipping > 0 ? (

@@ -105,9 +105,15 @@ export default function AdminCouponsPage() {
         title="Coupons & gift vouchers"
         description="Create discount codes and gift vouchers, including opening-notice popups."
         actions={
-          <button type="button" className="btn" onClick={openCreate}>
-            <Plus size={15} />
-            New gift voucher
+          <button
+            type="button"
+            className="admin-icon-tip admin-action-btn--primary"
+            onClick={openCreate}
+            data-tooltip="New gift voucher"
+            aria-label="New gift voucher"
+          >
+            <Plus size={17} strokeWidth={2.2} />
+            <span>New gift voucher</span>
           </button>
         }
       />

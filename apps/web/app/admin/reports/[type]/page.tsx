@@ -4,6 +4,21 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  FileDown,
+  FileSpreadsheet,
+  Filter,
+  LayoutGrid,
+  Printer,
+  RefreshCw,
+  Play,
+  RotateCcw,
+  Search
+} from "lucide-react";
+import {
   AdminAlert,
   AdminEmpty,
   AdminLoading,
@@ -57,6 +72,7 @@ export default function ReportRunnerPage() {
   const [orderStatus, setOrderStatus] = useState("");
   const [paymentStatus, setPaymentStatus] = useState("");
   const [stockStatus, setStockStatus] = useState("all");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [applied, setApplied] = useState({
     from: "",
     to: "",
@@ -70,6 +86,18 @@ export default function ReportRunnerPage() {
     stock_status: "all",
     page: 1
   });
+
+  const advancedFilterCount = [
+    from,
+    to,
+    customer,
+    product,
+    category,
+    paymentMethod,
+    orderStatus,
+    paymentStatus,
+    stockStatus !== "all" ? stockStatus : ""
+  ].filter(Boolean).length;
 
   const path = useMemo(() => {
     if (!meta) return null;
@@ -111,8 +139,8 @@ export default function ReportRunnerPage() {
   const showPaymentStatus = ["sales", "orders"].includes(type);
   const showStock = type === "inventory";
 
-  const exportCsv = async () => {
-    const p = new URLSearchParams({ type, format: "csv" });
+  const exportReport = async (format: "csv" | "xlsx" | "pdf") => {
+    const p = new URLSearchParams({ type, format });
     if (applied.from) p.set("from", applied.from);
     if (applied.to) p.set("to", applied.to);
     if (applied.q) p.set("q", applied.q);
@@ -137,7 +165,8 @@ export default function ReportRunnerPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${type}-report.csv`;
+    const ext = format === "xlsx" ? "xlsx" : format;
+    a.download = `${type}-report.${ext}`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -149,27 +178,73 @@ export default function ReportRunnerPage() {
         title={meta.label}
         description={meta.description}
         actions={
-          <div className="admin-page-actions" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <Link className="btn btn-ghost" href="/admin/reports">
-              All reports
+          <>
+            <Link
+              className="admin-icon-tip"
+              href="/admin/reports"
+              data-tooltip="All reports"
+              aria-label="All reports"
+            >
+              <LayoutGrid size={16} strokeWidth={2} />
+              <span>All reports</span>
             </Link>
             {"reuseHref" in meta && meta.reuseHref ? (
-              <Link className="btn btn-ghost" href={meta.reuseHref}>
-                Open in Finance
+              <Link
+                className="admin-icon-tip"
+                href={meta.reuseHref}
+                data-tooltip="Open in Finance"
+                aria-label="Open in Finance"
+              >
+                <ExternalLink size={16} strokeWidth={2} />
+                <span>Open in Finance</span>
               </Link>
             ) : null}
-            <button type="button" className="btn btn-ghost" onClick={() => void exportCsv()}>
-              Export CSV
+            <button
+              type="button"
+              className="admin-icon-tip"
+              onClick={() => void exportReport("csv")}
+              data-tooltip="Export CSV"
+              aria-label="Export CSV"
+            >
+              <FileDown size={16} strokeWidth={2} />
+              <span>CSV</span>
             </button>
-            <button type="button" className="btn" onClick={() => window.print()}>
-              Print
+            <button
+              type="button"
+              className="admin-icon-tip"
+              onClick={() => void exportReport("xlsx")}
+              data-tooltip="Export Excel"
+              aria-label="Export Excel"
+            >
+              <FileSpreadsheet size={16} strokeWidth={2} />
+              <span>Excel</span>
             </button>
-          </div>
+            <button
+              type="button"
+              className="admin-icon-tip"
+              onClick={() => void exportReport("pdf")}
+              data-tooltip="Export PDF"
+              aria-label="Export PDF"
+            >
+              <FileDown size={16} strokeWidth={2} />
+              <span>PDF</span>
+            </button>
+            <button
+              type="button"
+              className="admin-icon-tip admin-action-btn--primary"
+              onClick={() => window.print()}
+              data-tooltip="Print"
+              aria-label="Print report"
+            >
+              <Printer size={16} strokeWidth={2} />
+              <span>Print</span>
+            </button>
+          </>
         }
       />
 
       <form
-        className="admin-toolbar no-print"
+        className="pm-toolbar no-print"
         onSubmit={(e) => {
           e.preventDefault();
           setApplied({
@@ -187,94 +262,157 @@ export default function ReportRunnerPage() {
           });
         }}
       >
-        {showDates ? (
-          <>
-            <label>
-              <span>From</span>
-              <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-            </label>
-            <label>
-              <span>To</span>
-              <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-            </label>
-          </>
+        <div className="admin-search-field pm-toolbar-search">
+          <Search size={15} aria-hidden />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search…"
+            aria-label="Search report"
+          />
+        </div>
+        <button
+          type="button"
+          className={`pm-filter-toggle${filtersOpen || advancedFilterCount ? " is-active" : ""}`}
+          aria-expanded={filtersOpen}
+          onClick={() => setFiltersOpen((v) => !v)}
+        >
+          <Filter size={15} />
+          <span>Filters</span>
+          {advancedFilterCount > 0 ? <em className="pm-filter-count">{advancedFilterCount}</em> : null}
+          <ChevronDown size={14} className={filtersOpen ? "is-open" : undefined} />
+        </button>
+        {advancedFilterCount > 0 || q ? (
+          <button
+            type="button"
+            className="pm-reset"
+            onClick={() => {
+              setFrom("");
+              setTo("");
+              setQ("");
+              setCustomer("");
+              setProduct("");
+              setCategory("");
+              setPaymentMethod("");
+              setOrderStatus("");
+              setPaymentStatus("");
+              setStockStatus("all");
+              setApplied({
+                from: "",
+                to: "",
+                q: "",
+                customer: "",
+                product: "",
+                category: "",
+                payment_method: "",
+                order_status: "",
+                payment_status: "",
+                stock_status: "all",
+                page: 1
+              });
+            }}
+          >
+            <RotateCcw size={14} />
+            Reset
+          </button>
         ) : null}
-        <label className="admin-grow">
-          <span>Search</span>
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search…" />
-        </label>
-        {showCustomer ? (
-          <label>
-            <span>Customer</span>
-            <input value={customer} onChange={(e) => setCustomer(e.target.value)} />
-          </label>
-        ) : null}
-        {showProduct ? (
-          <label>
-            <span>Product</span>
-            <input value={product} onChange={(e) => setProduct(e.target.value)} />
-          </label>
-        ) : null}
-        {showCategory ? (
-          <label>
-            <span>Category</span>
-            <input value={category} onChange={(e) => setCategory(e.target.value)} />
-          </label>
-        ) : null}
-        {showPayMethod ? (
-          <label>
-            <span>Payment method</span>
-            <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
-              <option value="">All</option>
-              <option value="cash">Cash</option>
-              <option value="upi">UPI</option>
-              <option value="card">Card</option>
-              <option value="razorpay">Online</option>
-              <option value="bank">Bank</option>
-              <option value="other">Other</option>
-            </select>
-          </label>
-        ) : null}
-        {showOrderStatus ? (
-          <label>
-            <span>Order status</span>
-            <select value={orderStatus} onChange={(e) => setOrderStatus(e.target.value)}>
-              <option value="">All</option>
-              <option value="pending">Pending</option>
-              <option value="confirmed">Confirmed</option>
-              <option value="processing">Processing</option>
-              <option value="shipped">Shipped</option>
-              <option value="delivered">Delivered</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
-          </label>
-        ) : null}
-        {showPaymentStatus ? (
-          <label>
-            <span>Payment status</span>
-            <select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)}>
-              <option value="">All</option>
-              <option value="paid">Paid</option>
-              <option value="pending">Pending</option>
-              <option value="failed">Failed</option>
-            </select>
-          </label>
-        ) : null}
-        {showStock ? (
-          <label>
-            <span>Stock</span>
-            <select value={stockStatus} onChange={(e) => setStockStatus(e.target.value)}>
-              <option value="all">All</option>
-              <option value="in">In stock</option>
-              <option value="low">Low stock</option>
-              <option value="out">Out of stock</option>
-            </select>
-          </label>
-        ) : null}
-        <button className="btn" type="submit">
-          Run
+        <button
+          type="submit"
+          className="admin-icon-tip admin-action-btn--primary"
+          data-tooltip="Run"
+          aria-label="Run report"
+        >
+          <Play size={16} strokeWidth={2} />
+          <span>Run</span>
         </button>
       </form>
+
+      {filtersOpen ? (
+        <div className="admin-filter-panel pm-filter-panel no-print">
+          <div className="admin-filter-grid">
+            {showDates ? (
+              <>
+                <label>
+                  <span>From</span>
+                  <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+                </label>
+                <label>
+                  <span>To</span>
+                  <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+                </label>
+              </>
+            ) : null}
+            {showCustomer ? (
+              <label>
+                <span>Customer</span>
+                <input value={customer} onChange={(e) => setCustomer(e.target.value)} />
+              </label>
+            ) : null}
+            {showProduct ? (
+              <label>
+                <span>Product</span>
+                <input value={product} onChange={(e) => setProduct(e.target.value)} />
+              </label>
+            ) : null}
+            {showCategory ? (
+              <label>
+                <span>Category</span>
+                <input value={category} onChange={(e) => setCategory(e.target.value)} />
+              </label>
+            ) : null}
+            {showPayMethod ? (
+              <label>
+                <span>Payment method</span>
+                <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+                  <option value="">All</option>
+                  <option value="cash">Cash</option>
+                  <option value="upi">UPI</option>
+                  <option value="card">Card</option>
+                  <option value="razorpay">Online</option>
+                  <option value="bank">Bank</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+            ) : null}
+            {showOrderStatus ? (
+              <label>
+                <span>Order status</span>
+                <select value={orderStatus} onChange={(e) => setOrderStatus(e.target.value)}>
+                  <option value="">All</option>
+                  <option value="pending">Pending</option>
+                  <option value="confirmed">Confirmed</option>
+                  <option value="processing">Processing</option>
+                  <option value="shipped">Shipped</option>
+                  <option value="delivered">Delivered</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </label>
+            ) : null}
+            {showPaymentStatus ? (
+              <label>
+                <span>Payment status</span>
+                <select value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)}>
+                  <option value="">All</option>
+                  <option value="paid">Paid</option>
+                  <option value="pending">Pending</option>
+                  <option value="failed">Failed</option>
+                </select>
+              </label>
+            ) : null}
+            {showStock ? (
+              <label>
+                <span>Stock</span>
+                <select value={stockStatus} onChange={(e) => setStockStatus(e.target.value)}>
+                  <option value="all">All</option>
+                  <option value="in">In stock</option>
+                  <option value="low">Low stock</option>
+                  <option value="out">Out of stock</option>
+                </select>
+              </label>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {error ? <AdminAlert>{error}</AdminAlert> : null}
       {loading ? <AdminLoading /> : null}
@@ -368,28 +506,41 @@ export default function ReportRunnerPage() {
         <div className="admin-toolbar no-print" style={{ justifyContent: "flex-end" }}>
           <button
             type="button"
-            className="btn btn-ghost"
+            className="admin-icon-tip"
             disabled={applied.page <= 1}
+            data-tooltip="Previous page"
+            aria-label="Previous page"
             onClick={() => {
               const next = Math.max(1, applied.page - 1);
               setApplied((a) => ({ ...a, page: next }));
             }}
           >
-            Previous
+            <ChevronLeft size={16} strokeWidth={2} />
+            <span>Previous</span>
           </button>
           <button
             type="button"
-            className="btn btn-ghost"
+            className="admin-icon-tip"
             disabled={applied.page >= data.pagination.total_pages}
+            data-tooltip="Next page"
+            aria-label="Next page"
             onClick={() => {
               const next = applied.page + 1;
               setApplied((a) => ({ ...a, page: next }));
             }}
           >
-            Next
+            <ChevronRight size={16} strokeWidth={2} />
+            <span>Next</span>
           </button>
-          <button type="button" className="btn btn-ghost" onClick={() => void reload()}>
-            Refresh
+          <button
+            type="button"
+            className="admin-icon-tip"
+            onClick={() => void reload()}
+            data-tooltip="Refresh"
+            aria-label="Refresh report"
+          >
+            <RefreshCw size={16} strokeWidth={2} />
+            <span>Refresh</span>
           </button>
         </div>
       ) : null}

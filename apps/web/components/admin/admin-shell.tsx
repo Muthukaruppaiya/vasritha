@@ -211,6 +211,63 @@ function moduleContainsPath(module: NavModule, pathname: string) {
   return (module.children || []).some((child) => pathMatches(pathname, child.href));
 }
 
+function resolveTopbarMeta(pathname: string, modules: NavModule[]) {
+  const extras: Array<{ href: string; kicker: string; title: string }> = [
+    { href: "/admin/products/new", kicker: "Catalogue", title: "Add product" },
+    { href: "/admin/inventory/grn", kicker: "Catalogue", title: "GRN entry" },
+    { href: "/admin/inventory/approvals", kicker: "Catalogue", title: "GRN approvals" },
+    { href: "/admin/billing/dues", kicker: "Sales", title: "Credit dues" },
+    { href: "/admin/login-log", kicker: "People", title: "Login log" }
+  ];
+
+  if (/^\/admin\/products\/[^/]+\/edit$/.test(pathname)) {
+    return { kicker: "Catalogue", title: "Edit product" };
+  }
+  if (/^\/admin\/reports\/[^/]+$/.test(pathname)) {
+    const slug = pathname.split("/").pop() || "report";
+    const known = modules
+      .flatMap((m) => m.children || [])
+      .find((c) => c.href === pathname);
+    return {
+      kicker: "Reports",
+      title: known?.label || slug.replace(/_/g, " ")
+    };
+  }
+
+  for (const extra of extras) {
+    if (pathname === extra.href || pathname.startsWith(`${extra.href}/`)) {
+      return { kicker: extra.kicker, title: extra.title };
+    }
+  }
+
+  const leaves = modules
+    .flatMap((module) =>
+      (module.children || []).map((child) => ({
+        href: child.href,
+        kicker: module.label,
+        title: child.label
+      }))
+    )
+    .concat(
+      modules
+        .filter((module) => module.href)
+        .map((module) => ({
+          href: module.href!,
+          kicker: `${OPS_PLATFORM_NAME} workspace`,
+          title: module.label
+        }))
+    )
+    .sort((a, b) => b.href.length - a.href.length);
+
+  for (const leaf of leaves) {
+    if (pathMatches(pathname, leaf.href)) {
+      return { kicker: leaf.kicker, title: leaf.title };
+    }
+  }
+
+  return { kicker: `${OPS_PLATFORM_NAME} workspace`, title: "Admin console" };
+}
+
 function statusLabel(status: string) {
   if (status === "processing") return "Packing";
   return status.charAt(0).toUpperCase() + status.slice(1);
@@ -268,6 +325,16 @@ export function AdminShell({ children }: { children: ReactNode }) {
       })
       .filter(Boolean) as NavModule[];
   }, [roles]);
+
+  const topbarMeta = useMemo(
+    () => resolveTopbarMeta(pathname, visibleModules),
+    [pathname, visibleModules]
+  );
+
+  const signOut = () => {
+    clearAdminSession();
+    router.replace("/admin/login");
+  };
 
   const unreadCount = useMemo(() => {
     return notifications.recent.filter((order) => Date.parse(order.created_at) > seenAt)
@@ -611,13 +678,34 @@ export function AdminShell({ children }: { children: ReactNode }) {
             );
           })}
         </nav>
+
+        <div className="admin-sidebar-foot">
+          <div className="admin-sidebar-user" title={user?.email || user?.fullName || "Account"}>
+            <span className="admin-user-avatar">
+              {(user?.fullName || user?.email || "A").charAt(0).toUpperCase()}
+            </span>
+            <div className="admin-user-meta">
+              <strong>{user?.fullName || `${OPS_PLATFORM_NAME} Admin`}</strong>
+              <span>{user?.email || "Signed in"}</span>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="admin-logout admin-logout--icon"
+            title="Sign out"
+            aria-label="Sign out"
+            onClick={signOut}
+          >
+            <LogOut size={16} strokeWidth={2} />
+          </button>
+        </div>
       </aside>
 
       <div className="admin-main">
         <header className="admin-topbar">
           <div className="admin-topbar-left">
-            <p className="admin-topbar-kicker">{OPS_PLATFORM_NAME} workspace</p>
-            <strong className="admin-topbar-title">Admin console</strong>
+            <p className="admin-topbar-kicker">{topbarMeta.kicker}</p>
+            <strong className="admin-topbar-title">{topbarMeta.title}</strong>
           </div>
 
           <div className="admin-topbar-right">
@@ -690,29 +778,6 @@ export function AdminShell({ children }: { children: ReactNode }) {
                 ) : null}
               </div>
             ) : null}
-
-            <div className="admin-topbar-user">
-              <span className="admin-user-avatar">
-                {(user?.fullName || user?.email || "A").charAt(0).toUpperCase()}
-              </span>
-              <div className="admin-user-meta is-visible">
-                <strong>{user?.fullName || `${OPS_PLATFORM_NAME} Admin`}</strong>
-                <span>{user?.email}</span>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              className="admin-logout admin-logout--icon"
-              title="Sign out"
-              aria-label="Sign out"
-              onClick={() => {
-                clearAdminSession();
-                router.replace("/admin/login");
-              }}
-            >
-              <LogOut size={16} strokeWidth={2} />
-            </button>
           </div>
         </header>
         {children}

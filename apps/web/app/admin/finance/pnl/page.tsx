@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Play } from "lucide-react";
 import {
   AdminAlert,
   AdminEmpty,
@@ -62,8 +63,14 @@ export default function FinancePnLPage() {
           <span>To</span>
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
         </label>
-        <button className="btn" type="submit">
-          Run statement
+        <button
+          className="admin-icon-tip admin-action-btn--primary"
+          type="submit"
+          data-tooltip="Run statement"
+          aria-label="Run statement"
+        >
+          <Play size={16} strokeWidth={2} />
+          <span>Run statement</span>
         </button>
       </form>
 

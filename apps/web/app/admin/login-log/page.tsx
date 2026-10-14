@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Eye, History } from "lucide-react";
+import { Eye, Filter, History, RefreshCw } from "lucide-react";
 import {
   AdminAlert,
   AdminBadge,
@@ -109,11 +109,24 @@ export default function LoginLogPage() {
             onChange={(e) => setQ(e.target.value)}
           />
         </label>
-        <button className="btn" type="submit">
-          Apply
+        <button
+          className="admin-icon-tip admin-action-btn--primary"
+          type="submit"
+          data-tooltip="Apply filters"
+          aria-label="Apply filters"
+        >
+          <Filter size={16} strokeWidth={2} />
+          <span>Apply</span>
         </button>
-        <button className="btn ghost" type="button" onClick={() => void reload()}>
-          Refresh
+        <button
+          className="admin-icon-tip"
+          type="button"
+          onClick={() => void reload()}
+          data-tooltip="Refresh"
+          aria-label="Refresh login log"
+        >
+          <RefreshCw size={16} strokeWidth={2} />
+          <span>Refresh</span>
         </button>
       </form>
 

@@ -1,5 +1,4 @@
 import { query, queryOne } from "./db/pool";
-import { skipEnsureIfRelationExists } from "./schema-bootstrap";
 import { CATEGORY_LABELS } from "./finance-labels";
 
 export { CATEGORY_LABELS } from "./finance-labels";
@@ -71,12 +70,9 @@ export const OPEX_CATEGORIES: FinanceCategory[] = [
 
 let schemaReady = false;
 
+/** Always apply additive finance migrations (settings / columns) even if entries table already exists. */
 export async function ensureFinanceSchema() {
   if (schemaReady) return;
-  if (await skipEnsureIfRelationExists("public.finance_payment_entries")) {
-    schemaReady = true;
-    return;
-  }
 
   await query(`
     create table if not exists public.finance_payment_entries (
