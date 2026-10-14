@@ -1,6 +1,6 @@
 /**
  * Bootstrap hosted Postgres for admin product create (Vercel / Supabase).
- * Usage: DATABASE_URL=postgresql://... npm run db:patch:vercel-products
+ * Usage: DATABASE_URL=postgresql://... npm run db:patch:products
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -53,9 +53,9 @@ const client = new pg.Client({ connectionString: databaseUrl });
 try {
   await client.connect();
   await client.query(sql);
-  console.log("Vercel product bootstrap applied.");
+  console.log("Product bootstrap applied.");
 } catch (error) {
-  console.error("Failed to apply Vercel product bootstrap:", error.message);
+  console.error("Failed to apply product bootstrap:", error.message);
   process.exitCode = 1;
 } finally {
   await client.end();

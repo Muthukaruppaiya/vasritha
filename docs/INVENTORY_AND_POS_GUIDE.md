@@ -218,4 +218,4 @@ If a menu or button is missing, ask your admin to check **System → Users** and
 
 ---
 
-*Last updated for the current Vasritha release. For technical setup (database, Vercel), see `docs/CURRENT_RELEASE.md` and `docs/LOCAL_POSTGRES.md`.*
+*Last updated for the current Vasritha release. For technical setup (database, Vercel), see `docs/CURRENT_RELEASE.md`, `docs/VERCEL_DEPLOY.md`, and `docs/LOCAL_POSTGRES.md`.*

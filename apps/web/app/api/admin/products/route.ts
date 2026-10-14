@@ -280,7 +280,7 @@ export async function POST(request: NextRequest) {
     console.error("[admin/products POST]", message);
     if (/column .* does not exist|relation .* does not exist/i.test(message)) {
       return fail(
-        "Database schema is out of date on this server. Run npm run db:patch:vercel-products against production Postgres, then retry.",
+        "Database schema is out of date on this server. Run npm run db:patch:products against production Postgres, then retry.",
         500
       );
     }

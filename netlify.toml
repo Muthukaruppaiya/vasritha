@@ -1,3 +1,4 @@
+# Legacy / unused — production is on Vercel (see docs/VERCEL_DEPLOY.md).
 [build]
   command = "npm run build -w @vasritha/shared && npm run build -w @vasritha/web"
   publish = "apps/web/.next"

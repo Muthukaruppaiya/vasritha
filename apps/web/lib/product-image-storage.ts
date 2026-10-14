@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { queryOne } from "./db/pool";
+import { hostedEnvLabel, isHostedRuntime } from "./runtime";
 import { createServiceSupabaseClient } from "./supabase/server";
 
 const BUCKET = "product-images";
@@ -94,7 +95,7 @@ export async function saveProductImage(input: {
   }
 
   // Hosted (Vercel) without Supabase Storage keys → store in Postgres and serve via /api/media.
-  if (process.env.VERCEL || process.env.NETLIFY || process.env.NODE_ENV === "production") {
+  if (isHostedRuntime()) {
     try {
       return await saveProductImageToDatabase({
         productId: input.productId,
@@ -104,7 +105,7 @@ export async function saveProductImage(input: {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Database image storage failed";
       throw new Error(
-        `${message}. Or set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on Vercel for Supabase Storage.`
+        `${message}. Or set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in ${hostedEnvLabel()} for Supabase Storage.`
       );
     }
   }

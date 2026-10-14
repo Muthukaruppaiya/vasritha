@@ -1,4 +1,5 @@
 import { Pool, type QueryResultRow } from "pg";
+import { hostedEnvLabel, isHostedRuntime, isServerlessRuntime } from "../runtime";
 
 declare global {
   // eslint-disable-next-line no-var
@@ -6,8 +7,8 @@ declare global {
 }
 
 /**
- * Supabase pooler port 5432 = session mode (tiny client cap; breaks on Vercel).
- * Port 6543 = transaction mode (correct for serverless). Rewrite when needed.
+ * Supabase pooler port 5432 = session mode (tiny client cap; breaks on serverless).
+ * Port 6543 = transaction mode (correct for Vercel / serverless). Rewrite when needed.
  */
 export function normalizeDatabaseUrl(raw: string) {
   const url = String(raw || "").trim();
@@ -28,30 +29,16 @@ export function normalizeDatabaseUrl(raw: string) {
 export function getDatabaseUrl() {
   const url = String(process.env.DATABASE_URL || "").trim();
   if (url) return normalizeDatabaseUrl(url);
-  // Never fall back to localhost on hosted builds (Vercel / Netlify / etc.)
-  const hosted = Boolean(
-    process.env.VERCEL ||
-      process.env.NETLIFY ||
-      process.env.AWS_LAMBDA_FUNCTION_NAME ||
-      process.env.NODE_ENV === "production"
-  );
-  if (hosted) {
+  // Never fall back to localhost on hosted builds (Vercel / etc.)
+  if (isHostedRuntime()) {
     const declared = Object.prototype.hasOwnProperty.call(process.env, "DATABASE_URL");
     throw new Error(
       declared
-        ? "DATABASE_URL is set but empty on this deployment. Paste your Supabase Postgres URI in the host’s Environment Variables, then Redeploy."
-        : "DATABASE_URL is required on hosted environments (set Supabase Postgres URI in Netlify/Vercel env)."
+        ? `DATABASE_URL is set but empty on this deployment. Paste your Supabase Postgres URI in ${hostedEnvLabel()} Environment Variables, then Redeploy.`
+        : `DATABASE_URL is required on hosted environments (set Supabase Postgres URI in ${hostedEnvLabel()} env).`
     );
   }
   return "postgresql://postgres:postgres@127.0.0.1:5433/vasritha";
-}
-
-function isServerlessRuntime() {
-  return Boolean(
-    process.env.VERCEL ||
-      process.env.NETLIFY ||
-      process.env.AWS_LAMBDA_FUNCTION_NAME
-  );
 }
 
 export function getPool() {

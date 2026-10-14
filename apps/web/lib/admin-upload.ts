@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { query, queryOne } from "./db/pool";
+import { hostedEnvLabel, isHostedRuntime } from "./runtime";
 import { createServiceSupabaseClient } from "./supabase/server";
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
@@ -9,12 +10,6 @@ const BUCKET = "site-uploads";
 
 function hasSupabaseStorage() {
   return Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.NEXT_PUBLIC_SUPABASE_URL);
-}
-
-function isHostedRuntime() {
-  return Boolean(
-    process.env.VERCEL || process.env.NETLIFY || process.env.NODE_ENV === "production"
-  );
 }
 
 let schemaReady: Promise<void> | null = null;
@@ -158,7 +153,7 @@ async function persistUpload(input: {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Database storage failed";
       throw new Error(
-        `${message}. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on Vercel for file uploads.`
+        `${message}. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in ${hostedEnvLabel()} for file uploads.`
       );
     }
   }

@@ -1,4 +1,5 @@
 import { queryOne } from "./db/pool";
+import { isHostedRuntime } from "./runtime";
 
 /**
  * Runtime DDL (ALTER/CREATE IF NOT EXISTS) keeps hosted DBs in sync when
@@ -6,7 +7,7 @@ import { queryOne } from "./db/pool";
  *
  * - SKIP_RUNTIME_SCHEMA_ENSURE=true  → skip only when the relation already exists
  * - SKIP_RUNTIME_SCHEMA_ENSURE=false → always run
- * - unset + production/Vercel        → skip only when relation exists
+ * - unset + production / Vercel      → skip only when relation exists
  * - unset + development              → always run (convenient for local iteration)
  *
  * If skip is on but a required table is missing (optimize never finished),
@@ -16,7 +17,7 @@ export function skipRuntimeSchemaEnsure() {
   const flag = process.env.SKIP_RUNTIME_SCHEMA_ENSURE;
   if (flag === "true") return true;
   if (flag === "false") return false;
-  return process.env.NODE_ENV === "production" || process.env.VERCEL === "1";
+  return isHostedRuntime();
 }
 
 const relationExistsCache = new Map<string, boolean>();
