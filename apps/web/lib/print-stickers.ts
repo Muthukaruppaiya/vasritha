@@ -48,6 +48,7 @@ export type StickerItem = {
   shortName?: string | null;
   categoryName?: string | null;
   sku?: string | null;
+  slug?: string | null;
   color?: string | null;
   hsnCode?: string | null;
   compareAtPrice?: number | string | null;
@@ -59,6 +60,7 @@ export type StickerProductMeta = {
   shortName?: string | null;
   categoryName?: string | null;
   sku?: string | null;
+  slug?: string | null;
   color?: string | null;
   tag?: string | null;
   hsnCode?: string | null;
@@ -87,6 +89,8 @@ type LabelCard = {
   sizeLabel: string;
   priceLabel: string;
   scanValue: string;
+  /** Small sideways reference text (product slug). */
+  slugLabel: string;
 };
 
 /** Arial regular, center — sizes scale for 2-up vs 3-up. */
@@ -212,6 +216,31 @@ function drawLabelText(
   return sizeDots;
 }
 
+/** Tiny slug along the left edge, rotated for reference. */
+function drawSideSlug(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x0: number,
+  labelW: number,
+  labelH: number,
+  sizeDots: number
+) {
+  const raw = text.trim();
+  if (!raw) return;
+  ctx.save();
+  ctx.font = ptFont(sizeDots);
+  ctx.fillStyle = "#000000";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const maxLen = Math.max(8, labelH - 8);
+  const label = fitText(ctx, raw, maxLen);
+  // Left edge, reading bottom→top (common on garment tags).
+  ctx.translate(x0 + Math.max(5, Math.round(sizeDots * 0.55)), labelH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText(label, 0, 0);
+  ctx.restore();
+}
+
 function binarizeCanvas(canvas: HTMLCanvasElement) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -230,6 +259,7 @@ function binarizeCanvas(canvas: HTMLCanvasElement) {
 
 /**
  * VASRITHA · barcode · code · colour · size (skip free size) · price
+ * Plus tiny sideways slug on the left edge for reference.
  * Layout auto-fits 2-up (50×25) and 3-up (34×25).
  */
 function renderRowCanvas(spec: LayoutSpec, cards: LabelCard[]) {
@@ -247,17 +277,21 @@ function renderRowCanvas(spec: LayoutSpec, cards: LabelCard[]) {
 
   // 3-up is tighter; 2-up can use more room.
   const tight = spec.cols >= 3;
+  const sidePad = tight ? 10 : 12;
   const pad = tight ? 7 : 9;
   const textPt = tight ? 6.5 : 7.5;
   const pricePt = tight ? 7.5 : 9;
+  const slugPt = tight ? 4.5 : 5;
   const textDots = ptToDots(textPt);
   const priceDots = ptToDots(pricePt);
+  const slugDots = ptToDots(slugPt);
   const barH = tight ? 50 : 58;
 
   cards.forEach((card, col) => {
     const x0 = col * labelW;
-    const cx = x0 + labelW / 2;
-    const innerW = labelW - pad * 2;
+    const contentLeft = x0 + sidePad;
+    const cx = contentLeft + (labelW - sidePad - pad) / 2;
+    const innerW = labelW - sidePad - pad;
 
     const afterBarcode: Array<{ text: string; size: number }> = [
       { text: card.codeLabel, size: textDots }
@@ -285,10 +319,12 @@ function renderRowCanvas(spec: LayoutSpec, cards: LabelCard[]) {
     const contentH = textDots + LINE_GAP + barH + LINE_GAP + afterH;
     let y = Math.max(3, Math.round((labelH - contentH) / 2));
 
+    drawSideSlug(ctx, card.slugLabel, x0, labelW, labelH, slugDots);
+
     drawLabelText(ctx, card.brand.toUpperCase(), cx, y, innerW, textDots);
     y += textDots + LINE_GAP;
 
-    drawBarcode(ctx, card.scanValue, x0 + pad, y, innerW, barH);
+    drawBarcode(ctx, card.scanValue, contentLeft, y, innerW, barH);
     y += barH + LINE_GAP;
 
     for (const line of afterBarcode) {
@@ -344,7 +380,8 @@ export async function printProductStickers(input: {
       colorLabel: String(raw.color || input.meta?.color || "").trim(),
       sizeLabel: resolveSizeLabel(raw.sizeLabel),
       priceLabel,
-      scanValue
+      scanValue,
+      slugLabel: String(raw.slug || input.meta?.slug || "").trim()
     });
   }
 

@@ -77,7 +77,8 @@ async function runEnsureProductUnitsSchema() {
       add column if not exists sku_prefix text not null default 'VAS',
       add column if not exists label_size public.product_label_size not null default 'dress',
       add column if not exists image_upload_token uuid not null default gen_random_uuid(),
-      add column if not exists parent_product_id uuid
+      add column if not exists parent_product_id uuid,
+      add column if not exists purchase_price numeric(12,2)
   `);
   await query(`
     create unique index if not exists products_sku_unique_idx
@@ -167,7 +168,8 @@ export async function ensureProductUnitsSchema() {
   if (await skipEnsureIfRelationExists("public.product_items")) {
     await query(`
       alter table public.products
-        add column if not exists is_multicolour boolean not null default false
+        add column if not exists is_multicolour boolean not null default false,
+        add column if not exists purchase_price numeric(12,2)
     `);
     await query(`
       alter table public.product_items

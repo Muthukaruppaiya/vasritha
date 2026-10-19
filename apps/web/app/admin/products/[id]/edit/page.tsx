@@ -36,6 +36,7 @@ type ProductDetail = {
   subcategory_id?: string | null;
   parent_product_id?: string | null;
   price?: number | null;
+  purchase_price?: number | null;
   compare_at_price?: number | null;
   hsn_code?: string | null;
   gst_rate?: number | null;
@@ -117,6 +118,7 @@ function AdminEditProductPageInner() {
         subcategory_id: product.subcategory_id || "",
         parent_product_id: product.parent_product_id || "",
         price: String(product.price ?? ""),
+        purchase_price: product.purchase_price != null ? String(product.purchase_price) : "",
         compare_at_price: product.compare_at_price ? String(product.compare_at_price) : "",
         hsn_code: product.hsn_code || "",
         gst_rate: String(product.gst_rate ?? 5),

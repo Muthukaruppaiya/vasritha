@@ -163,9 +163,8 @@ export async function POST(request: NextRequest) {
     const sku =
       (body.sku ? String(body.sku).trim().toUpperCase() : "") ||
       (await nextDocumentNumber("product"));
-    const familyBarcode =
-      (body.barcode ? String(body.barcode).replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 16) : "") ||
-      sku.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 16);
+    // Family barcode is always derived from product code on create.
+    const familyBarcode = sku.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 16);
     const tag = (body.tag ? String(body.tag).trim() : "") || sku;
     const labelSize = body.label_size === "accessory" ? "accessory" : "dress";
     const subcategoryId = emptyToNull(body.subcategory_id);
@@ -212,8 +211,8 @@ export async function POST(request: NextRequest) {
          (name, slug, sku, barcode, tag, sku_prefix, label_size, category_id, subcategory_id,
           short_name, short_description, color, is_multicolour, description,
           price, compare_at_price, hsn_code, gst_rate, status, stock_quantity, is_featured,
-          parent_product_id, brand_id, restock_expected)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24)
+          parent_product_id, brand_id, restock_expected, purchase_price)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)
        returning *`,
       [
         String(body.name),
@@ -239,7 +238,10 @@ export async function POST(request: NextRequest) {
         Boolean(body.is_featured ?? body.fast_selling),
         parentProductId,
         brandId,
-        Boolean(body.restock_expected)
+        Boolean(body.restock_expected),
+        body.purchase_price != null && body.purchase_price !== ""
+          ? Number(body.purchase_price)
+          : null
       ]
     );
 

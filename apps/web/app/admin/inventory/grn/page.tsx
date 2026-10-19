@@ -97,8 +97,10 @@ function GrnEntryPageInner() {
   const [pickerOpen, setPickerOpen] = useState<number | null>(null);
   const [pickedByVariant, setPickedByVariant] = useState<Record<string, ProductPickRow>>({});
 
+  const [draftNotice, setDraftNotice] = useState("");
+
   useEffect(() => {
-    // Resume only when returning from Product Master with a new variant.
+    // Resume when returning from Product Master with a new variant.
     if (resumeGrn) {
       const draft = loadGrnDraft();
       if (draft) {
@@ -112,13 +114,43 @@ function GrnEntryPageInner() {
           saveGrnDraft(next);
         }
         setInward(next);
+        setDraftNotice("Resumed GRN draft after creating a product.");
         setHydrated(true);
         return;
       }
     }
-    // Always open a blank GRN — no “continue draft” banner.
-    clearGrnDraft();
-    setInward(blankGrnDraft(prefillVariant || ""));
+
+    if (prefillVariant) {
+      clearGrnDraft();
+      setInward(blankGrnDraft(prefillVariant));
+      setDraftNotice("");
+      setHydrated(true);
+      return;
+    }
+
+    // Restore saved draft so work is not lost when leaving the page.
+    const draft = loadGrnDraft();
+    const hasWork =
+      Boolean(draft) &&
+      (Boolean(draft!.supplierId) ||
+        Boolean(draft!.billNo?.trim()) ||
+        Boolean(draft!.note?.trim()) ||
+        draft!.lines.some(
+          (line) =>
+            Boolean(line.productVariantId) ||
+            Boolean(line.purchasePrice?.trim()) ||
+            Number(line.quantity) > 1 ||
+            Boolean(line.colorSplits?.some((s) => s.color?.trim()))
+        ));
+    if (hasWork && draft) {
+      setInward(draft);
+      setDraftNotice(
+        `Continuing saved GRN draft${draft.savedAt ? ` · ${new Date(draft.savedAt).toLocaleString()}` : ""}.`
+      );
+    } else {
+      setInward(blankGrnDraft());
+      setDraftNotice("");
+    }
     setHydrated(true);
   }, [resumeGrn, resumeVariant, prefillVariant]);
 
@@ -139,6 +171,7 @@ function GrnEntryPageInner() {
     clearGrnDraft();
     setInward(blankGrnDraft());
     setFormError("");
+    setDraftNotice("");
     setPickerOpen(null);
     if (resumeGrn || resumeVariant || prefillVariant) {
       router.replace("/admin/inventory/grn");
@@ -458,6 +491,15 @@ function GrnEntryPageInner() {
 
       {error && <AdminAlert>{error}</AdminAlert>}
       {formError && <AdminAlert>{formError}</AdminAlert>}
+      {draftNotice ? (
+        <AdminAlert tone="ok">
+          {draftNotice}{" "}
+          <button type="button" className="admin-icon-tip" onClick={startNewGrn}>
+            <FilePlus2 size={14} strokeWidth={2} />
+            <span>Start new GRN</span>
+          </button>
+        </AdminAlert>
+      ) : null}
 
       <form className="grn-page" onSubmit={onSubmit}>
         <AdminPanel title="Supplier & invoice">

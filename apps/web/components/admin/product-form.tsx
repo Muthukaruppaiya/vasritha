@@ -54,6 +54,7 @@ export type ProductFormValues = {
   subcategory_id: string;
   parent_product_id: string;
   price: string;
+  purchase_price: string;
   compare_at_price: string;
   hsn_code: string;
   gst_rate: string;
@@ -321,6 +322,7 @@ export function ProductForm({
         shortName: form.short_name || undefined,
         categoryName: subcategory?.name || category?.name,
         sku: form.sku,
+        slug: form.slug || undefined,
         color: form.is_multicolour ? undefined : form.color,
         tag: form.tag,
         hsnCode: form.hsn_code || undefined,
@@ -339,6 +341,7 @@ export function ProductForm({
             {
               unit_code: form.sku || code,
               barcode: code,
+              slug: form.slug || undefined,
               color: form.is_multicolour ? null : form.color
             }
           ]
@@ -369,6 +372,7 @@ export function ProductForm({
           const pieceColor = (row.color || (!form.is_multicolour ? form.color : "") || "").trim();
           return {
             ...row,
+            slug: form.slug || undefined,
             color: pieceColor || null,
             sizeLabel: row.variant_name || null
           };
@@ -424,7 +428,10 @@ export function ProductForm({
       validateRequired(form.name, "Product name"),
       validateRequired(form.category_id, "Category"),
       form.is_multicolour ? null : validateRequired(form.color, "Colour"),
-      validatePositiveMoney(form.price, { required: true, label: "Price" }),
+      validatePositiveMoney(form.price, { required: true, label: "Selling price" }),
+      form.purchase_price
+        ? validatePositiveMoney(form.purchase_price, { required: false, label: "Purchase price" })
+        : null,
       form.compare_at_price
         ? validatePositiveMoney(form.compare_at_price, { required: false, label: "Compare-at price" })
         : null,
@@ -452,6 +459,7 @@ export function ProductForm({
       subcategory_id: form.subcategory_id || null,
       parent_product_id: form.parent_product_id || null,
       price: Number(form.price),
+      purchase_price: form.purchase_price ? Number(form.purchase_price) : null,
       compare_at_price: form.compare_at_price ? Number(form.compare_at_price) : null,
       hsn_code: form.hsn_code.trim() || null,
       gst_rate: resolveSaleGstRate({
@@ -735,16 +743,21 @@ export function ProductForm({
               <span>Family barcode</span>
               <div className="admin-input-with-action">
                 <input
-                  required
                   value={form.barcode}
-                  onChange={(e) => setForm((f) => ({ ...f, barcode: e.target.value.toUpperCase() }))}
+                  readOnly={mode === "create"}
+                  placeholder={mode === "create" ? "Auto on save from product code" : undefined}
+                  onChange={(e) =>
+                    mode === "edit"
+                      ? setForm((f) => ({ ...f, barcode: e.target.value.toUpperCase() }))
+                      : undefined
+                  }
                 />
                 <button
                   type="button"
                   className="admin-icon-btn"
                   title="Print barcode sticker"
                   onClick={() => void printStickers("family")}
-                  disabled={printBusy}
+                  disabled={printBusy || (mode === "create" && !form.barcode && !form.sku)}
                 >
                   <Printer size={15} />
                 </button>
@@ -826,7 +839,7 @@ export function ProductForm({
             </label>
 
             <label>
-              <span>Price (₹)</span>
+              <span>Selling price (₹)</span>
               <input
                 required
                 type="number"
@@ -834,6 +847,18 @@ export function ProductForm({
                 step="0.01"
                 value={form.price}
                 onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
+              />
+            </label>
+
+            <label>
+              <span>Purchase price (₹)</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.purchase_price}
+                onChange={(e) => setForm((f) => ({ ...f, purchase_price: e.target.value }))}
+                placeholder="Cost / buy price"
               />
             </label>
 
@@ -1175,6 +1200,7 @@ export function blankProductForm(categoryId = ""): ProductFormValues {
     subcategory_id: "",
     parent_product_id: "",
     price: "",
+    purchase_price: "",
     compare_at_price: "",
     hsn_code: "5407",
     gst_rate: "5",

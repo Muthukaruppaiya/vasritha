@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
     product_name: string;
     short_name: string | null;
     sku: string | null;
+    slug: string | null;
     price: string;
     color: string | null;
     variant_name: string | null;
@@ -66,6 +67,7 @@ export async function GET(request: NextRequest) {
        p.name as product_name,
        p.short_name,
        p.sku,
+       p.slug,
        p.price::text as price,
        coalesce(nullif(trim(i.color), ''), nullif(trim(p.color), '')) as color,
        pv.name as variant_name,

@@ -6,6 +6,7 @@ import { ALLOWED_GST_RATES, normalizeHsn, normalizeGstRate, resolveSaleGstRate }
 import { ensureBrandsSchema, listBrands, resolveBrandId } from "./brands";
 import {
   createUnitsAndSync,
+  ensureProductUnitsSchema,
   recordPriceHistory
 } from "./product-units";
 import {
@@ -21,7 +22,12 @@ import { writeAuditLog } from "./auth/api";
 export const PRODUCT_IMPORT_COLUMNS = [
   { key: "name", label: "name *", required: true, hint: "MANDATORY — Product name" },
   { key: "short_name", label: "short_name", required: false, hint: "Short name for cards" },
-  { key: "slug", label: "slug", required: false, hint: "URL slug (auto from name if blank)" },
+  {
+    key: "slug",
+    label: "slug",
+    required: false,
+    hint: "URL slug (auto from name if blank). Duplicates OK — auto-suffixed"
+  },
   { key: "sku", label: "sku", required: false, hint: "Unique code (auto if blank)" },
   { key: "sku_prefix", label: "sku_prefix", required: false, hint: "VAS | PADH | VRSH" },
   { key: "tag", label: "tag", required: false, hint: "Piece tag / family tag" },
@@ -40,7 +46,18 @@ export const PRODUCT_IMPORT_COLUMNS = [
     required: false,
     hint: "yes / no — use colour_stock for colour-wise qty"
   },
-  { key: "price", label: "price *", required: true, hint: "MANDATORY — Selling price (GST inclusive)" },
+  {
+    key: "price",
+    label: "selling_price *",
+    required: true,
+    hint: "MANDATORY — Selling price (GST inclusive)"
+  },
+  {
+    key: "purchase_price",
+    label: "purchase_price",
+    required: false,
+    hint: "Cost / purchase price (optional)"
+  },
   { key: "compare_at_price", label: "compare_at_price", required: false, hint: "MRP / compare-at" },
   { key: "hsn_code", label: "hsn_code", required: false, hint: "4–8 digit HSN" },
   { key: "gst_rate", label: "gst_rate", required: false, hint: "0 | 3 | 5 | 9 | 12 | 18" },
@@ -81,6 +98,7 @@ export type ProductImportRow = {
   colour: string;
   is_multicolour: boolean;
   price: number;
+  purchase_price: number | null;
   compare_at_price: number | null;
   hsn_code: string | null;
   gst_rate: number | null;
@@ -109,6 +127,22 @@ function slugify(value: string) {
     .replace(/(^-|-$)/g, "");
 }
 
+async function allocateUniqueProductSlug(base: string, excludeId?: string | null) {
+  const root = slugify(base) || `product-${Date.now().toString(36)}`;
+  let candidate = root;
+  let n = 2;
+  for (;;) {
+    const clash = await queryOne<{ id: string }>(
+      `select id from products where slug = $1 and ($2::uuid is null or id <> $2) limit 1`,
+      [candidate, excludeId || null]
+    );
+    if (!clash) return candidate;
+    candidate = `${root}-${n}`;
+    n += 1;
+    if (n > 500) return `${root}-${Date.now().toString(36)}`;
+  }
+}
+
 function truthy(value: string) {
   return ["1", "true", "yes", "y"].includes(value.trim().toLowerCase());
 }
@@ -127,6 +161,10 @@ function normalizeHeader(value: string) {
     .replace(/^stock_quantity$/, "opening_stock")
     .replace(/^fast_selling$/, "is_featured")
     .replace(/^compare_at$/, "compare_at_price")
+    .replace(/^selling_price$/, "price")
+    .replace(/^sale_price$/, "price")
+    .replace(/^cost_price$/, "purchase_price")
+    .replace(/^buy_price$/, "purchase_price")
     .replace(/^category_name$/, "category")
     .replace(/^category_slug$/, "category")
     .replace(/^subcategory_name$/, "subcategory")
@@ -308,8 +346,11 @@ export function mapImportRows(raw: string[][]): ProductImportRow[] {
       } while (usedAutoSkus.has(sku) && attempt < 20);
       usedAutoSkus.add(sku);
     }
-    const priceRaw = get("price");
+    const priceRaw = get("price", "selling_price", "sale_price");
     const price = priceRaw === "" ? Number.NaN : Number(priceRaw);
+    const purchaseRaw = get("purchase_price", "cost_price", "buy_price");
+    const purchase_price =
+      purchaseRaw && Number.isFinite(Number(purchaseRaw)) ? Number(purchaseRaw) : null;
     const compareRaw = get("compare_at_price");
     const stockRaw = get("opening_stock");
     const stock = stockRaw === "" ? 0 : Number(stockRaw);
@@ -325,30 +366,24 @@ export function mapImportRows(raw: string[][]): ProductImportRow[] {
         colourStockError = err instanceof Error ? err.message : "Invalid colour_stock";
       }
     }
-    // Same name + different price is allowed when slug is blank (auto-unique).
-    // Explicit duplicate slugs still fail validation.
-    const slugProvided = Boolean(get("slug"));
-    let slug = get("slug") || (name ? slugify(name) : "");
-    if (slug && !slugProvided) {
-      const base = slugify(name) || `row-${idx + 2}`;
-      if (usedSlugs.has(slug)) {
-        const priced =
-          Number.isFinite(price) && price > 0 ? `${base}-${Math.round(price)}` : "";
-        if (priced && !usedSlugs.has(priced)) {
-          slug = priced;
-        } else {
-          let n = 2;
-          slug = `${base}-${n}`;
-          while (usedSlugs.has(slug)) {
-            n += 1;
-            slug = `${base}-${n}`;
-          }
+    // Duplicate slugs in the file are allowed — auto-suffix to keep DB unique.
+    const baseSlug = get("slug") || (name ? slugify(name) : "") || `row-${idx + 2}`;
+    let slug = baseSlug;
+    if (usedSlugs.has(slug)) {
+      const priced =
+        Number.isFinite(price) && price > 0 ? `${baseSlug}-${Math.round(price)}` : "";
+      if (priced && !usedSlugs.has(priced)) {
+        slug = priced;
+      } else {
+        let n = 2;
+        slug = `${baseSlug}-${n}`;
+        while (usedSlugs.has(slug)) {
+          n += 1;
+          slug = `${baseSlug}-${n}`;
         }
       }
-      usedSlugs.add(slug);
-    } else if (slug && slugProvided) {
-      usedSlugs.add(slug);
     }
+    usedSlugs.add(slug);
 
     const isMulticolour =
       truthy(get("is_multicolour")) || colourBatches.length > 0;
@@ -368,6 +403,8 @@ export function mapImportRows(raw: string[][]): ProductImportRow[] {
       colour: get("colour"),
       is_multicolour: isMulticolour,
       price: Number.isFinite(price) ? price : Number.NaN,
+      purchase_price:
+        purchase_price != null && purchase_price >= 0 ? purchase_price : null,
       compare_at_price:
         compareRaw && Number.isFinite(Number(compareRaw)) ? Number(compareRaw) : null,
       hsn_code: normalizeHsn(get("hsn_code")),
@@ -458,15 +495,16 @@ export async function buildProductImportTemplate(): Promise<Buffer> {
   const tips = [
     "Vasritha Product Master — bulk import template",
     "",
-    "MANDATORY columns (red headers): name *, category *, price *",
+    "MANDATORY columns (red headers): name *, category *, selling_price *",
     "",
     "MULTICOLOUR STOCK (most sarees):",
     "  • Set is_multicolour = yes",
     "  • Put colour-wise qty in colour_stock, e.g. Red:5, Green:3, Blue:2",
     "  • Do NOT use opening_stock for multicolour rows",
     "",
-    "SAME NAME, DIFFERENT PRICE:",
-    "  • Allowed. Leave slug blank — system auto-makes unique slugs (e.g. 70080-660).",
+    "SAME NAME / DUPLICATE SLUG:",
+    "  • Allowed. Duplicate slugs are auto-suffixed (e.g. silk-saree-2).",
+    "  • Optional purchase_price = cost; selling_price = customer price.",
     "",
     "1. Fill rows on the Products sheet. Do not rename column headers.",
     "2. Use dropdowns for category, subcategory, colours, status, yes/no fields.",
@@ -574,6 +612,7 @@ export async function buildProductImportTemplate(): Promise<Buffer> {
     colour: "",
     is_multicolour: "yes",
     price: 8990,
+    purchase_price: 5200,
     compare_at_price: 9990,
     hsn_code: "5407",
     gst_rate: 5,
@@ -704,7 +743,21 @@ export async function validateProductImportRows(
       errors.push({ row: row.rowNumber, name: label, error: "category * is required" });
     }
     if (!Number.isFinite(row.price) || row.price < 0) {
-      errors.push({ row: row.rowNumber, name: label, error: "price * must be a valid number ≥ 0" });
+      errors.push({
+        row: row.rowNumber,
+        name: label,
+        error: "selling_price * must be a valid number ≥ 0"
+      });
+    }
+    if (
+      row.purchase_price != null &&
+      (!Number.isFinite(row.purchase_price) || row.purchase_price < 0)
+    ) {
+      errors.push({
+        row: row.rowNumber,
+        name: label,
+        error: "purchase_price must be a valid number ≥ 0"
+      });
     }
     if (!row.is_multicolour && !row.colour.trim()) {
       errors.push({
@@ -769,18 +822,8 @@ export async function validateProductImportRows(
         seenSku.set(row.sku, row.rowNumber);
       }
     }
-    if (row.slug) {
-      const prev = seenSlug.get(row.slug);
-      if (prev) {
-        errors.push({
-          row: row.rowNumber,
-          name: label,
-          error: `Duplicate slug in file (also line ${prev}): ${row.slug}`
-        });
-      } else {
-        seenSlug.set(row.slug, row.rowNumber);
-      }
-    }
+    // Slugs may repeat in the sheet — mapImportRows already auto-suffixes them.
+    if (row.slug) seenSlug.set(row.slug, row.rowNumber);
 
     if (row.opening_stock < 0 || !Number.isFinite(row.opening_stock)) {
       errors.push({
@@ -826,6 +869,7 @@ export async function runProductImport(input: {
   actorUserId: string;
   roles: AppRole[];
 }): Promise<ImportRunResult> {
+  await ensureProductUnitsSchema();
   const canApprove = canApproveProducts(input.roles || []);
   const { byCatSlug, byCatName, subcategories } = await loadImportTaxonomy();
 
@@ -840,7 +884,11 @@ export async function runProductImport(input: {
         continue;
       }
       if (!Number.isFinite(row.price) || row.price < 0) {
-        failed.push({ name: row.name, row: row.rowNumber, error: "Valid price * is required" });
+        failed.push({
+          name: row.name,
+          row: row.rowNumber,
+          error: "Valid selling_price * is required"
+        });
         continue;
       }
 
@@ -961,21 +1009,29 @@ export async function runProductImport(input: {
 
       let sku = row.sku;
       let tag = row.tag;
-      let familyBarcode = row.barcode.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 16);
       if (row.sku_auto) {
         const { nextDocumentNumber } = await import("./document-numbers");
         sku = await nextDocumentNumber("product");
         tag = (row.tag && !row.tag.startsWith("AUTO-") ? row.tag : sku).toUpperCase();
-        familyBarcode =
-          row.barcode && !row.barcode.startsWith("AUTO")
-            ? familyBarcode
-            : sku.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 16);
       }
+      // Family barcode always auto from product code unless spreadsheet set a real one.
+      const barcodeProvided =
+        Boolean(row.barcode?.trim()) &&
+        !row.barcode.startsWith("AUTO") &&
+        !row.sku_auto;
+      const familyBarcode = barcodeProvided
+        ? row.barcode.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 16)
+        : sku.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 16);
 
-      const existing = await queryOne<{ id: string }>(
-        `select id from products where slug = $1 or ($2::text <> '' and sku = $2) limit 1`,
-        [row.slug, row.sku_auto ? "" : sku]
-      );
+      // Match existing only by product code — duplicate slugs create new rows (auto-suffixed).
+      const existing = !row.sku_auto
+        ? await queryOne<{ id: string }>(`select id from products where sku = $1 limit 1`, [sku])
+        : null;
+
+      const slug = existing
+        ? await allocateUniqueProductSlug(row.slug || row.name, existing.id)
+        : await allocateUniqueProductSlug(row.slug || row.name);
+
       const colourBatches = row.colour_batches;
       const openingStock = colourBatches.length
         ? colourBatches.reduce((sum, b) => sum + b.count, 0)
@@ -1009,13 +1065,14 @@ export async function runProductImport(input: {
                short_name = $11, short_description = $12, color = $13, is_multicolour = $14,
                description = $15, price = $16, compare_at_price = $17, hsn_code = $18,
                gst_rate = $19, status = $20, is_featured = $21, restock_expected = $22,
-               parent_product_id = $23, brand_id = coalesce($24, brand_id), updated_at = now()
+               parent_product_id = $23, brand_id = coalesce($24, brand_id),
+               purchase_price = $25, updated_at = now()
            where id = $1
            returning *`,
           [
             existing.id,
             row.name,
-            row.slug,
+            slug,
             sku,
             familyBarcode,
             tag.toUpperCase(),
@@ -1036,7 +1093,8 @@ export async function runProductImport(input: {
             row.is_featured,
             row.restock_expected,
             parentProductId,
-            brandId
+            brandId,
+            row.purchase_price
           ]
         );
         const variant = await upsertDefaultVariant({
@@ -1060,12 +1118,12 @@ export async function runProductImport(input: {
              (name, slug, sku, barcode, tag, sku_prefix, label_size, category_id, subcategory_id,
               short_name, short_description, color, is_multicolour, description,
               price, compare_at_price, hsn_code, gst_rate, status, stock_quantity, is_featured,
-              parent_product_id, brand_id, restock_expected)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,0,$20,$21,$22,$23)
+              parent_product_id, brand_id, restock_expected, purchase_price)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,0,$20,$21,$22,$23,$24)
            returning *`,
           [
             row.name,
-            row.slug,
+            slug,
             sku,
             familyBarcode,
             tag.toUpperCase(),
@@ -1086,7 +1144,8 @@ export async function runProductImport(input: {
             row.is_featured,
             parentProductId,
             brandId,
-            row.restock_expected
+            row.restock_expected,
+            row.purchase_price
           ]
         );
         if (!data) {

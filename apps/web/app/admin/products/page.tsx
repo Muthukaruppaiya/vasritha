@@ -1201,7 +1201,7 @@ function AdminProductsPageInner() {
                   <th>Barcodes</th>
                   <th>Colour</th>
                   <th>Category</th>
-                  <th>Price</th>
+                  <th>Selling price</th>
                   <th>Stock</th>
                   <th>Status</th>
                   <th>Actions</th>

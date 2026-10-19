@@ -49,6 +49,7 @@ type BarcodeItem = {
   product_name: string;
   short_name?: string | null;
   sku: string | null;
+  slug?: string | null;
   price: string;
   color: string | null;
   variant_name?: string | null;
@@ -146,6 +147,7 @@ function BarcodesPageInner() {
           shortName: first.short_name || undefined,
           categoryName: first.category_name || undefined,
           sku: first.sku,
+          slug: first.slug || undefined,
           color: first.color,
           tag: first.tag,
           hsnCode: first.hsn_code || undefined,
@@ -164,6 +166,7 @@ function BarcodesPageInner() {
           shortName: item.short_name || undefined,
           categoryName: item.category_name || undefined,
           sku: item.sku,
+          slug: item.slug || undefined,
           color: item.color,
           hsnCode: item.hsn_code || undefined,
           compareAtPrice: item.compare_at_price

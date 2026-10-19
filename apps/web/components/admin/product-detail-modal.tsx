@@ -415,6 +415,7 @@ export function ProductDetailModal({
                               productName: data.name,
                               categoryName: data.category_name || undefined,
                               sku: data.sku,
+                              slug: data.slug,
                               color: data.is_multicolour ? undefined : data.color,
                               tag: data.tag,
                               compareAtPrice: data.compare_at_price
@@ -429,6 +430,7 @@ export function ProductDetailModal({
                                 ...item,
                                 tag: item.tag,
                                 seq: item.seq,
+                                slug: data.slug,
                                 color: pieceColor || null,
                                 sizeLabel: item.variant_name || null
                               };
@@ -525,6 +527,7 @@ export function ProductDetailModal({
                             productName: data.name,
                             categoryName: data.category_name || undefined,
                             sku: data.sku,
+                            slug: data.slug,
                             color: data.is_multicolour ? undefined : data.color,
                             tag: data.tag,
                             compareAtPrice: data.compare_at_price
@@ -534,6 +537,7 @@ export function ProductDetailModal({
                               ...selected,
                               tag: selected.tag,
                               seq: selected.seq,
+                              slug: data.slug,
                               color: pieceColor || null,
                               sizeLabel: selected.variant_name || null
                             }

@@ -39,6 +39,7 @@ const ALLOWED_FIELDS = [
   "category_id",
   "subcategory_id",
   "price",
+  "purchase_price",
   "compare_at_price",
   "status",
   "is_featured",
@@ -255,6 +256,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   if ("color" in normalized && normalized.color) {
     await ensureColourName(String(normalized.color));
+  }
+  if ("purchase_price" in normalized) {
+    const raw = normalized.purchase_price;
+    normalized.purchase_price =
+      raw == null || String(raw).trim() === "" ? null : Number(raw);
   }
 
   for (const key of ALLOWED_FIELDS) {
