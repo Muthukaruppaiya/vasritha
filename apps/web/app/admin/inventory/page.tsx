@@ -9,6 +9,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   Download,
+  History,
   Package,
   PackagePlus,
   Pencil,
@@ -278,6 +279,15 @@ function AdminInventoryPageInner() {
               <ClipboardCheck size={16} strokeWidth={2} />
               <span>GRN approvals</span>
             </Link>
+            <Link
+              className="admin-icon-tip"
+              href="/admin/inventory/grn/history"
+              data-tooltip="GRN history"
+              aria-label="GRN history"
+            >
+              <History size={16} strokeWidth={2} />
+              <span>GRN history</span>
+            </Link>
             <label className="inv-label-type" title="Barcode label layout for printing">
               <span>Label</span>
               <select
@@ -348,7 +358,7 @@ function AdminInventoryPageInner() {
         <article className="inv-summary-card">
           <Warehouse size={16} />
           <div>
-            <span>SKUs</span>
+            <span>Products</span>
             <strong>{summary?.skuCount ?? "—"}</strong>
           </div>
         </article>
@@ -390,7 +400,7 @@ function AdminInventoryPageInner() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Product, SKU, HSN, category…"
+                placeholder="Product name, HSN, category…"
               />
             </div>
           </label>
@@ -447,7 +457,7 @@ function AdminInventoryPageInner() {
             body={
               total === 0 && !debouncedSearch && !stockFilter && !categoryFilter
                 ? "Create a product in Product Master first, then receive stock on the GRN page."
-                : "Try clearing filters or searching by SKU / product name."
+                : "Try clearing filters or searching by product name."
             }
           />
         )}
@@ -475,7 +485,7 @@ function AdminInventoryPageInner() {
                 <tr>
                   <th>Product</th>
                   <th>Category</th>
-                  <th>SKU / variant</th>
+                  <th>Colour</th>
                   <th>HSN / GST</th>
                   <th>On hand</th>
                   <th>Level</th>
@@ -496,8 +506,9 @@ function AdminInventoryPageInner() {
                       ) : null}
                     </td>
                     <td>
-                      <div>{row.sku || "—"}</div>
-                      <div className="muted admin-sub">{row.variant_name || "Default"}</div>
+                      {row.is_multicolour
+                        ? "Multi-colour"
+                        : row.product_color?.trim() || "—"}
                     </td>
                     <td>
                       <div>{row.hsn_code || "—"}</div>
@@ -624,10 +635,9 @@ function AdminInventoryPageInner() {
                     <td>{formatDate(movement.created_at)}</td>
                     <td>
                       <b>{movement.product_name || "—"}</b>
-                      <div className="muted admin-sub">
-                        {movement.sku || "—"}
-                        {movement.variant_name ? ` · ${movement.variant_name}` : ""}
-                      </div>
+                      {movement.variant_name ? (
+                        <div className="muted admin-sub">{movement.variant_name}</div>
+                      ) : null}
                     </td>
                     <td>{movementLabel(movement.type)}</td>
                     <td className={Number(movement.quantity) < 0 ? "inv-qty-out" : "inv-qty-in"}>
@@ -665,8 +675,6 @@ function AdminInventoryPageInner() {
                   {adjustPicked.is_multicolour
                     ? "Multi-colour"
                     : adjustPicked.product_color || "—"}
-                  {" · "}
-                  {adjustPicked.sku || "no-sku"}
                   {" · "}
                   On hand {adjustPicked.stock_quantity}
                 </span>

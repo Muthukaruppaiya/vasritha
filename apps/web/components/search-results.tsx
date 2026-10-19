@@ -48,7 +48,7 @@ export function SearchResults({
             Scoped to <Link href={`/${categorySlug}`}>{categorySlug.replace(/-/g, " ")}</Link>
           </p>
         ) : (
-          <p className="muted">Search by product name, SKU, color, tag, or category.</p>
+          <p className="muted">Search by product name, colour, tag, or category.</p>
         )}
         {!loading && needle ? (
           <p className="muted">
@@ -61,7 +61,7 @@ export function SearchResults({
       {!loading && products.length === 0 ? (
         <p className="muted">
           {needle
-            ? "No products matched. Try a shorter word, SKU, or browse collections."
+            ? "No products matched. Try a shorter word, or browse collections."
             : "Type a product name in the header search to begin."}
         </p>
       ) : null}

@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   ClipboardCheck,
   Eye,
+  History,
   Printer,
   Truck,
   X
@@ -241,6 +242,10 @@ function AdminGrnApprovalsInner() {
             <Link className="admin-icon-tip" href="/admin/inventory/grn">
               <ArrowDownToLine size={16} strokeWidth={2} />
               <span>GRN entry</span>
+            </Link>
+            <Link className="admin-icon-tip" href="/admin/inventory/grn/history">
+              <History size={16} strokeWidth={2} />
+              <span>GRN history</span>
             </Link>
             <Link className="admin-icon-tip" href="/admin/barcodes">
               <Printer size={16} strokeWidth={2} />
@@ -612,7 +617,6 @@ function AdminGrnApprovalsInner() {
                   <thead>
                     <tr>
                       <th>Product</th>
-                      <th>SKU</th>
                       <th>Qty</th>
                       <th>Purchase ₹</th>
                       <th>Line total</th>
@@ -625,7 +629,7 @@ function AdminGrnApprovalsInner() {
                         .map((s) => `${s.color} × ${s.quantity}`)
                         .join(", ");
                       return (
-                        <tr key={`${line.sku || line.product_name}-${index}`}>
+                        <tr key={`${line.product_name}-${index}`}>
                           <td>
                             <strong>{line.product_name}</strong>
                             {line.variant_name ? (
@@ -633,7 +637,6 @@ function AdminGrnApprovalsInner() {
                             ) : null}
                             {colours ? <div className="muted admin-sub">{colours}</div> : null}
                           </td>
-                          <td>{line.sku || "—"}</td>
                           <td>{line.quantity}</td>
                           <td>{formatMoney(line.purchase_price)}</td>
                           <td>{formatMoney(line.line_total)}</td>

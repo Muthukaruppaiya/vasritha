@@ -140,7 +140,20 @@ function AdminProductsPageInner() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [importBusy, setImportBusy] = useState(false);
   const [importMessage, setImportMessage] = useState("");
-  const [importError, setImportError] = useState("");
+  const [importDialog, setImportDialog] = useState<
+    | null
+    | {
+        kind: "errors";
+        summary: string;
+        errors: Array<{ row: number; name: string; error: string }>;
+      }
+    | {
+        kind: "confirm";
+        fileName: string;
+        rowCount: number;
+        file: File;
+      }
+  >(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
 
@@ -425,44 +438,152 @@ function AdminProductsPageInner() {
     return "/admin/barcodes";
   }, [selected]);
 
-  const onImportFile = async (fileList: FileList | null) => {
-    const file = fileList?.[0];
-    if (!file) return;
+  const closeImportDialog = () => {
+    setImportDialog(null);
+    if (importInputRef.current) importInputRef.current.value = "";
+  };
+
+  const runConfirmedImport = async () => {
+    if (!importDialog || importDialog.kind !== "confirm") {
+      closeImportDialog();
+      return;
+    }
+    const file = importDialog.file;
 
     setImportBusy(true);
-    setImportError("");
     setImportMessage("");
-
     try {
       const token = getAdminToken();
-      const body = new FormData();
-      body.append("file", file);
+      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+      const importBody = new FormData();
+      importBody.append("file", file);
+      importBody.append("mode", "import");
       const res = await fetch("/api/admin/products/import", {
         method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        body
+        headers,
+        body: importBody
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error((payload as { error?: string }).error || "Import failed");
+        const blocked = payload as {
+          error?: string;
+          errors?: Array<{ row: number; name: string; error: string }>;
+        };
+        setImportDialog({
+          kind: "errors",
+          summary: blocked.error || "Import blocked by validation errors",
+          errors: blocked.errors || []
+        });
+        return;
       }
 
-      const data = (payload as {
-        data?: { created: number; updated: number; failed: Array<{ name: string; error: string }> };
-      }).data;
+      const data = (
+        payload as {
+          data?: {
+            created: number;
+            updated: number;
+            failed: Array<{ name: string; row?: number; error: string }>;
+          };
+        }
+      ).data;
 
       const failedCount = data?.failed?.length || 0;
+      if (failedCount && data?.failed?.length) {
+        setImportDialog({
+          kind: "errors",
+          summary: `Imported with ${failedCount} failure(s).`,
+          errors: data.failed.map((item) => ({
+            row: item.row || 0,
+            name: item.name,
+            error: item.error
+          }))
+        });
+      } else {
+        setImportDialog(null);
+      }
       setImportMessage(
         `Imported ${data?.created || 0} new, updated ${data?.updated || 0}${
           failedCount ? `, ${failedCount} failed` : ""
         }.`
       );
-      if (failedCount && data?.failed?.[0]) {
-        setImportError(data.failed.map((item) => `${item.name}: ${item.error}`).slice(0, 3).join(" · "));
-      }
+      if (importInputRef.current) importInputRef.current.value = "";
       await reload();
     } catch (err) {
-      setImportError(err instanceof Error ? err.message : "Import failed");
+      setImportDialog({
+        kind: "errors",
+        summary: err instanceof Error ? err.message : "Import failed",
+        errors: []
+      });
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  const onImportFile = async (fileList: FileList | null) => {
+    const file = fileList?.[0];
+    if (!file) return;
+
+    setImportBusy(true);
+    setImportMessage("");
+    setImportDialog(null);
+
+    try {
+      // Keep a copy — clearing the input must not drop the pending file.
+      const fileCopy = new File([await file.arrayBuffer()], file.name, {
+        type: file.type || "application/octet-stream"
+      });
+
+      const token = getAdminToken();
+      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+
+      // Validate only — never import until user confirms in the popup.
+      const checkBody = new FormData();
+      checkBody.append("file", fileCopy);
+      checkBody.append("mode", "validate");
+      const checkRes = await fetch("/api/admin/products/import", {
+        method: "POST",
+        headers,
+        body: checkBody
+      });
+      const checkPayload = await checkRes.json().catch(() => ({}));
+      if (!checkRes.ok) {
+        throw new Error((checkPayload as { error?: string }).error || "Could not check file");
+      }
+
+      const checkData = (
+        checkPayload as {
+          data?: {
+            ok?: boolean;
+            checked?: number;
+            errors?: Array<{ row: number; name: string; error: string }>;
+          };
+        }
+      ).data;
+
+      const lineErrors = checkData?.errors || [];
+      const rowCount = Number(checkData?.checked || 0);
+      if (!checkData?.ok || lineErrors.length) {
+        setImportDialog({
+          kind: "errors",
+          summary: `File check failed — ${lineErrors.length} error(s) in ${rowCount} row(s). Fix the lines below and upload again.`,
+          errors: lineErrors
+        });
+        return;
+      }
+
+      // All rows OK → ask before importing (do not import automatically).
+      setImportDialog({
+        kind: "confirm",
+        fileName: fileCopy.name,
+        rowCount,
+        file: fileCopy
+      });
+    } catch (err) {
+      setImportDialog({
+        kind: "errors",
+        summary: err instanceof Error ? err.message : "Import failed",
+        errors: []
+      });
     } finally {
       setImportBusy(false);
       if (importInputRef.current) importInputRef.current.value = "";
@@ -562,7 +683,7 @@ function AdminProductsPageInner() {
               className="admin-icon-tip"
               disabled={importBusy}
               onClick={() => importInputRef.current?.click()}
-              data-tooltip={importBusy ? "Importing…" : "Import Excel / CSV"}
+              data-tooltip={importBusy ? "Checking / importing…" : "Import Excel / CSV (validates first)"}
               aria-label="Import bulk data"
             >
               <Upload size={16} strokeWidth={2} />
@@ -634,12 +755,119 @@ function AdminProductsPageInner() {
         </Link>
       </div>
 
-      {(importMessage || importError) && (
+      {importMessage && !importDialog ? (
         <div className="admin-import-feedback">
-          {importMessage ? <AdminAlert tone="ok">{importMessage}</AdminAlert> : null}
-          {importError ? <AdminAlert>{importError}</AdminAlert> : null}
+          <AdminAlert tone="ok">{importMessage}</AdminAlert>
         </div>
-      )}
+      ) : null}
+
+      {importDialog ? (
+        <div
+          className="admin-modal-backdrop admin-import-dialog-backdrop"
+          role="presentation"
+          onClick={() => {
+            if (!importBusy) closeImportDialog();
+          }}
+        >
+          <div
+            className="admin-modal admin-import-errors-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="import-errors-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="admin-modal-head">
+              <div>
+                <h2 id="import-errors-title">
+                  {importDialog.kind === "confirm" ? "Confirm import" : "Import file check"}
+                </h2>
+              </div>
+              <button
+                type="button"
+                className="admin-modal-close"
+                aria-label="Close"
+                disabled={importBusy}
+                onClick={closeImportDialog}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="admin-modal-body">
+              {importDialog.kind === "confirm" ? (
+                <div className="admin-import-confirm">
+                  <AdminAlert tone="ok">
+                    All {importDialog.rowCount} row(s) are correct.
+                  </AdminAlert>
+                  <p className="admin-import-confirm__file">
+                    File: <strong>{importDialog.fileName}</strong>
+                  </p>
+                  <p className="admin-import-confirm__count">
+                    Do you want to import <strong>{importDialog.rowCount}</strong> product row
+                    {importDialog.rowCount === 1 ? "" : "s"} now?
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <AdminAlert>{importDialog.summary}</AdminAlert>
+                  {importDialog.errors.length > 0 ? (
+                    <div className="admin-import-errors">
+                      <strong>Line errors ({importDialog.errors.length})</strong>
+                      <ul>
+                        {importDialog.errors.slice(0, 100).map((item, idx) => (
+                          <li key={`${item.row}-${idx}`}>
+                            <span className="admin-import-errors__line">
+                              Line {item.row || "?"}
+                            </span>
+                            <span className="admin-import-errors__name">{item.name}</span>
+                            <span className="admin-import-errors__msg">{item.error}</span>
+                          </li>
+                        ))}
+                      </ul>
+                      {importDialog.errors.length > 100 ? (
+                        <p className="muted">…and {importDialog.errors.length - 100} more</p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </div>
+            <div className="admin-modal-actions">
+              <button
+                type="button"
+                className="btn"
+                disabled={importBusy}
+                onClick={closeImportDialog}
+              >
+                {importDialog.kind === "confirm" ? "Cancel" : "Close"}
+              </button>
+              {importDialog.kind === "confirm" ? (
+                <button
+                  type="button"
+                  className="btn admin-modal-primary"
+                  disabled={importBusy}
+                  onClick={() => void runConfirmedImport()}
+                >
+                  {importBusy
+                    ? "Importing…"
+                    : `Import ${importDialog.rowCount} rows`}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn admin-modal-primary"
+                  disabled={importBusy}
+                  onClick={() => {
+                    closeImportDialog();
+                    window.setTimeout(() => importInputRef.current?.click(), 0);
+                  }}
+                >
+                  Fix &amp; upload again
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="pm-toolbar">
         <div className="admin-search-field pm-toolbar-search">
@@ -647,7 +875,7 @@ function AdminProductsPageInner() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search name, SKU, colour, barcode…"
+            placeholder="Search name, colour, barcode…"
             aria-label="Search products"
           />
           {search ? (
@@ -970,7 +1198,7 @@ function AdminProductsPageInner() {
                     />
                   </th>
                   <th>Product</th>
-                  <th>Code / barcodes</th>
+                  <th>Barcodes</th>
                   <th>Colour</th>
                   <th>Category</th>
                   <th>Price</th>
@@ -1009,7 +1237,6 @@ function AdminProductsPageInner() {
                             {product.parent_name ? (
                               <div className="admin-sub admin-product-relation">
                                 Child of {product.parent_name}
-                                {product.parent_sku ? ` · ${product.parent_sku}` : ""}
                               </div>
                             ) : Number(product.child_count || 0) > 0 ? (
                               <div className="admin-sub admin-product-relation admin-product-relation--parent">
@@ -1026,10 +1253,11 @@ function AdminProductsPageInner() {
                     </td>
                     <td>
                       <div className="catalogue-code-cell">
-                        <strong>{product.sku || "—"}</strong>
                         {product.barcode ? (
-                          <div className="muted admin-sub">{product.barcode}</div>
-                        ) : null}
+                          <strong>{product.barcode}</strong>
+                        ) : (
+                          <strong>—</strong>
+                        )}
                         <Link
                           className="catalogue-barcode-link"
                           href={barcodeDeskHref(product.id)}

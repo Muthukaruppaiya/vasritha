@@ -110,6 +110,7 @@ const navModules: NavModule[] = [
       { label: "Inventory", href: "/admin/inventory", icon: Warehouse },
       { label: "GRN entry", href: "/admin/inventory/grn", icon: ArrowDownToLine },
       { label: "GRN approvals", href: "/admin/inventory/approvals", icon: ClipboardCheck },
+      { label: "GRN history", href: "/admin/inventory/grn/history", icon: History },
       { label: "Print barcodes", href: "/admin/barcodes", icon: Printer },
       { label: "Supplier Master", href: "/admin/suppliers", icon: Truck }
     ]
@@ -203,7 +204,12 @@ function sessionRoles(user: AdminSessionUser | null): AppRole[] {
 }
 
 function pathMatches(pathname: string, href: string) {
-  return href === "/admin" ? pathname === "/admin" : pathname.startsWith(href);
+  if (href === "/admin") return pathname === "/admin";
+  if (pathname === href) return true;
+  if (!pathname.startsWith(`${href}/`)) return false;
+  // GRN entry must not stay active on /grn/history
+  if (href === "/admin/inventory/grn") return false;
+  return true;
 }
 
 function moduleContainsPath(module: NavModule, pathname: string) {
@@ -214,6 +220,7 @@ function moduleContainsPath(module: NavModule, pathname: string) {
 function resolveTopbarMeta(pathname: string, modules: NavModule[]) {
   const extras: Array<{ href: string; kicker: string; title: string }> = [
     { href: "/admin/products/new", kicker: "Catalogue", title: "Add product" },
+    { href: "/admin/inventory/grn/history", kicker: "Catalogue", title: "GRN history" },
     { href: "/admin/inventory/grn", kicker: "Catalogue", title: "GRN entry" },
     { href: "/admin/inventory/approvals", kicker: "Catalogue", title: "GRN approvals" },
     { href: "/admin/billing/dues", kicker: "Sales", title: "Credit dues" },

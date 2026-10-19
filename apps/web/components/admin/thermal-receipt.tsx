@@ -216,7 +216,6 @@ export function ThermalReceipt({ data, id = "tvs-l46-receipt" }: Props) {
                   {item.variant_name ? ` (${item.variant_name})` : ""}
                 </b>
                 <span>
-                  {item.sku ? `${item.sku} · ` : ""}
                   {formatMoney(item.unit_price)} × {item.quantity}
                 </span>
               </td>

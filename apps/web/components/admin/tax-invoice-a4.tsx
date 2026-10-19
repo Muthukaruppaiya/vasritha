@@ -226,8 +226,7 @@ export function TaxInvoiceA4({ data, id = "vasritha-tax-invoice-a4" }: Props) {
                   {line.variant_name ? ` · ${line.variant_name}` : ""}
                 </b>
                 <span>
-                  {line.sku || ""}
-                  {line.gst_rate ? ` · GST ${line.gst_rate}%` : ""}
+                  {line.gst_rate ? `GST ${line.gst_rate}%` : ""}
                 </span>
               </td>
               <td>{line.hsn_code || "—"}</td>

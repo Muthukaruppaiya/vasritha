@@ -142,7 +142,6 @@ export function CourierLabel({ data, id = "vasritha-parcel-label" }: Props) {
                   <li key={`${item.sku || item.product_name}-${index}`}>
                     {item.quantity}× {item.product_name}
                     {item.variant_name ? ` (${item.variant_name})` : ""}
-                    {item.sku ? ` · ${item.sku}` : ""}
                   </li>
                 ))}
               </ul>

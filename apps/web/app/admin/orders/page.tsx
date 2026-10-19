@@ -749,9 +749,7 @@ export default function AdminOrdersPage() {
                               {item.product_name}
                               {item.variant_name ? ` · ${item.variant_name}` : ""}
                             </b>
-                            <span className="muted">
-                              {item.sku || "—"} · Qty {item.quantity}
-                            </span>
+                            <span className="muted">Qty {item.quantity}</span>
                           </div>
                           <strong>{formatMoney(item.line_total)}</strong>
                         </li>

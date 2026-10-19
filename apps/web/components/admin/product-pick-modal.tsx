@@ -123,7 +123,7 @@ export function ProductPickModal({
               autoFocus
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search name, colour, or SKU…"
+              placeholder="Search product name or colour…"
               autoComplete="off"
             />
           </label>
@@ -143,7 +143,6 @@ export function ProductPickModal({
                     <em>{row.is_multicolour ? "Multi-colour" : row.product_color || "—"}</em>
                   </span>
                   <span className="grn-sku-modal-option-side">
-                    <span>{row.sku || "no-sku"}</span>
                     <small>On hand {row.stock_quantity}</small>
                   </span>
                 </button>

@@ -15,6 +15,7 @@ export async function ensureCompanySettingsSchema() {
       add column if not exists doc_prefix_invoice text not null default 'VAS',
       add column if not exists doc_prefix_grn text not null default 'GRN',
       add column if not exists doc_prefix_online text not null default 'VAS',
+      add column if not exists doc_prefix_product text not null default 'VAS',
       add column if not exists doc_number_pad integer not null default 3,
       add column if not exists doc_number_year_mode text not null default 'calendar'
   `);

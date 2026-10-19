@@ -162,7 +162,7 @@ export function SiteSearch({ className = "" }: { className?: string }) {
                 placeholder={
                   categoryLabel
                     ? `Search ${categoryLabel}…`
-                    : "Name, colour, SKU, or weave…"
+                    : "Name, colour, or weave…"
                 }
                 aria-label={t("common.search")}
                 autoComplete="off"

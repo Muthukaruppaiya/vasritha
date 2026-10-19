@@ -113,7 +113,7 @@ export function InvoiceBill({ data, id = "vasritha-invoice-bill" }: Props) {
         <thead>
           <tr>
             <th className="is-item">
-              Code
+              Product
               <small>Category / Tax</small>
             </th>
             <th className="is-qty">Qty</th>
@@ -124,7 +124,7 @@ export function InvoiceBill({ data, id = "vasritha-invoice-bill" }: Props) {
         <tbody>
           {lines.length ? (
             lines.map((item, index) => {
-              const code = item.sku || "—";
+              const name = item.product_name || "—";
               const category = String(item.category_name || "").trim();
               const hsn = item.hsn_code || "";
               const rate =
@@ -142,7 +142,7 @@ export function InvoiceBill({ data, id = "vasritha-invoice-bill" }: Props) {
               return (
                 <tr key={`${item.product_id}-${index}`}>
                   <td className="is-item">
-                    <b>{clip(code, 28)}</b>
+                    <b>{clip(name, 28)}</b>
                     {meta ? <span>{clip(meta, 40)}</span> : null}
                   </td>
                   <td className="is-qty">{item.quantity}</td>

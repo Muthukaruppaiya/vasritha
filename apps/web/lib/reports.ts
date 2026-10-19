@@ -1101,7 +1101,6 @@ export async function buildInventoryReport(filters: ReportFilters = {}): Promise
     const price = Number(r.price || 0);
     return {
       product: r.product_name,
-      sku: r.sku || "—",
       category: r.category_name || "—",
       current_stock: qty,
       stock_value: round2(qty * price),
@@ -1116,7 +1115,6 @@ export async function buildInventoryReport(filters: ReportFilters = {}): Promise
     { from: null, to: null },
     [
       { key: "product", label: "Product" },
-      { key: "sku", label: "SKU" },
       { key: "category", label: "Category" },
       { key: "current_stock", label: "Current stock", format: "number" },
       { key: "stock_value", label: "Stock value", format: "money" },

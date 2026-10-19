@@ -1,8 +1,92 @@
 export const categories = [
-  { name: "Sarees", slug: "sarees", description: "Drapes made for your memorable moments.", subcategories: ["Silk Sarees", "Cotton Sarees", "Synthetic Sarees"], image: "/hero-silk.png", lines: ["Sarees"] },
-  { name: "Jewelry", slug: "jewelry", description: "Radiance in every detail.", subcategories: ["Bangles", "Earrings", "Necklace"], image: "/hero-jewelry.png", lines: ["Jewelry"] },
-  { name: "Churidhars / Salwars", slug: "churidhars-salwars", description: "Graceful silhouettes for every day.", subcategories: [], image: "/hero-salwar.png", lines: ["Churidhars", "Salwars"] },
-  { name: "Handcrafted", slug: "handcrafted", description: "Artful objects made with care.", subcategories: ["Carved Wooden Items", "Brass / Metal Idols"], image: "/catalog-wooden-item.png", lines: ["Handcrafted"] }
+  {
+    name: "Sarees",
+    slug: "sarees",
+    description: "Timeless drapes for every occasion.",
+    subcategories: [
+      "Cotton Saree",
+      "Cotton Blend Saree",
+      "Silk Saree",
+      "Fancy Saree",
+      "Synthetic Saree",
+      "Linen Saree",
+      "Polyester Saree",
+      "Crepe Saree",
+      "Chiffon Saree",
+      "Chanderi Saree",
+      "Banarasi Silk Saree",
+      "Poly Tissue Saree",
+      "Rayon Saree",
+      "Viscose Saree",
+      "Art Silk Saree",
+      "Velvet Saree",
+      "Satin Saree"
+    ],
+    image: "/hero-silk.png",
+    lines: ["Sarees"]
+  },
+  {
+    name: "Jewelry",
+    slug: "jewelry",
+    description: "Finishing touches with enduring radiance.",
+    subcategories: [
+      "Ear Rings",
+      "Bracelets",
+      "Necklaces",
+      "Pendants",
+      "Rings",
+      "Bangles",
+      "Chains",
+      "Plain Chains",
+      "Cable Chain",
+      "Rope Chain",
+      "Nose Pins"
+    ],
+    image: "/hero-jewelry.png",
+    lines: ["Jewelry"]
+  },
+  {
+    name: "Suits / Churidhars / Salwars/Palazzo",
+    slug: "churidhars-salwars",
+    description: "Graceful everyday and occasion wear.",
+    subcategories: [
+      "Churidar",
+      "Lucknowi Chickenkari",
+      "Chanderi Silk",
+      "Leggings",
+      "Kurta",
+      "Suit/Churidar - Unstitched Material",
+      "Kurti",
+      "Cotton Readymade sets",
+      "Co-ord Set"
+    ],
+    image: "/hero-salwar.png",
+    lines: ["Churidhars", "Salwars"]
+  },
+  {
+    name: "Lehengas",
+    slug: "lehengas",
+    description: "Festive and bridal lehengas.",
+    subcategories: ["Silk", "Velvets", "Georgette", "Synthetic"],
+    image: "/hero-silk.png",
+    lines: ["Lehengas"]
+  },
+  {
+    name: "Nighty",
+    slug: "nighty",
+    description: "Nighty",
+    subcategories: ["Pure Cotton", "Cotton Blend", "Rayon", "Satin", "Maternity Nighty"],
+    image: "/hero-salwar.png",
+    lines: ["Nighty"]
+  },
+  {
+    name: "Handcrafted",
+    slug: "handcrafted",
+    description: "Artful pieces for thoughtful homes.",
+    subcategories: [],
+    image: "/catalog-wooden-item.png",
+    lines: ["Handcrafted"]
+  }
 ];
 
 export const collections = [

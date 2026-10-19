@@ -5,6 +5,7 @@ import { skipEnsureIfRelationExists } from "./schema-bootstrap";
 import {
   buildDocumentNumber,
   DOC_NUMBER_DEFAULTS,
+  prefixForKind,
   previewDocumentNumber,
   resolveDocYearKey,
   sanitizeDocPad,
@@ -16,6 +17,7 @@ import {
 export type { DocNumberKind, DocNumberSettings };
 export {
   buildDocumentNumber,
+  prefixForKind,
   previewDocumentNumber,
   resolveDocYearKey
 } from "./document-numbers-format";
@@ -42,6 +44,7 @@ async function runEnsureDocumentNumberSchema() {
       add column if not exists doc_prefix_invoice text not null default 'VAS',
       add column if not exists doc_prefix_grn text not null default 'GRN',
       add column if not exists doc_prefix_online text not null default 'VAS',
+      add column if not exists doc_prefix_product text not null default 'VAS',
       add column if not exists doc_number_pad integer not null default 3,
       add column if not exists doc_number_year_mode text not null default 'calendar'
   `);
@@ -75,10 +78,11 @@ export async function getDocNumberSettings(): Promise<DocNumberSettings> {
     doc_prefix_invoice: string | null;
     doc_prefix_grn: string | null;
     doc_prefix_online: string | null;
+    doc_prefix_product: string | null;
     doc_number_pad: number | null;
     doc_number_year_mode: string | null;
   }>(
-    `select doc_prefix_invoice, doc_prefix_grn, doc_prefix_online,
+    `select doc_prefix_invoice, doc_prefix_grn, doc_prefix_online, doc_prefix_product,
             doc_number_pad, doc_number_year_mode
      from site_settings
      limit 1`
@@ -87,6 +91,7 @@ export async function getDocNumberSettings(): Promise<DocNumberSettings> {
     doc_prefix_invoice: sanitizeDocPrefix(row?.doc_prefix_invoice, DEFAULTS.doc_prefix_invoice),
     doc_prefix_grn: sanitizeDocPrefix(row?.doc_prefix_grn, DEFAULTS.doc_prefix_grn),
     doc_prefix_online: sanitizeDocPrefix(row?.doc_prefix_online, DEFAULTS.doc_prefix_online),
+    doc_prefix_product: sanitizeDocPrefix(row?.doc_prefix_product, DEFAULTS.doc_prefix_product),
     doc_number_pad: sanitizeDocPad(row?.doc_number_pad),
     doc_number_year_mode: row?.doc_number_year_mode === "fy" ? "fy" : "calendar"
   };
@@ -104,17 +109,12 @@ async function resolveFyStartMonth(db?: DbClient) {
   }
 }
 
-/** Atomically allocate next number: PREFIX + YEAR + - + padded sequence. */
+/** Atomically allocate next number: PREFIX + YEAR + padded sequence (e.g. GRN2026001). */
 export async function nextDocumentNumber(kind: DocNumberKind, db?: DbClient) {
   await ensureDocumentNumberSchema();
   const runner = db || { query, queryOne };
   const settings = await getDocNumberSettings();
-  const prefix =
-    kind === "grn"
-      ? settings.doc_prefix_grn
-      : kind === "online"
-        ? settings.doc_prefix_online
-        : settings.doc_prefix_invoice;
+  const prefix = prefixForKind(settings, kind);
   const fyStart = await resolveFyStartMonth(db);
   const yearKey = resolveDocYearKey(settings.doc_number_year_mode, new Date(), fyStart);
 

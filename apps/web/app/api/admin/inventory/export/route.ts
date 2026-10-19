@@ -15,8 +15,6 @@ export const runtime = "nodejs";
 
 const COLUMNS: ExportColumn[] = [
   { key: "product_name", label: "Product" },
-  { key: "sku", label: "SKU" },
-  { key: "variant_name", label: "Variant / size" },
   { key: "category_name", label: "Category" },
   { key: "subcategory_name", label: "Subcategory" },
   { key: "product_color", label: "Colour" },

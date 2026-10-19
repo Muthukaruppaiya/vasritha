@@ -159,10 +159,13 @@ export async function POST(request: NextRequest) {
       .replace(/[^A-Za-z0-9]/g, "")
       .toUpperCase()
       .slice(0, 8) || "VAS";
+    const { nextDocumentNumber } = await import("../../../../lib/document-numbers");
     const sku =
       (body.sku ? String(body.sku).trim().toUpperCase() : "") ||
-      `${skuPrefix}-${Date.now().toString().slice(-8)}`;
-    const familyBarcode = sku.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 16);
+      (await nextDocumentNumber("product"));
+    const familyBarcode =
+      (body.barcode ? String(body.barcode).replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 16) : "") ||
+      sku.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 16);
     const tag = (body.tag ? String(body.tag).trim() : "") || sku;
     const labelSize = body.label_size === "accessory" ? "accessory" : "dress";
     const subcategoryId = emptyToNull(body.subcategory_id);
@@ -285,7 +288,7 @@ export async function POST(request: NextRequest) {
       );
     }
     if (/duplicate key|unique constraint/i.test(message)) {
-      return fail("SKU, barcode, or slug already exists. Use a unique code.", 409);
+      return fail("Product code, barcode, or slug already exists. Use a unique code.", 409);
     }
     return fail(message, 500);
   }

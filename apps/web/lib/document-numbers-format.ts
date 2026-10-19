@@ -1,11 +1,12 @@
 /** Pure document-number formatting — safe for client components (no DB / pg). */
 
-export type DocNumberKind = "invoice" | "grn" | "online";
+export type DocNumberKind = "invoice" | "grn" | "online" | "product";
 
 export type DocNumberSettings = {
   doc_prefix_invoice: string;
   doc_prefix_grn: string;
   doc_prefix_online: string;
+  doc_prefix_product: string;
   doc_number_pad: number;
   doc_number_year_mode: "calendar" | "fy";
 };
@@ -14,6 +15,7 @@ export const DOC_NUMBER_DEFAULTS: DocNumberSettings = {
   doc_prefix_invoice: "VAS",
   doc_prefix_grn: "GRN",
   doc_prefix_online: "VAS",
+  doc_prefix_product: "VAS",
   doc_number_pad: 3,
   doc_number_year_mode: "calendar"
 };
@@ -46,10 +48,25 @@ export function resolveDocYearKey(
   return String(month >= start ? year : year - 1);
 }
 
+/** PREFIX + YEAR + padded sequence, e.g. GRN2026001 / VAS2026001 */
 export function buildDocumentNumber(prefix: string, yearKey: string, seq: number, pad: number) {
   const safePad = sanitizeDocPad(pad);
   const safePrefix = sanitizeDocPrefix(prefix, "DOC");
-  return `${safePrefix}${yearKey}-${String(Math.max(1, seq)).padStart(safePad, "0")}`;
+  const year = String(yearKey || "").replace(/[^0-9]/g, "") || String(new Date().getFullYear());
+  return `${safePrefix}${year}${String(Math.max(1, seq)).padStart(safePad, "0")}`;
+}
+
+export function prefixForKind(settings: Partial<DocNumberSettings>, kind: DocNumberKind) {
+  if (kind === "grn") {
+    return sanitizeDocPrefix(settings.doc_prefix_grn, DOC_NUMBER_DEFAULTS.doc_prefix_grn);
+  }
+  if (kind === "online") {
+    return sanitizeDocPrefix(settings.doc_prefix_online, DOC_NUMBER_DEFAULTS.doc_prefix_online);
+  }
+  if (kind === "product") {
+    return sanitizeDocPrefix(settings.doc_prefix_product, DOC_NUMBER_DEFAULTS.doc_prefix_product);
+  }
+  return sanitizeDocPrefix(settings.doc_prefix_invoice, DOC_NUMBER_DEFAULTS.doc_prefix_invoice);
 }
 
 export function previewDocumentNumber(
@@ -58,12 +75,7 @@ export function previewDocumentNumber(
   seq = 1,
   now = new Date()
 ) {
-  const prefix =
-    kind === "grn"
-      ? sanitizeDocPrefix(settings.doc_prefix_grn, DOC_NUMBER_DEFAULTS.doc_prefix_grn)
-      : kind === "online"
-        ? sanitizeDocPrefix(settings.doc_prefix_online, DOC_NUMBER_DEFAULTS.doc_prefix_online)
-        : sanitizeDocPrefix(settings.doc_prefix_invoice, DOC_NUMBER_DEFAULTS.doc_prefix_invoice);
+  const prefix = prefixForKind(settings, kind);
   const mode = settings.doc_number_year_mode === "fy" ? "fy" : "calendar";
   const yearKey = resolveDocYearKey(mode, now);
   return buildDocumentNumber(prefix, yearKey, seq, sanitizeDocPad(settings.doc_number_pad));

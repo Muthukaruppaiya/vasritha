@@ -7,6 +7,7 @@ import {
   ArrowLeft,
   ClipboardCheck,
   FilePlus2,
+  History,
   PackagePlus,
   Plus,
   Printer,
@@ -267,7 +268,7 @@ function GrnEntryPageInner() {
     for (const line of inward.lines) {
       if (!line.productVariantId) {
         setSaving(false);
-        setFormError("Select a SKU / variant on every line, or create the missing product.");
+        setFormError("Select a product on every line, or create the missing product.");
         return;
       }
       if (!Number.isFinite(Number(line.purchasePrice)) || Number(line.purchasePrice) < 0) {
@@ -414,7 +415,7 @@ function GrnEntryPageInner() {
       <AdminPageHeader
         eyebrow="Inventory"
         title="New GRN"
-        description="Receive supplier stock. Multi-colour SKUs need colour-wise quantities before submit."
+        description="Receive supplier stock. Multi-colour products need colour-wise quantities before submit."
         actions={
           <>
             <button
@@ -434,6 +435,10 @@ function GrnEntryPageInner() {
             <Link className="admin-icon-tip" href="/admin/inventory/approvals">
               <ClipboardCheck size={16} strokeWidth={2} />
               <span>GRN approvals</span>
+            </Link>
+            <Link className="admin-icon-tip" href="/admin/inventory/grn/history">
+              <History size={16} strokeWidth={2} />
+              <span>GRN history</span>
             </Link>
             <Link className="admin-icon-tip" href="/admin/barcodes">
               <Printer size={16} strokeWidth={2} />
@@ -614,11 +619,11 @@ function GrnEntryPageInner() {
                 type="button"
                 className="admin-icon-tip"
                 onClick={goCreateMissingProduct}
-                data-tooltip="New SKU"
-                aria-label="New SKU"
+                data-tooltip="New product"
+                aria-label="New product"
               >
                 <PackagePlus size={16} strokeWidth={2} />
-                <span>New SKU</span>
+                <span>New product</span>
               </button>
               <button
                 type="button"
@@ -675,8 +680,6 @@ function GrnEntryPageInner() {
                             {stockRow.is_multicolour
                               ? "Multi-colour"
                               : stockRow.product_color || "—"}
-                            {" · "}
-                            {stockRow.sku || "no-sku"}
                             {" · "}
                             On hand {stockRow.stock_quantity}
                           </span>

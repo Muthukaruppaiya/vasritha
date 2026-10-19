@@ -981,7 +981,7 @@ export default function AdminBillingPage() {
                     ref={scanRef}
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Scan barcode or search name / SKU"
+                    placeholder="Scan barcode or search product name"
                     autoComplete="off"
                     disabled={busy}
                   />
@@ -1057,7 +1057,6 @@ export default function AdminBillingPage() {
                         </em>
                       </span>
                       <span className="grn-sku-modal-option-side">
-                        <span>{item.sku || item.barcode || "no-sku"}</span>
                         <small>
                           {formatMoney(item.price)} · On hand {item.stock}
                         </small>
@@ -1115,9 +1114,7 @@ export default function AdminBillingPage() {
                           <div>
                             <strong>{line.name}</strong>
                             <p className="muted">
-                              {line.sku || line.barcode || "—"}
-                              {line.variantName ? ` · ${line.variantName}` : ""}
-                              {line.color ? ` · ${line.color}` : ""}
+                              {[line.color, line.variantName].filter(Boolean).join(" · ") || "—"}
                             </p>
                             <p className="pos-unit">{formatMoney(line.price)} each</p>
                           </div>
@@ -1567,8 +1564,7 @@ export default function AdminBillingPage() {
                   <div style={{ flex: 1 }}>
                     <strong>{line.productName}</strong>
                     <p className="muted">
-                      {line.sku || "—"}
-                      {line.variantName ? ` · ${line.variantName}` : ""} ·{" "}
+                      {line.variantName ? `${line.variantName} · ` : ""}
                       {formatMoney(line.unitPrice)} each
                     </p>
                   </div>

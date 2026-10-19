@@ -45,6 +45,7 @@ const ALLOWED_FIELDS = [
   "doc_prefix_invoice",
   "doc_prefix_grn",
   "doc_prefix_online",
+  "doc_prefix_product",
   "doc_number_pad",
   "doc_number_year_mode",
   "staff_login_security_enabled",
@@ -105,6 +106,13 @@ export async function PATCH(request: NextRequest) {
   }
   if ("doc_prefix_online" in body) {
     body.doc_prefix_online = String(body.doc_prefix_online || "VAS")
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "")
+      .slice(0, 12) || "VAS";
+  }
+  if ("doc_prefix_product" in body) {
+    body.doc_prefix_product = String(body.doc_prefix_product || "VAS")
       .trim()
       .toUpperCase()
       .replace(/[^A-Z0-9]/g, "")

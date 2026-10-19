@@ -292,8 +292,7 @@ export default function AccountOrderDetailPage() {
                   <div>
                     <strong>{item.product_name}</strong>
                     <p className="muted">
-                      {item.variant_name || "Free Size"}
-                      {item.sku ? ` · ${item.sku}` : ""} · Qty {item.quantity}
+                      {item.variant_name || "Free Size"} · Qty {item.quantity}
                     </p>
                   </div>
                   <strong>{formatMoney(item.line_total)}</strong>

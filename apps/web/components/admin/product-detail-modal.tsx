@@ -206,13 +206,9 @@ export function ProductDetailModal({
             {data?.short_name && data.short_name !== data.name ? (
               <p className="muted">{data.short_name}</p>
             ) : null}
-            {data?.sku ? (
+            {data?.barcode ? (
               <p className="muted">
-                Product code: <strong>{data.sku}</strong>
-              </p>
-            ) : data?.barcode ? (
-              <p className="muted">
-                Product code: <strong>{data.barcode}</strong>
+                Barcode: <strong>{data.barcode}</strong>
               </p>
             ) : null}
           </div>
@@ -306,16 +302,12 @@ export function ProductDetailModal({
                     </dd>
                   </div>
                   <div>
-                    <dt>Product code</dt>
-                    <dd>{data.sku || "—"}</dd>
-                  </div>
-                  <div>
-                    <dt>Family barcode</dt>
+                    <dt>Barcode</dt>
                     <dd>{data.barcode || "—"}</dd>
                   </div>
                   <div>
                     <dt>Connecting tag</dt>
-                    <dd>{data.tag || data.sku || "—"}</dd>
+                    <dd>{data.tag || "—"}</dd>
                   </div>
                   <div>
                     <dt>Price</dt>
@@ -368,7 +360,6 @@ export function ProductDetailModal({
                       <dt>Parent product</dt>
                       <dd>
                         {data.parent_product.name}
-                        {data.parent_product.sku ? ` · ${data.parent_product.sku}` : ""}
                       </dd>
                     </div>
                   ) : null}
@@ -386,7 +377,6 @@ export function ProductDetailModal({
                       {data.child_products.map((child) => (
                         <li key={child.id}>
                           {child.name}
-                          {child.sku ? ` · ${child.sku}` : ""}
                           {child.color ? ` · ${child.color}` : ""}
                           {" · "}
                           {child.stock_quantity} pcs

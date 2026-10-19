@@ -9140,6 +9140,96 @@ body:has(.admin-login) .whatsapp-float {
   margin: 0;
 }
 
+.admin-import-dialog-backdrop {
+  z-index: 120;
+}
+
+.admin-import-errors-modal {
+  width: min(560px, calc(100vw - 32px));
+  max-height: min(82vh, 720px);
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-import-confirm {
+  display: grid;
+  gap: 10px;
+}
+
+.admin-import-confirm__file {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--admin-text, #1e293b);
+  word-break: break-all;
+}
+
+.admin-import-confirm__count {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--admin-text, #1e293b);
+}
+
+.admin-import-errors-modal .admin-modal-body {
+  display: grid;
+  gap: 10px;
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+}
+
+.admin-import-errors {
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  border-radius: var(--admin-radius-sm, 8px);
+  padding: 10px 12px;
+  color: #7f1d1d;
+  font-size: 0.86rem;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-import-errors strong {
+  display: block;
+}
+
+.admin-import-errors ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  overflow: auto;
+  max-height: min(48vh, 420px);
+}
+
+.admin-import-errors li {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 2px 10px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 55%);
+}
+
+.admin-import-errors__line {
+  font-weight: 700;
+  color: #b91c1c;
+}
+
+.admin-import-errors__name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-import-errors__msg {
+  grid-column: 1 / -1;
+  color: #991b1b;
+}
+
 @media (max-width: 1100px) {
   .admin-filter-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

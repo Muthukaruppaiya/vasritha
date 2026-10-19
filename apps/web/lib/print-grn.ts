@@ -139,7 +139,6 @@ export function printGrnDocument(detail: GrnPrintDetail) {
           ${line.variant_name ? `<div class="muted">${escapeHtml(line.variant_name)}</div>` : ""}
           ${colours ? `<div class="muted">${colours}</div>` : ""}
         </td>
-        <td>${escapeHtml(line.sku || "—")}</td>
         <td class="num">${line.quantity}</td>
         <td class="num">${escapeHtml(money(line.purchase_price))}</td>
         <td class="num">${escapeHtml(money(line.line_total))}</td>
@@ -208,13 +207,12 @@ export function printGrnDocument(detail: GrnPrintDetail) {
         <tr>
           <th style="width:36px">#</th>
           <th>Product</th>
-          <th>SKU</th>
           <th class="num">Qty</th>
           <th class="num">Purchase ₹</th>
           <th class="num">Line total</th>
         </tr>
       </thead>
-      <tbody>${rows || `<tr><td colspan="6">No lines</td></tr>`}</tbody>
+      <tbody>${rows || `<tr><td colspan="5">No lines</td></tr>`}</tbody>
     </table>
 
     <div class="totals">

@@ -168,8 +168,7 @@ function PartImageUploadInner() {
               <div className="part-upload-product">
                 <strong>{data.name}</strong>
                 <span>
-                  {data.sku ? `SKU ${data.sku}` : "No SKU"}
-                  {data.tag ? ` · Tag ${data.tag}` : ""}
+                  {data.tag ? `Tag ${data.tag}` : data.name}
                 </span>
                 <span className="part-upload-slots">
                   {data.remaining} slot{data.remaining === 1 ? "" : "s"} left · max 5

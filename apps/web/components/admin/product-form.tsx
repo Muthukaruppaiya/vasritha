@@ -89,10 +89,6 @@ type Props = {
 const emptyImages: ProductFormImage[] = [];
 const MAX_KIND_IMAGES = 5;
 
-function generateSku() {
-  return `VAS-${Date.now().toString().slice(-8)}`;
-}
-
 function barcodeFromSku(sku: string) {
   return sku.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 16);
 }
@@ -215,12 +211,12 @@ export function ProductForm({
   }, [form.barcode, units]);
 
   const regenerateCodes = () => {
-    const sku = `${form.sku_prefix || "VAS"}-${Date.now().toString().slice(-8)}`;
+    // Leave blank — server assigns PREFIX+YEAR+seq (e.g. VAS2026001) on save.
     setForm((current) => ({
       ...current,
-      sku,
-      tag: current.tag || sku,
-      barcode: barcodeFromSku(sku) || sku.replace(/-/g, "")
+      sku: "",
+      barcode: "",
+      tag: current.tag || ""
     }));
   };
 
@@ -447,8 +443,8 @@ export function ProductForm({
       name: form.name.trim(),
       short_name: form.short_name.trim(),
       slug: form.slug || slugify(form.name),
-      sku: form.sku.trim() || generateSku(),
-      barcode: form.barcode.trim() || barcodeFromSku(form.sku.trim() || form.name) || generateSku().replace(/-/g, ""),
+      sku: form.sku.trim(),
+      barcode: form.barcode.trim() || (form.sku.trim() ? barcodeFromSku(form.sku.trim()) : ""),
       tag: (form.tag.trim() || form.sku.trim()).toUpperCase(),
       sku_prefix: (form.sku_prefix || "VAS").toUpperCase(),
       label_size: form.label_size,
@@ -630,9 +626,9 @@ export function ProductForm({
             </label>
 
             <label>
-              <span>SKU prefix</span>
+              <span>Code prefix</span>
               <AdminSelectPopup
-                title="SKU prefix"
+                title="Code prefix"
                 value={form.sku_prefix}
                 options={[
                   { value: "VAS", label: "VAS" },
@@ -695,21 +691,26 @@ export function ProductForm({
             </label>
 
             <label>
-              <span>Product code (SKU)</span>
+              <span>Product code</span>
               <div className="admin-input-with-action">
                 <input
-                  required
                   value={form.sku}
+                  placeholder="Auto on save (e.g. VAS2026001)"
                   onChange={(e) => {
                     const sku = e.target.value;
                     setForm((f) => ({
                       ...f,
                       sku,
-                      barcode: barcodeFromSku(sku)
+                      barcode: sku ? barcodeFromSku(sku) : f.barcode
                     }));
                   }}
                 />
-                <button type="button" className="admin-icon-btn" title="Generate code" onClick={regenerateCodes}>
+                <button
+                  type="button"
+                  className="admin-icon-btn"
+                  title="Clear for auto code"
+                  onClick={regenerateCodes}
+                >
                   <RefreshCw size={15} />
                 </button>
               </div>
@@ -795,7 +796,7 @@ export function ProductForm({
                     .filter((row) => row.id !== form.id)
                     .map((row) => ({
                       value: row.id,
-                      label: `${row.name}${row.sku ? ` · ${row.sku}` : ""}${row.color ? ` · ${row.color}` : ""}`
+                      label: `${row.name}${row.color ? ` · ${row.color}` : ""}`
                     }))
                 ]}
                 onChange={(parent_product_id) => setForm((f) => ({ ...f, parent_product_id }))}
@@ -1161,14 +1162,13 @@ function readAsDataUrl(file: File) {
 }
 
 export function blankProductForm(categoryId = ""): ProductFormValues {
-  const sku = generateSku();
   return {
     name: "",
     short_name: "",
     slug: "",
-    sku,
-    barcode: barcodeFromSku(sku) || sku.replace(/-/g, ""),
-    tag: sku,
+    sku: "",
+    barcode: "",
+    tag: "",
     sku_prefix: "VAS",
     label_size: "dress",
     category_id: categoryId,

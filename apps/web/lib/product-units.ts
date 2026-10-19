@@ -1,6 +1,7 @@
 import type { QueryResultRow } from "pg";
 import { query, queryOne, withTransaction } from "./db/pool";
 import { skipEnsureIfRelationExists } from "./schema-bootstrap";
+import { getDefaultShop } from "./shops";
 
 export type UnitStatus = "to_sell" | "sold" | "returned" | "damaged" | "reserved";
 export type LabelSize = "accessory" | "dress";
@@ -172,15 +173,78 @@ export async function ensureProductUnitsSchema() {
       alter table public.product_items
         add column if not exists color text not null default ''
     `);
+    // Import used to create pieces with shop_id null — Inventory/POS read shop stock only.
+    await alignOrphanPiecesToDefaultShop().catch(() => undefined);
     return;
   }
   if (!productUnitsSchemaReady) {
-    productUnitsSchemaReady = runEnsureProductUnitsSchema().catch((error) => {
-      productUnitsSchemaReady = null;
-      throw error;
-    });
+    productUnitsSchemaReady = runEnsureProductUnitsSchema()
+      .then(async () => {
+        await alignOrphanPiecesToDefaultShop().catch(() => undefined);
+      })
+      .catch((error) => {
+        productUnitsSchemaReady = null;
+        throw error;
+      });
   }
   return productUnitsSchemaReady;
+}
+
+let shopStockAlignReady = false;
+
+/**
+ * Assign pieces with no shop to the default shop and rebuild shop_variant_stock
+ * so Inventory + POS match Product Master counts.
+ */
+export async function alignOrphanPiecesToDefaultShop() {
+  if (shopStockAlignReady) return;
+  const orphan = await queryOne<{ c: number }>(
+    `select count(*)::int as c from product_items where shop_id is null`
+  );
+  if (!Number(orphan?.c || 0)) {
+    shopStockAlignReady = true;
+    return;
+  }
+
+  const shop = await getDefaultShop();
+  if (!shop?.id) return;
+
+  await withTransaction(async (db) => {
+    await db.query(`update product_items set shop_id = $1 where shop_id is null`, [shop.id]);
+
+    // Rebuild shop rows from pieces (all shops).
+    await db.query(`delete from shop_variant_stock`);
+    await db.query(
+      `insert into shop_variant_stock (shop_id, variant_id, stock_quantity, updated_at)
+       select shop_id, variant_id, count(*)::int, now()
+       from product_items
+       where status = 'to_sell' and shop_id is not null
+       group by shop_id, variant_id`
+    );
+
+    await db.query(
+      `update product_variants pv
+       set stock_quantity = coalesce((
+         select sum(s.stock_quantity)::int from shop_variant_stock s where s.variant_id = pv.id
+       ), (
+         select count(*)::int from product_items i
+         where i.variant_id = pv.id and i.status = 'to_sell'
+       ), 0)`
+    );
+
+    await db.query(
+      `update products p
+       set stock_quantity = coalesce((
+         select sum(pv.stock_quantity)::int from product_variants pv where pv.product_id = p.id
+       ), (
+         select count(*)::int from product_items i
+         where i.product_id = p.id and i.status = 'to_sell'
+       ), 0),
+       updated_at = now()`
+    );
+  });
+
+  shopStockAlignReady = true;
 }
 
 export async function createProductUnits(
@@ -550,9 +614,32 @@ export async function createUnitsAndSync(input: {
   color?: string | null;
   colorBatches?: Array<{ color: string; count: number }>;
 }) {
+  // Inventory / POS stock is per-shop — never leave new pieces without a shop.
+  let shopId = input.shopId || null;
+  if (!shopId) {
+    const shop = await getDefaultShop();
+    shopId = shop?.id || null;
+  }
+
   return withTransaction(async (db) => {
-    const items = await createProductUnits(db, input);
-    await syncSellableStock(db, input.variantId, input.shopId);
+    const items = await createProductUnits(db, {
+      ...input,
+      shopId
+    });
+    await syncSellableStock(db, input.variantId, shopId);
+    // Keep products.stock_quantity in sync (Product Master list reads this column).
+    await db.query(
+      `update products p
+       set stock_quantity = coalesce((
+         select sum(pv.stock_quantity)::int from product_variants pv where pv.product_id = p.id
+       ), (
+         select count(*)::int from product_items pi
+         where pi.product_id = p.id and pi.status = 'to_sell'
+       ), 0),
+       updated_at = now()
+       where p.id = $1`,
+      [input.productId]
+    );
     return items;
   });
 }

@@ -137,13 +137,17 @@ export async function GET(request: NextRequest) {
   const status = searchParams.get("status");
   const supplierId = searchParams.get("supplierId");
   const preferredShop = searchParams.get("shopId");
+  const q = searchParams.get("q");
+  const limitRaw = Number(searchParams.get("limit") || 0);
   const scope = await resolveShopScope(ctx, preferredShop);
   const shopId = scope.mode === "one" ? scope.shopId : preferredShop || null;
 
   const data = await listGrns({
     status: status === "all" ? null : status || "pending_approval",
     supplierId,
-    shopId
+    shopId,
+    q,
+    limit: limitRaw > 0 ? limitRaw : status === "all" || status === "approved" ? 200 : 50
   });
   return ok(data);
 }

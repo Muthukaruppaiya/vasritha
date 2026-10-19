@@ -293,7 +293,7 @@ function BarcodesPageInner() {
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Product, SKU, barcode…"
+                placeholder="Product name or barcode…"
               />
             </div>
           </label>
@@ -369,9 +369,7 @@ function BarcodesPageInner() {
                     <td>
                       <b>{row.product_name}</b>
                       <div className="muted admin-sub">
-                        {row.sku || "—"}
-                        {row.color ? ` · ${row.color}` : ""}
-                        {row.category_name ? ` · ${row.category_name}` : ""}
+                        {[row.color, row.category_name].filter(Boolean).join(" · ") || "—"}
                       </div>
                     </td>
                     <td>

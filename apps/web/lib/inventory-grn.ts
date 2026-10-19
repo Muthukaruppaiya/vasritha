@@ -943,13 +943,16 @@ export async function listGrns(filters: {
   status?: string | null;
   supplierId?: string | null;
   shopId?: string | null;
+  q?: string | null;
   limit?: number;
 }) {
   await ensureInventoryGrnSchema();
   const status = filters.status?.trim() || null;
   const supplierId = filters.supplierId?.trim() || null;
   const shopId = filters.shopId?.trim() || null;
-  const limit = Math.min(200, Math.max(1, filters.limit || 50));
+  const q = filters.q?.trim() || null;
+  const limit = Math.min(500, Math.max(1, filters.limit || 50));
+  const qLike = q ? `%${q}%` : null;
 
   return query(
     `select g.id, g.grn_number, g.status, g.supplier_id, g.bill_no, g.invoice_amount,
@@ -962,8 +965,15 @@ export async function listGrns(filters: {
      where ($1::text is null or g.status = $1)
        and ($2::uuid is null or g.supplier_id = $2)
        and ($3::uuid is null or g.shop_id = $3)
+       and (
+         $4::text is null
+         or g.grn_number ilike $4
+         or coalesce(g.bill_no, '') ilike $4
+         or coalesce(s.name, '') ilike $4
+         or coalesce(s.code, '') ilike $4
+       )
      order by g.created_at desc
-     limit $4`,
-    [status, supplierId, shopId, limit]
+     limit $5`,
+    [status, supplierId, shopId, qLike, limit]
   );
 }

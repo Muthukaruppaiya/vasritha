@@ -120,10 +120,10 @@ export function LocalizedProductDetail({
           <p className="product-detail-short">{localized.shortName}</p>
           <h1 className="product-detail-title">{localized.name}</h1>
 
-          {(product.tag || product.sku) ? (
+          {product.tag ? (
             <p className="product-detail-meta">
               <span>{t("product.productId")}</span>
-              <strong>{product.tag || product.sku}</strong>
+              <strong>{product.tag}</strong>
             </p>
           ) : null}
 

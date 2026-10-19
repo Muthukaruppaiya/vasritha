@@ -48,6 +48,21 @@ export async function ensureGstSchema() {
       add column if not exists hsn_code text,
       add column if not exists gst_rate numeric(5,2)
   `);
+  // Keep DB check in sync with ALLOWED_GST_RATES (template / import / POS).
+  await query(`
+    update public.products
+    set gst_rate = 5
+    where gst_rate is null
+       or gst_rate not in (0, 3, 5, 9, 12, 18)
+  `).catch(() => undefined);
+  await query(`
+    alter table public.products drop constraint if exists products_gst_rate_chk
+  `).catch(() => undefined);
+  await query(`
+    alter table public.products
+      add constraint products_gst_rate_chk
+      check (gst_rate in (0, 3, 5, 9, 12, 18))
+  `).catch(() => undefined);
   gstSchemaReady = true;
 }
 

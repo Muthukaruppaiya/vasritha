@@ -55,6 +55,7 @@ type Settings = {
   doc_prefix_invoice?: string | null;
   doc_prefix_grn?: string | null;
   doc_prefix_online?: string | null;
+  doc_prefix_product?: string | null;
   doc_number_pad?: number | string | null;
   doc_number_year_mode?: string | null;
   staff_login_security_enabled?: boolean;
@@ -135,6 +136,7 @@ export default function AdminSettingsPage() {
     doc_prefix_invoice: "VAS",
     doc_prefix_grn: "GRN",
     doc_prefix_online: "VAS",
+    doc_prefix_product: "VAS",
     doc_number_pad: 3,
     doc_number_year_mode: "calendar",
     staff_login_security_enabled: false,
@@ -163,20 +165,30 @@ export default function AdminSettingsPage() {
   const [logoMessage, setLogoMessage] = useState("");
   const [logoError, setLogoError] = useState("");
 
-  const docPreview = useMemo(
-    () => ({
-      invoice: previewDocumentNumber(form, "invoice", 1),
-      grn: previewDocumentNumber(form, "grn", 1),
-      online: previewDocumentNumber(form, "online", 1)
-    }),
-    [
-      form.doc_prefix_invoice,
-      form.doc_prefix_grn,
-      form.doc_prefix_online,
-      form.doc_number_pad,
-      form.doc_number_year_mode
-    ]
-  );
+  const docPreview = useMemo(() => {
+    const docSettings = {
+      doc_prefix_invoice: form.doc_prefix_invoice || "VAS",
+      doc_prefix_grn: form.doc_prefix_grn || "GRN",
+      doc_prefix_online: form.doc_prefix_online || "VAS",
+      doc_prefix_product: form.doc_prefix_product || "VAS",
+      doc_number_pad: Number(form.doc_number_pad || 3),
+      doc_number_year_mode:
+        form.doc_number_year_mode === "fy" ? ("fy" as const) : ("calendar" as const)
+    };
+    return {
+      invoice: previewDocumentNumber(docSettings, "invoice", 1),
+      grn: previewDocumentNumber(docSettings, "grn", 1),
+      online: previewDocumentNumber(docSettings, "online", 1),
+      product: previewDocumentNumber(docSettings, "product", 1)
+    };
+  }, [
+    form.doc_prefix_invoice,
+    form.doc_prefix_grn,
+    form.doc_prefix_online,
+    form.doc_prefix_product,
+    form.doc_number_pad,
+    form.doc_number_year_mode
+  ]);
 
   useEffect(() => {
     if (!data) return;
@@ -220,6 +232,7 @@ export default function AdminSettingsPage() {
       doc_prefix_invoice: data.doc_prefix_invoice || "VAS",
       doc_prefix_grn: data.doc_prefix_grn || "GRN",
       doc_prefix_online: data.doc_prefix_online || "VAS",
+      doc_prefix_product: data.doc_prefix_product || "VAS",
       doc_number_pad: data.doc_number_pad ?? 3,
       doc_number_year_mode: data.doc_number_year_mode === "fy" ? "fy" : "calendar",
       staff_login_security_enabled: Boolean(data.staff_login_security_enabled),
@@ -312,6 +325,7 @@ export default function AdminSettingsPage() {
         doc_prefix_invoice: form.doc_prefix_invoice || "VAS",
         doc_prefix_grn: form.doc_prefix_grn || "GRN",
         doc_prefix_online: form.doc_prefix_online || "VAS",
+        doc_prefix_product: form.doc_prefix_product || "VAS",
         doc_number_pad: Number(form.doc_number_pad || 3),
         doc_number_year_mode: form.doc_number_year_mode === "fy" ? "fy" : "calendar"
       }
@@ -845,7 +859,7 @@ export default function AdminSettingsPage() {
                 <div className="admin-span-2" style={{ marginTop: 8 }}>
                   <h3 style={{ margin: "4px 0" }}>Document numbers</h3>
                   <p className="muted" style={{ marginTop: 0 }}>
-                    Format: PREFIX + YEAR + sequence (e.g. {docPreview.invoice})
+                    Format: PREFIX + YEAR + sequence — e.g. {docPreview.grn} · {docPreview.invoice}
                   </p>
                 </div>
                 <label>
@@ -891,6 +905,20 @@ export default function AdminSettingsPage() {
                   />
                 </label>
                 <label>
+                  <span>Product code prefix</span>
+                  <input
+                    value={form.doc_prefix_product || ""}
+                    onChange={(e) =>
+                      setForm((f) => ({
+                        ...f,
+                        doc_prefix_product: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "")
+                      }))
+                    }
+                    placeholder="VAS"
+                    maxLength={12}
+                  />
+                </label>
+                <label>
                   <span>Sequence digits</span>
                   <input
                     type="number"
@@ -917,7 +945,7 @@ export default function AdminSettingsPage() {
                 </label>
                 <div className="admin-span-2 muted" style={{ fontSize: "0.9rem" }}>
                   Next examples · Invoice <b>{docPreview.invoice}</b> · GRN <b>{docPreview.grn}</b> ·
-                  Online <b>{docPreview.online}</b>
+                  Online <b>{docPreview.online}</b> · Product <b>{docPreview.product}</b>
                 </div>
 
                 {saveError && <AdminAlert>{saveError}</AdminAlert>}
