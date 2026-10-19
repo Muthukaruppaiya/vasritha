@@ -5,8 +5,6 @@ import { useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import {
   ArrowDownToLine,
-  ChevronLeft,
-  ChevronRight,
   ClipboardCheck,
   Download,
   History,
@@ -26,6 +24,7 @@ import {
   AdminPageHeader,
   AdminPanel
 } from "../../../components/admin/admin-ui";
+import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
 import { AdminFormModal } from "../../../components/admin/admin-form-modal";
 import {
   ProductPickModal,
@@ -89,7 +88,7 @@ type InventoryData = {
   offset?: number;
 };
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = DEFAULT_PAGE_SIZE;
 
 const blankAdjust = (variantId = "") => ({
   productVariantId: variantId,
@@ -193,7 +192,6 @@ function AdminInventoryPageInner() {
   const low = data?.lowStockThreshold ?? 10;
   const stockOptions = data?.stock || [];
   const total = data?.total ?? stockOptions.length;
-  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const openAdjust = (variantId = "") => {
     setAdjust(blankAdjust(variantId));
@@ -477,9 +475,6 @@ function AdminInventoryPageInner() {
 
         {stockOptions.length > 0 && (
           <div className="admin-table-wrap">
-            <div className="inv-page-meta muted">
-              Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total}
-            </div>
             <table className="admin-table admin-table--zebra">
               <thead>
                 <tr>
@@ -576,35 +571,12 @@ function AdminInventoryPageInner() {
                 ))}
               </tbody>
             </table>
-            {pageCount > 1 ? (
-              <div className="inv-pagination">
-                <button
-                  type="button"
-                  className="admin-icon-tip"
-                  disabled={page <= 0 || loading}
-                  data-tooltip="Previous page"
-                  aria-label="Previous page"
-                  onClick={() => setPage((p) => Math.max(0, p - 1))}
-                >
-                  <ChevronLeft size={16} strokeWidth={2} />
-                  <span>Previous</span>
-                </button>
-                <span className="muted">
-                  Page {page + 1} / {pageCount}
-                </span>
-                <button
-                  type="button"
-                  className="admin-icon-tip"
-                  disabled={page + 1 >= pageCount || loading}
-                  data-tooltip="Next page"
-                  aria-label="Next page"
-                  onClick={() => setPage((p) => p + 1)}
-                >
-                  <ChevronRight size={16} strokeWidth={2} />
-                  <span>Next</span>
-                </button>
-              </div>
-            ) : null}
+            <AdminPagination
+              page={page}
+              total={total}
+              onPageChange={setPage}
+              noun="products"
+            />
           </div>
         )}
       </AdminPanel>

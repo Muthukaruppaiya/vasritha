@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import {
   AdminAlert,
@@ -10,6 +10,7 @@ import {
   AdminPageHeader,
   AdminPanel
 } from "../../../components/admin/admin-ui";
+import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
 import { AdminFormModal } from "../../../components/admin/admin-form-modal";
 import { adminFetch, formatDate } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
@@ -89,6 +90,13 @@ export default function AdminCmsPage() {
   const [bannerForm, setBannerForm] = useState(blankBanner);
   const [pageForm, setPageForm] = useState(blankPage);
   const [sectionForm, setSectionForm] = useState(blankSection);
+  const [pagesPage, setPagesPage] = useState(0);
+
+  const pageRows = pages.data || [];
+  const pagedPageRows = useMemo(() => {
+    const start = pagesPage * DEFAULT_PAGE_SIZE;
+    return pageRows.slice(start, start + DEFAULT_PAGE_SIZE);
+  }, [pageRows, pagesPage]);
 
   const createBanner = async (event: FormEvent) => {
     event.preventDefault();
@@ -214,7 +222,10 @@ export default function AdminCmsPage() {
             key={key}
             type="button"
             className={tab === key ? "is-active" : ""}
-            onClick={() => setTab(key)}
+            onClick={() => {
+              setTab(key);
+              if (key === "pages") setPagesPage(0);
+            }}
           >
             {key}
           </button>
@@ -245,8 +256,8 @@ export default function AdminCmsPage() {
         <AdminPanel title="Pages">
           {pages.loading && <AdminLoading />}
           {pages.error && <AdminAlert>{pages.error}</AdminAlert>}
-          {(pages.data || []).length === 0 && !pages.loading && <AdminEmpty title="No pages" />}
-          {(pages.data || []).length > 0 && (
+          {pageRows.length === 0 && !pages.loading && <AdminEmpty title="No pages" />}
+          {pageRows.length > 0 && (
             <div className="admin-table-wrap">
               <table className="admin-table">
                 <thead>
@@ -258,22 +269,28 @@ export default function AdminCmsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(pages.data || []).map((page) => (
-                    <tr key={page.id}>
+                  {pagedPageRows.map((row) => (
+                    <tr key={row.id}>
                       <td>
-                        <b>{page.title}</b>
+                        <b>{row.title}</b>
                       </td>
-                      <td>{page.slug}</td>
+                      <td>{row.slug}</td>
                       <td>
-                        <AdminBadge tone={page.is_published ? "success" : "warn"}>
-                          {page.is_published ? "published" : "draft"}
+                        <AdminBadge tone={row.is_published ? "success" : "warn"}>
+                          {row.is_published ? "published" : "draft"}
                         </AdminBadge>
                       </td>
-                      <td>{formatDate(page.updated_at)}</td>
+                      <td>{formatDate(row.updated_at)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              <AdminPagination
+                page={pagesPage}
+                total={pageRows.length}
+                onPageChange={setPagesPage}
+                noun="pages"
+              />
             </div>
           )}
         </AdminPanel>

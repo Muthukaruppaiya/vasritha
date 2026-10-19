@@ -938,6 +938,9 @@ export default function AdminBillingPage() {
           <Link href="/admin/invoices/store" className="pos-invoice-mini">
             Past invoices
           </Link>
+          <Link href="/admin/billing/shift" className="pos-invoice-mini">
+            Shift handover
+          </Link>
           <Link href="/admin/billing/dues" className="pos-invoice-mini">
             Credit dues
           </Link>

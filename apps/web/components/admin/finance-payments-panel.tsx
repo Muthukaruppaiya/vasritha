@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Filter, Pencil, Plus, RefreshCw } from "lucide-react";
 import {
   AdminAlert,
@@ -12,6 +12,7 @@ import {
   statusTone
 } from "./admin-ui";
 import { AdminFormModal } from "./admin-form-modal";
+import { AdminPagination, DEFAULT_PAGE_SIZE } from "./admin-pagination";
 import { adminFetch, formatDate, formatMoney } from "../../lib/admin-api";
 import { useAdminQuery } from "../../hooks/use-admin-query";
 import { CATEGORY_LABELS } from "../../lib/finance-labels";
@@ -89,6 +90,7 @@ export function FinancePaymentsPanel({
   const [status, setStatus] = useState("all");
   const [q, setQ] = useState("");
   const [submittedQ, setSubmittedQ] = useState("");
+  const [page, setPage] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<FinanceEntry | null>(null);
   const [saving, setSaving] = useState(false);
@@ -113,6 +115,15 @@ export function FinancePaymentsPanel({
   const rows = (data || []).filter((row) =>
     categoryFilter?.length ? categoryFilter.includes(row.category) : true
   );
+
+  useEffect(() => {
+    setPage(0);
+  }, [from, to, status, submittedQ, direction]);
+
+  const pagedRows = useMemo(() => {
+    const start = page * DEFAULT_PAGE_SIZE;
+    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
+  }, [rows, page]);
 
   const openCreate = () => {
     setEditing(null);
@@ -299,7 +310,7 @@ export function FinancePaymentsPanel({
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {pagedRows.map((row) => (
                   <tr key={row.id}>
                     <td>{formatDate(row.entry_date)}</td>
                     <td>
@@ -335,6 +346,12 @@ export function FinancePaymentsPanel({
                 ))}
               </tbody>
             </table>
+            <AdminPagination
+              page={page}
+              total={rows.length}
+              onPageChange={setPage}
+              noun="payments"
+            />
           </div>
         ) : null}
       </AdminPanel>

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import {
   ArrowDownToLine,
   ArrowLeft,
@@ -23,6 +23,7 @@ import {
   AdminPanel,
   statusTone
 } from "../../../../components/admin/admin-ui";
+import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../../components/admin/admin-pagination";
 import {
   adminFetch,
   formatDate,
@@ -84,6 +85,7 @@ function AdminGrnApprovalsInner() {
   const [detail, setDetail] = useState<GrnPrintDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
+  const [page, setPage] = useState(0);
 
   const { data: suppliers } = useAdminQuery<Supplier[]>("/api/admin/suppliers?active=1");
 
@@ -101,6 +103,15 @@ function AdminGrnApprovalsInner() {
     error: listError,
     reload: reloadList
   } = useAdminQuery<ListedGrn[]>(listUrl);
+
+  useEffect(() => {
+    setPage(0);
+  }, [statusFilter, supplierFilter]);
+
+  const pagedGrns = useMemo(() => {
+    const start = page * DEFAULT_PAGE_SIZE;
+    return (listedGrns || []).slice(start, start + DEFAULT_PAGE_SIZE);
+  }, [listedGrns, page]);
 
   const eligiblePending = useMemo(
     () => (listedGrns || []).filter((row) => row.status === "pending_approval"),
@@ -407,7 +418,7 @@ function AdminGrnApprovalsInner() {
                 </tr>
               </thead>
               <tbody>
-                {(listedGrns || []).map((row) => {
+                {pagedGrns.map((row) => {
                   const isPending = row.status === "pending_approval";
                   const rowBusy = approvingId === row.id || printingId === row.id || bulkBusy;
                   return (
@@ -495,6 +506,12 @@ function AdminGrnApprovalsInner() {
                 })}
               </tbody>
             </table>
+            <AdminPagination
+              page={page}
+              total={(listedGrns || []).length}
+              onPageChange={setPage}
+              noun="GRNs"
+            />
           </div>
         )}
       </AdminPanel>

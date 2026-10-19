@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { Check, PackageCheck, RefreshCw, X } from "lucide-react";
 import {
   AdminAlert,
@@ -12,6 +13,7 @@ import {
 } from "../../../components/admin/admin-ui";
 import { adminFetch, formatDate } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
+import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
 
 type ReturnRow = {
   id: string;
@@ -46,6 +48,14 @@ const STATUS_ACTION: Record<
 
 export default function AdminReturnsPage() {
   const { data, error, loading, reload } = useAdminQuery<ReturnRow[]>("/api/admin/returns");
+  const [page, setPage] = useState(0);
+
+  const rows = data || [];
+
+  const paged = useMemo(() => {
+    const start = page * DEFAULT_PAGE_SIZE;
+    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
+  }, [rows, page]);
 
   const update = async (returnId: string, status: string) => {
     const result = await adminFetch("/api/admin/returns", {
@@ -70,8 +80,8 @@ export default function AdminReturnsPage() {
       <AdminPanel title="Exchange requests">
         {loading && <AdminLoading />}
         {error && <AdminAlert>{error}</AdminAlert>}
-        {!loading && !(data || []).length && <AdminEmpty title="No exchange requests yet" />}
-        {(data || []).length > 0 && (
+        {!loading && !rows.length && <AdminEmpty title="No exchange requests yet" />}
+        {rows.length > 0 && (
           <div className="admin-table-wrap">
             <table className="admin-table">
               <thead>
@@ -86,7 +96,7 @@ export default function AdminReturnsPage() {
                 </tr>
               </thead>
               <tbody>
-                {(data || []).map((row) => (
+                {paged.map((row) => (
                   <tr key={row.id}>
                     <td>
                       <b>{row.return_number}</b>
@@ -136,6 +146,12 @@ export default function AdminReturnsPage() {
                 ))}
               </tbody>
             </table>
+            <AdminPagination
+              page={page}
+              total={rows.length}
+              onPageChange={setPage}
+              noun="exchange requests"
+            />
           </div>
         )}
       </AdminPanel>

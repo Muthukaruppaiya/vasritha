@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Filter } from "lucide-react";
 import {
   AdminAlert,
@@ -11,6 +11,7 @@ import {
   AdminPanel,
   statusTone
 } from "../../../../components/admin/admin-ui";
+import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../../components/admin/admin-pagination";
 import { formatDate, formatMoney } from "../../../../lib/admin-api";
 import { useAdminQuery } from "../../../../hooks/use-admin-query";
 import { CATEGORY_LABELS } from "../../../../lib/finance-labels";
@@ -36,6 +37,7 @@ export default function FinanceLedgerPage() {
   const [to, setTo] = useState("");
   const [q, setQ] = useState("");
   const [submittedQ, setSubmittedQ] = useState("");
+  const [page, setPage] = useState(0);
 
   const path = useMemo(() => {
     const params = new URLSearchParams();
@@ -47,6 +49,16 @@ export default function FinanceLedgerPage() {
   }, [from, to, submittedQ]);
 
   const { data, error, loading, reload } = useAdminQuery<LedgerRow[]>(path);
+  const rows = data || [];
+
+  useEffect(() => {
+    setPage(0);
+  }, [from, to, submittedQ]);
+
+  const pagedRows = useMemo(() => {
+    const start = page * DEFAULT_PAGE_SIZE;
+    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
+  }, [rows, page]);
 
   return (
     <div className="admin-stack">
@@ -95,10 +107,10 @@ export default function FinanceLedgerPage() {
 
       <AdminPanel title="Cashbook ledger">
         {loading ? <AdminLoading /> : null}
-        {!loading && !(data || []).length ? (
+        {!loading && !rows.length ? (
           <AdminEmpty title="No cleared entries" body="Record or sync payments first." />
         ) : null}
-        {(data || []).length > 0 ? (
+        {rows.length > 0 ? (
           <div className="admin-table-wrap">
             <table className="admin-table admin-table--zebra">
               <thead>
@@ -113,7 +125,7 @@ export default function FinanceLedgerPage() {
                 </tr>
               </thead>
               <tbody>
-                {(data || []).map((row) => (
+                {pagedRows.map((row) => (
                   <tr key={row.id}>
                     <td>{formatDate(row.entry_date)}</td>
                     <td>
@@ -139,6 +151,12 @@ export default function FinanceLedgerPage() {
                 ))}
               </tbody>
             </table>
+            <AdminPagination
+              page={page}
+              total={rows.length}
+              onPageChange={setPage}
+              noun="entries"
+            />
           </div>
         ) : null}
       </AdminPanel>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Search } from "lucide-react";
 import {
   AdminAlert,
@@ -12,6 +12,7 @@ import {
 } from "../../../components/admin/admin-ui";
 import { formatDate, formatMoney } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
+import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
 
 type CustomerChannel = "online" | "offline";
 
@@ -31,6 +32,7 @@ export default function AdminCustomersPage() {
   const [q, setQ] = useState("");
   const [submitted, setSubmitted] = useState("");
   const [channelFilter, setChannelFilter] = useState<"all" | CustomerChannel>("all");
+  const [page, setPage] = useState(0);
 
   const path = useMemo(() => {
     const params = new URLSearchParams();
@@ -41,6 +43,17 @@ export default function AdminCustomersPage() {
   }, [submitted, channelFilter]);
 
   const { data, error, loading } = useAdminQuery<CustomerRow[]>(path);
+
+  const rows = data || [];
+
+  useEffect(() => {
+    setPage(0);
+  }, [submitted, channelFilter]);
+
+  const paged = useMemo(() => {
+    const start = page * DEFAULT_PAGE_SIZE;
+    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
+  }, [rows, page]);
 
   return (
     <>
@@ -103,13 +116,13 @@ export default function AdminCustomersPage() {
       <AdminPanel title="Customer directory">
         {loading && <AdminLoading />}
         {error && <AdminAlert>{error}</AdminAlert>}
-        {!loading && !(data || []).length && (
+        {!loading && !rows.length && (
           <AdminEmpty
             title="No customers found"
             body="Customers appear here when shoppers register online or when walk-in sales are billed at the store."
           />
         )}
-        {(data || []).length > 0 && (
+        {rows.length > 0 && (
           <div className="admin-table-wrap">
             <table className="admin-table">
               <thead>
@@ -125,7 +138,7 @@ export default function AdminCustomersPage() {
                 </tr>
               </thead>
               <tbody>
-                {(data || []).map((customer) => {
+                {paged.map((customer) => {
                   const orderCount = Number(customer.order_count || 0);
                   const isOffline = customer.customer_channel === "offline";
                   return (
@@ -155,6 +168,12 @@ export default function AdminCustomersPage() {
                 })}
               </tbody>
             </table>
+            <AdminPagination
+              page={page}
+              total={rows.length}
+              onPageChange={setPage}
+              noun="customers"
+            />
           </div>
         )}
       </AdminPanel>

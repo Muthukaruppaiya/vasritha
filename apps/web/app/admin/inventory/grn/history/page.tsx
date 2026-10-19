@@ -21,6 +21,7 @@ import {
   AdminPanel,
   statusTone
 } from "../../../../../components/admin/admin-ui";
+import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../../../components/admin/admin-pagination";
 import {
   adminFetch,
   formatDate,
@@ -62,6 +63,7 @@ export default function AdminGrnHistoryPage() {
   const [supplierFilter, setSupplierFilter] = useState("");
   const [search, setSearch] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
+  const [page, setPage] = useState(0);
   const [printingId, setPrintingId] = useState<string | null>(null);
   const [printError, setPrintError] = useState("");
   const [detail, setDetail] = useState<GrnPrintDetail | null>(null);
@@ -74,6 +76,10 @@ export default function AdminGrnHistoryPage() {
     const timer = window.setTimeout(() => setDebouncedQ(search.trim()), 300);
     return () => window.clearTimeout(timer);
   }, [search]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [statusFilter, supplierFilter, debouncedQ]);
 
   const listUrl = useMemo(() => {
     const params = new URLSearchParams();
@@ -90,6 +96,11 @@ export default function AdminGrnHistoryPage() {
     loading: listLoading,
     error: listError
   } = useAdminQuery<ListedGrn[]>(listUrl);
+
+  const pagedGrns = useMemo(() => {
+    const start = page * DEFAULT_PAGE_SIZE;
+    return (listedGrns || []).slice(start, start + DEFAULT_PAGE_SIZE);
+  }, [listedGrns, page]);
 
   const openDetails = async (id: string) => {
     setDetailLoading(true);
@@ -241,7 +252,7 @@ export default function AdminGrnHistoryPage() {
                 </tr>
               </thead>
               <tbody>
-                {(listedGrns || []).map((row) => (
+                {pagedGrns.map((row) => (
                   <tr key={row.id}>
                     <td>
                       <strong>{row.grn_number}</strong>
@@ -302,6 +313,12 @@ export default function AdminGrnHistoryPage() {
                 ))}
               </tbody>
             </table>
+            <AdminPagination
+              page={page}
+              total={(listedGrns || []).length}
+              onPageChange={setPage}
+              noun="GRNs"
+            />
           </div>
         ) : null}
       </AdminPanel>

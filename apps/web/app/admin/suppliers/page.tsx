@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Ban, Pencil, Plus } from "lucide-react";
 import {
   AdminAlert,
@@ -13,6 +13,7 @@ import {
 import { AdminFormModal } from "../../../components/admin/admin-form-modal";
 import { adminFetch } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
+import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
 import {
   firstError,
   normalizePhone10,
@@ -78,6 +79,7 @@ export default function AdminSuppliersPage() {
   const [actionError, setActionError] = useState("");
   const [message, setMessage] = useState("");
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(0);
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -100,6 +102,15 @@ export default function AdminSuppliersPage() {
       return hay.includes(q);
     });
   }, [data, search]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [search]);
+
+  const paged = useMemo(() => {
+    const start = page * DEFAULT_PAGE_SIZE;
+    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
+  }, [rows, page]);
 
   const openCreate = () => {
     setEditing(null);
@@ -265,7 +276,7 @@ export default function AdminSuppliersPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((supplier) => (
+                {paged.map((supplier) => (
                   <tr key={supplier.id}>
                     <td>
                       <b>{supplier.name}</b>
@@ -323,6 +334,12 @@ export default function AdminSuppliersPage() {
                 ))}
               </tbody>
             </table>
+            <AdminPagination
+              page={page}
+              total={rows.length}
+              onPageChange={setPage}
+              noun="suppliers"
+            />
           </div>
         )}
       </AdminPanel>

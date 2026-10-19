@@ -3,6 +3,10 @@ import { fail, ok, requirePermission, writeAuditLog } from "../../../../../lib/a
 import { withTransaction } from "../../../../../lib/db/pool";
 import { ensurePosSchema, validatePosCustomer } from "../../../../../lib/pos";
 import {
+  ensurePosShiftSchema,
+  getOpenShiftForUser
+} from "../../../../../lib/pos-shifts";
+import {
   allocateSellableItems,
   createProductUnits,
   getShopVariantStock,
@@ -172,6 +176,7 @@ export async function POST(request: NextRequest) {
   if (error || !ctx) return error;
 
   await ensurePosSchema();
+  await ensurePosShiftSchema();
   await ensureGstSchema();
   await ensureShopsSchema();
   await ensureBrandsSchema();
@@ -463,6 +468,8 @@ export async function POST(request: NextRequest) {
     const total = taxSummary.payable;
 
     const orderNumber = await nextDocumentNumber("invoice");
+    const openShift = await getOpenShiftForUser(shopId, ctx.userId);
+    const shiftId = openShift?.id || null;
     // Cash = full pay now. Credit = partial/zero now, balance later. Razorpay = pending until verify.
     let amountPaid = total;
     if (paymentMethod === "credit") {
@@ -503,11 +510,13 @@ export async function POST(request: NextRequest) {
            order_number, customer_id, shipping_address_id, status, payment_status,
            subtotal, discount_amount, cashier_discount_amount, exchange_credit_amount,
            tax_amount, shipping_amount, total_amount, channel,
-           shop_id, brand_id, pos_customer_name, pos_customer_phone, pos_customer_email
-         ) values ($1, $2, null, $3, $4, $5, $6, $7, $8, $9, 0, $10, 'pos', $11, $12, $13, $14, $15)
+           shop_id, brand_id, pos_customer_name, pos_customer_phone, pos_customer_email,
+           created_by, shift_id
+         ) values ($1, $2, null, $3, $4, $5, $6, $7, $8, $9, 0, $10, 'pos', $11, $12, $13, $14, $15, $16, $17)
          returning id, order_number, created_at, total_amount, subtotal, discount_amount,
                    cashier_discount_amount, exchange_credit_amount, tax_amount, payment_status, status, channel,
-                   shop_id, brand_id, pos_customer_name, pos_customer_phone, pos_customer_email`,
+                   shop_id, brand_id, pos_customer_name, pos_customer_phone, pos_customer_email,
+                   created_by, shift_id`,
         [
           orderNumber,
           customerId,
@@ -523,7 +532,9 @@ export async function POST(request: NextRequest) {
           brandId,
           customer.name,
           customer.phone,
-          customer.email
+          customer.email,
+          ctx.userId,
+          shiftId
         ]
       );
 

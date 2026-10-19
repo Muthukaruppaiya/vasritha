@@ -36,6 +36,7 @@ import {
   AdminPanel,
   statusTone
 } from "../../../components/admin/admin-ui";
+import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
 import { ProductDetailModal } from "../../../components/admin/product-detail-modal";
 import { adminFetch, formatMoney, getAdminToken, getAdminUser } from "../../../lib/admin-api";
 import { downloadAdminExport } from "../../../lib/download-export";
@@ -135,6 +136,7 @@ function AdminProductsPageInner() {
   const [sortBy, setSortBy] = useState<SortKey>("newest");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [page, setPage] = useState(0);
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -177,7 +179,7 @@ function AdminProductsPageInner() {
 
   const productsPath = useMemo(() => {
     const params = new URLSearchParams();
-    params.set("limit", "50");
+    params.set("limit", "200");
     if (debouncedSearch) params.set("q", debouncedSearch);
     if (statusFilter) params.set("status", statusFilter);
     return `/api/admin/products?${params.toString()}`;
@@ -266,6 +268,26 @@ function AdminProductsPageInner() {
     priceMax,
     sortBy
   ]);
+
+  useEffect(() => {
+    setPage(0);
+  }, [
+    search,
+    statusFilter,
+    categoryFilter,
+    subcategoryFilter,
+    colorFilter,
+    stockFilter,
+    featuredFilter,
+    priceMin,
+    priceMax,
+    sortBy
+  ]);
+
+  const paged = useMemo(() => {
+    const start = page * DEFAULT_PAGE_SIZE;
+    return filtered.slice(start, start + DEFAULT_PAGE_SIZE);
+  }, [filtered, page]);
 
   const advancedFilterCount = [
     statusFilter,
@@ -1208,7 +1230,7 @@ function AdminProductsPageInner() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((product) => (
+                {paged.map((product) => (
                   <tr key={product.id} className={selected.has(product.id) ? "is-selected" : ""}>
                     <td className="admin-check-col">
                       <input
@@ -1496,6 +1518,12 @@ function AdminProductsPageInner() {
                 ))}
               </tbody>
             </table>
+            <AdminPagination
+              page={page}
+              total={filtered.length}
+              onPageChange={setPage}
+              noun="products"
+            />
           </div>
         )}
       </AdminPanel>

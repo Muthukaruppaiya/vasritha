@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { Eye, EyeOff, Plus } from "lucide-react";
 import {
   AdminAlert,
@@ -14,6 +14,7 @@ import {
 import { AdminFormModal } from "../../../components/admin/admin-form-modal";
 import { adminFetch, formatDate, formatMoney } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
+import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
 
 type Coupon = {
   id: string;
@@ -53,6 +54,14 @@ export default function AdminCouponsPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
   const [form, setForm] = useState(blankForm);
+  const [page, setPage] = useState(0);
+
+  const rows = data || [];
+
+  const paged = useMemo(() => {
+    const start = page * DEFAULT_PAGE_SIZE;
+    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
+  }, [rows, page]);
 
   const openCreate = () => {
     setForm(blankForm());
@@ -121,8 +130,8 @@ export default function AdminCouponsPage() {
       <AdminPanel title="Promotions">
         {loading && <AdminLoading />}
         {error && <AdminAlert>{error}</AdminAlert>}
-        {!loading && !(data || []).length && <AdminEmpty title="No coupons yet" />}
-        {(data || []).length > 0 && (
+        {!loading && !rows.length && <AdminEmpty title="No coupons yet" />}
+        {rows.length > 0 && (
           <div className="admin-table-wrap">
             <table className="admin-table">
               <thead>
@@ -138,7 +147,7 @@ export default function AdminCouponsPage() {
                 </tr>
               </thead>
               <tbody>
-                {(data || []).map((coupon) => (
+                {paged.map((coupon) => (
                   <tr key={coupon.id}>
                     <td>
                       <b>{coupon.code}</b>
@@ -182,6 +191,7 @@ export default function AdminCouponsPage() {
                 ))}
               </tbody>
             </table>
+            <AdminPagination page={page} total={rows.length} onPageChange={setPage} noun="coupons" />
           </div>
         )}
       </AdminPanel>

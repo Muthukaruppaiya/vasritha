@@ -42,6 +42,13 @@ export async function ensurePosSchema() {
     alter table public.orders
       add column if not exists exchange_credit_amount numeric(12,2) not null default 0
   `);
+  await query(`
+    alter table public.orders
+      add column if not exists created_by uuid references public.users(id) on delete set null
+  `);
+  await query(`
+    create index if not exists orders_created_by_idx on public.orders (created_by)
+  `);
   posSchemaReady = true;
 }
 

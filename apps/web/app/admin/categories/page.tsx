@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { EyeOff, Globe, ImagePlus, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   AdminAlert,
@@ -11,6 +11,7 @@ import {
   slugify
 } from "../../../components/admin/admin-ui";
 import { AdminFormModal } from "../../../components/admin/admin-form-modal";
+import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
 import { adminFetch, adminUpload, formatDate } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
 import {
@@ -71,6 +72,12 @@ const blankForm = () => ({
 
 export default function AdminCategoriesPage() {
   const { data, error, loading, reload } = useAdminQuery<Category[]>("/api/admin/categories");
+  const [page, setPage] = useState(0);
+  const categories = data || [];
+  const pagedCategories = useMemo(() => {
+    const start = page * DEFAULT_PAGE_SIZE;
+    return categories.slice(start, start + DEFAULT_PAGE_SIZE);
+  }, [categories, page]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Category | null>(null);
   const [saving, setSaving] = useState(false);
@@ -403,12 +410,12 @@ export default function AdminCategoriesPage() {
         {loading && <AdminLoading />}
         {error && <AdminAlert>{error}</AdminAlert>}
         {actionError && <AdminAlert>{actionError}</AdminAlert>}
-        {!loading && !(data || []).length && (
+        {!loading && !categories.length && (
           <AdminEmpty title="No categories" body="Add Sarees, Jewelry and other departments first." />
         )}
-        {(data || []).length > 0 && (
+        {categories.length > 0 && (
           <div className="admin-card-grid">
-            {(data || []).map((category) => (
+            {pagedCategories.map((category) => (
               <article key={category.id} className="admin-soft-card">
                 <div className="admin-soft-card-media">
                   {category.image_path ? (
@@ -542,6 +549,12 @@ export default function AdminCategoriesPage() {
             ))}
           </div>
         )}
+        <AdminPagination
+          page={page}
+          total={categories.length}
+          onPageChange={setPage}
+          noun="categories"
+        />
       </AdminPanel>
 
       <AdminFormModal

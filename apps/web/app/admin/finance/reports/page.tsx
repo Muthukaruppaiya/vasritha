@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ExternalLink, FileDown, FileSpreadsheet, Play } from "lucide-react";
 import {
   AdminAlert,
@@ -11,6 +11,7 @@ import {
   AdminPageHeader,
   AdminPanel
 } from "../../../../components/admin/admin-ui";
+import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../../components/admin/admin-pagination";
 import { formatDate, formatMoney } from "../../../../lib/admin-api";
 import { downloadAdminExport } from "../../../../lib/download-export";
 import { useAdminQuery } from "../../../../hooks/use-admin-query";
@@ -53,6 +54,7 @@ export default function FinanceReportsHubPage() {
   const [type, setType] = useState<(typeof REPORTS)[number]["type"]>("sales");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [page, setPage] = useState(0);
 
   const path = useMemo(() => {
     const params = new URLSearchParams({ type });
@@ -63,6 +65,15 @@ export default function FinanceReportsHubPage() {
 
   const { data, error, loading, reload } = useAdminQuery<Record<string, unknown>>(path);
   const rows = (data?.rows as Array<Record<string, unknown>> | undefined) || [];
+
+  useEffect(() => {
+    setPage(0);
+  }, [type, from, to]);
+
+  const pagedRows = useMemo(() => {
+    const start = page * DEFAULT_PAGE_SIZE;
+    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
+  }, [rows, page]);
 
   return (
     <div className="admin-stack">
@@ -262,7 +273,7 @@ export default function FinanceReportsHubPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row, idx) => (
+                  {pagedRows.map((row, idx) => (
                     <tr key={idx}>
                       {Object.entries(row).map(([key, value]) => (
                         <td key={key}>{moneyish(key, value)}</td>
@@ -271,6 +282,12 @@ export default function FinanceReportsHubPage() {
                   ))}
                 </tbody>
               </table>
+              <AdminPagination
+                page={page}
+                total={rows.length}
+                onPageChange={setPage}
+                noun="rows"
+              />
             </div>
           )}
         </AdminPanel>

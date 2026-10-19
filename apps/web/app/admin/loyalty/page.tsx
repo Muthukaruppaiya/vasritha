@@ -11,6 +11,7 @@ import {
   AdminPanel,
   statusTone
 } from "../../../components/admin/admin-ui";
+import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
 import { AdminFormModal } from "../../../components/admin/admin-form-modal";
 import { adminFetch, adminUpload } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
@@ -152,6 +153,12 @@ export default function AdminLoyaltyPage() {
   const [popupMsg, setPopupMsg] = useState("");
   const [popupErr, setPopupErr] = useState("");
   const [popupUploadBusy, setPopupUploadBusy] = useState(false);
+  const [page, setPage] = useState(0);
+
+  const pagedRows = useMemo(() => {
+    const start = page * DEFAULT_PAGE_SIZE;
+    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
+  }, [rows, page]);
 
   useEffect(() => {
     let cancelled = false;
@@ -499,7 +506,7 @@ export default function AdminLoyaltyPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((rule) => {
+                {pagedRows.map((rule) => {
                   const prompt =
                     fillTemplate(rule.message_template, rule) ||
                     fillTemplate(rule.unlocked_message, rule);
@@ -563,6 +570,12 @@ export default function AdminLoyaltyPage() {
                 })}
               </tbody>
             </table>
+            <AdminPagination
+              page={page}
+              total={rows.length}
+              onPageChange={setPage}
+              noun="rules"
+            />
           </div>
         ) : null}
         <p className="muted" style={{ marginTop: 12 }}>

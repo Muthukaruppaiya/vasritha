@@ -216,28 +216,37 @@ function drawLabelText(
   return sizeDots;
 }
 
-/** Tiny slug along the left edge, rotated for reference. */
+/**
+ * Tiny slug along the left edge, rotated for reference.
+ * Inset from the physical left (printers clip ~1–2 mm); baseline grows into the label
+ * so glyphs are not painted off the left edge (preview-only / missing on printout).
+ */
 function drawSideSlug(
   ctx: CanvasRenderingContext2D,
   text: string,
   x0: number,
-  labelW: number,
   labelH: number,
   sizeDots: number
 ) {
   const raw = text.trim();
   if (!raw) return;
   ctx.save();
-  ctx.font = ptFont(sizeDots);
+  // Bold + slightly larger so thermal / binarize does not erase thin rotated strokes.
+  const drawSize = Math.max(sizeDots, Math.round(DOTS_PER_MM * 0.7));
+  ctx.font = `700 ${drawSize}px Arial, Helvetica, sans-serif`;
   ctx.fillStyle = "#000000";
   ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  const maxLen = Math.max(8, labelH - 8);
+  // After -90° rotate, local +Y maps into the label (right). "top" keeps ink inside.
+  ctx.textBaseline = "top";
+  const maxLen = Math.max(8, labelH - Math.round(DOTS_PER_MM * 2));
   const label = fitText(ctx, raw, maxLen);
-  // Left edge, reading bottom→top (common on garment tags).
-  ctx.translate(x0 + Math.max(5, Math.round(sizeDots * 0.55)), labelH / 2);
+  // ~3.2 mm from left edge — room to paste / not flush in the corner.
+  const leftInset = Math.round(DOTS_PER_MM * 3.2);
+  ctx.translate(x0 + leftInset, labelH / 2);
   ctx.rotate(-Math.PI / 2);
+  // Double-strike for solid black on 203 dpi printers.
   ctx.fillText(label, 0, 0);
+  ctx.fillText(label, 0, 1);
   ctx.restore();
 }
 
@@ -248,7 +257,8 @@ function binarizeCanvas(canvas: HTMLCanvasElement) {
   const { data } = image;
   for (let i = 0; i < data.length; i += 4) {
     const luma = data[i]! * 0.299 + data[i + 1]! * 0.587 + data[i + 2]! * 0.114;
-    const v = luma < 160 ? 0 : 255;
+    // Higher threshold keeps thin rotated slug strokes that anti-alias to dark gray.
+    const v = luma < 200 ? 0 : 255;
     data[i] = v;
     data[i + 1] = v;
     data[i + 2] = v;
@@ -276,12 +286,14 @@ function renderRowCanvas(spec: LayoutSpec, cards: LabelCard[]) {
   ctx.imageSmoothingEnabled = false;
 
   // 3-up is tighter; 2-up can use more room.
+  // Extra left pad reserves a column for the sideways slug (avoids corner clip on print).
   const tight = spec.cols >= 3;
-  const sidePad = tight ? 10 : 12;
+  const slugCol = Math.round(DOTS_PER_MM * (tight ? 4.2 : 4.5));
+  const sidePad = slugCol + (tight ? 8 : 10);
   const pad = tight ? 7 : 9;
   const textPt = tight ? 6.5 : 7.5;
   const pricePt = tight ? 7.5 : 9;
-  const slugPt = tight ? 4.5 : 5;
+  const slugPt = tight ? 5.5 : 6;
   const textDots = ptToDots(textPt);
   const priceDots = ptToDots(pricePt);
   const slugDots = ptToDots(slugPt);
@@ -319,7 +331,7 @@ function renderRowCanvas(spec: LayoutSpec, cards: LabelCard[]) {
     const contentH = textDots + LINE_GAP + barH + LINE_GAP + afterH;
     let y = Math.max(3, Math.round((labelH - contentH) / 2));
 
-    drawSideSlug(ctx, card.slugLabel, x0, labelW, labelH, slugDots);
+    drawSideSlug(ctx, card.slugLabel, x0, labelH, slugDots);
 
     drawLabelText(ctx, card.brand.toUpperCase(), cx, y, innerW, textDots);
     y += textDots + LINE_GAP;
@@ -541,11 +553,31 @@ function printLabelRows(rows: HTMLCanvasElement[], pageW: number, pageH: number)
 <html><head><meta charset="utf-8" /><title>&nbsp;</title>
 <style>
   @page { size: ${pageW}mm ${pageH}mm; margin: 0; }
-  * { margin: 0; padding: 0; }
-  html, body { background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .page { width: ${pageW}mm; height: ${pageH}mm; overflow: hidden; page-break-after: always; }
-  .page:last-child { page-break-after: auto; }
-  img { display: block; width: ${pageW}mm; height: ${pageH}mm; image-rendering: pixelated; image-rendering: crisp-edges; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    background: #fff;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    color-adjust: exact;
+  }
+  .page {
+    width: ${pageW}mm;
+    height: ${pageH}mm;
+    overflow: hidden;
+    page-break-after: always;
+    break-after: page;
+  }
+  .page:last-child { page-break-after: auto; break-after: auto; }
+  img {
+    display: block;
+    width: ${pageW}mm;
+    height: ${pageH}mm;
+    max-width: none;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
 </style></head><body>${pages}</body></html>`);
   doc.close();
 

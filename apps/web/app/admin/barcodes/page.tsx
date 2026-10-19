@@ -21,6 +21,7 @@ import {
   AdminPageHeader,
   AdminPanel
 } from "../../../components/admin/admin-ui";
+import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
 import { adminFetch, formatDate, formatMoney } from "../../../lib/admin-api";
 import {
   LABEL_LAYOUT_OPTIONS,
@@ -80,6 +81,7 @@ function BarcodesPageInner() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [actionError, setActionError] = useState("");
+  const [page, setPage] = useState(0);
 
   useEffect(() => {
     if (labelParam === "set3" || labelParam === "accessory") setLabelLayout("set3");
@@ -104,9 +106,14 @@ function BarcodesPageInner() {
 
   useEffect(() => {
     setSelected(new Set());
+    setPage(0);
   }, [queryPath]);
 
   const rows = data?.items || [];
+  const pagedRows = useMemo(() => {
+    const start = page * DEFAULT_PAGE_SIZE;
+    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
+  }, [rows, page]);
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -118,11 +125,17 @@ function BarcodesPageInner() {
   };
 
   const toggleAll = () => {
-    if (selected.size === rows.length) {
-      setSelected(new Set());
-      return;
-    }
-    setSelected(new Set(rows.map((row) => row.id)));
+    const pageIds = pagedRows.map((row) => row.id);
+    const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selected.has(id));
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (allPageSelected) {
+        for (const id of pageIds) next.delete(id);
+      } else {
+        for (const id of pageIds) next.add(id);
+      }
+      return next;
+    });
   };
 
   const printItems = async (items: BarcodeItem[]) => {
@@ -357,7 +370,7 @@ function BarcodesPageInner() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {pagedRows.map((row) => (
                   <tr key={row.id}>
                     <td>
                       <button
@@ -404,6 +417,18 @@ function BarcodesPageInner() {
                 ))}
               </tbody>
             </table>
+            <AdminPagination
+              page={page}
+              total={rows.length}
+              onPageChange={setPage}
+              noun="barcodes"
+            />
+            <AdminPagination
+              page={page}
+              total={rows.length}
+              onPageChange={setPage}
+              noun="barcodes"
+            />
           </div>
         )}
       </AdminPanel>

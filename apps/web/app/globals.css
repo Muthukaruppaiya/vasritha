@@ -15008,10 +15008,47 @@ body:has(.pos-screen) .admin-topbar-title {
   }
 }
 
+/* Off-screen print payloads (shift handover slip, etc.) */
+.print-only {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  width: 80mm;
+  pointer-events: none;
+}
+
 /* Reports module: hide chrome when printing a report table */
 @media print {
   .no-print {
     display: none !important;
+  }
+
+  .print-only {
+    position: static !important;
+    left: auto !important;
+    width: auto !important;
+    pointer-events: auto !important;
+    display: block !important;
+  }
+
+  /* Shift handover: only the thermal slip */
+  body.print-shift-handover .admin-sidebar,
+  body.print-shift-handover .admin-topbar,
+  body.print-shift-handover .admin-nav-fab,
+  body.print-shift-handover .admin-nav-backdrop,
+  body.print-shift-handover .admin-page-head,
+  body.print-shift-handover .admin-toolbar,
+  body.print-shift-handover .admin-panel,
+  body.print-shift-handover .admin-grid-2,
+  body.print-shift-handover .admin-alert,
+  body.print-shift-handover .admin-empty {
+    display: none !important;
+  }
+
+  body.print-shift-handover .print-only .invoice-bill,
+  body.print-shift-handover .print-only .invoice-bill--shop,
+  body.print-shift-handover .print-only .collection-receipt {
+    display: block !important;
   }
 }
 

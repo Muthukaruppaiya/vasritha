@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check, Filter } from "lucide-react";
 import {
   AdminAlert,
@@ -11,6 +11,7 @@ import {
   AdminPanel,
   statusTone
 } from "../../../../components/admin/admin-ui";
+import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../../components/admin/admin-pagination";
 import { adminFetch, formatDate, formatMoney } from "../../../../lib/admin-api";
 import { useAdminQuery } from "../../../../hooks/use-admin-query";
 import { OPS_PLATFORM_NAME } from "../../../../lib/platform";
@@ -44,6 +45,7 @@ export default function FinancePayablesPage() {
   const [submittedQ, setSubmittedQ] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
+  const [page, setPage] = useState(0);
 
   const path = useMemo(() => {
     const params = new URLSearchParams();
@@ -55,6 +57,16 @@ export default function FinancePayablesPage() {
   }, [from, to, submittedQ]);
 
   const { data, error, loading, reload } = useAdminQuery<Payload>(path);
+  const registerRows = data?.rows || [];
+
+  useEffect(() => {
+    setPage(0);
+  }, [from, to, submittedQ]);
+
+  const pagedRows = useMemo(() => {
+    const start = page * DEFAULT_PAGE_SIZE;
+    return registerRows.slice(start, start + DEFAULT_PAGE_SIZE);
+  }, [registerRows, page]);
 
   const markPaid = async (entryId: string) => {
     setBusyId(entryId);
@@ -130,10 +142,10 @@ export default function FinancePayablesPage() {
 
       <AdminPanel title="Payable register">
         {loading ? <AdminLoading /> : null}
-        {!loading && !(data?.rows || []).length ? (
+        {!loading && !registerRows.length ? (
           <AdminEmpty title="No purchase bills" body="Run Sync on Finance dashboard after GRN inward." />
         ) : null}
-        {(data?.rows || []).length > 0 ? (
+        {registerRows.length > 0 ? (
           <div className="admin-table-wrap">
             <table className="admin-table admin-table--zebra">
               <thead>
@@ -149,7 +161,7 @@ export default function FinancePayablesPage() {
                 </tr>
               </thead>
               <tbody>
-                {(data?.rows || []).map((row) => (
+                {pagedRows.map((row) => (
                   <tr key={row.entry_id}>
                     <td>{formatDate(row.invoice_date)}</td>
                     <td>
@@ -190,6 +202,12 @@ export default function FinancePayablesPage() {
                 ))}
               </tbody>
             </table>
+            <AdminPagination
+              page={page}
+              total={registerRows.length}
+              onPageChange={setPage}
+              noun="bills"
+            />
           </div>
         ) : null}
       </AdminPanel>

@@ -104,7 +104,7 @@ export async function GET(request: NextRequest) {
     const result = await runReport(type, {
       ...filtersFrom(searchParams),
       page: Number(searchParams.get("page") || 1),
-      pageSize: Number(searchParams.get("pageSize") || 50)
+      pageSize: Number(searchParams.get("pageSize") || 10)
     });
     return ok(result);
   } catch (err) {

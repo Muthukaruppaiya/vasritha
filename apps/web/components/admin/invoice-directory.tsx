@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Eye, Printer, Search, X } from "lucide-react";
 import {
   AdminAlert,
@@ -11,6 +11,7 @@ import {
   AdminPanel,
   statusTone
 } from "./admin-ui";
+import { AdminPagination, DEFAULT_PAGE_SIZE } from "./admin-pagination";
 import { InvoiceBill, type InvoiceBillData } from "./invoice-bill";
 import { adminFetch, formatDate, formatMoney, getAdminUser } from "../../lib/admin-api";
 import { useAdminQuery } from "../../hooks/use-admin-query";
@@ -42,19 +43,30 @@ export function InvoiceDirectory({
   const [loadingInvoice, setLoadingInvoice] = useState(false);
   const [actionError, setActionError] = useState("");
 
+  const [page, setPage] = useState(0);
+
   const path = useMemo(() => {
     const params = new URLSearchParams();
     params.set("channel", channel);
     if (channel === "pos") params.set("paymentStatus", "paid");
     const boundShopId = getAdminUser()?.shopId;
     if (boundShopId) params.set("shopId", boundShopId);
+    params.set("limit", String(DEFAULT_PAGE_SIZE));
+    params.set("offset", String(page * DEFAULT_PAGE_SIZE));
     return `/api/admin/orders?${params.toString()}`;
-  }, [channel]);
+  }, [channel, page]);
 
-  const { data, error, loading } = useAdminQuery<InvoiceRow[]>(path);
+  const { data, error, loading } = useAdminQuery<{
+    items: InvoiceRow[];
+    total: number;
+  }>(path);
+
+  useEffect(() => {
+    setPage(0);
+  }, [channel, submitted]);
 
   const rows = useMemo(() => {
-    const list = data || [];
+    const list = data?.items || [];
     const term = submitted.trim().toLowerCase();
     if (!term) return list;
     return list.filter((row) => {
@@ -195,6 +207,12 @@ export function InvoiceDirectory({
             </table>
           </div>
         )}
+        <AdminPagination
+          total={data?.total || 0}
+          page={page}
+          onPageChange={setPage}
+          noun="invoices"
+        />
       </AdminPanel>
 
       {selected && (

@@ -28,29 +28,50 @@ export async function GET(request: NextRequest) {
   const channel = searchParams.get("channel");
   const paymentStatus = searchParams.get("paymentStatus");
   const preferredShop = searchParams.get("shopId");
+  const limitRaw = Number(searchParams.get("limit") || "10");
+  const offsetRaw = Number(searchParams.get("offset") || "0");
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 100) : 10;
+  const offset = Number.isFinite(offsetRaw) ? Math.max(offsetRaw, 0) : 0;
   const scope = await resolveShopScope(ctx, preferredShop);
   const shopId = scope.mode === "one" ? scope.shopId : preferredShop || null;
+
+  const totalRow = await queryOne<{ c: number }>(
+    `select count(*)::int as c
+     from orders o
+     where ($1::text is null or o.status::text = $1)
+       and ($2::text is null or coalesce(o.channel, 'online') = $2)
+       and ($3::text is null or o.payment_status::text = $3)
+       and ($4::uuid is null or o.shop_id = $4)`,
+    [status, channel, paymentStatus, shopId]
+  );
 
   const data = await query(
     `select o.id, o.order_number, o.customer_id, o.status, o.payment_status, o.subtotal,
             coalesce(o.discount_amount, 0) as discount_amount,
             o.tax_amount, o.shipping_amount, o.total_amount,
             coalesce(o.channel, 'online') as channel, o.shop_id, o.created_at,
-            o.courier_name, o.courier_awb, o.courier_note,
+            o.courier_name, o.courier_awb, o.courier_note, o.created_by,
             coalesce(nullif(o.pos_customer_name, ''), c.full_name) as customer_name,
             coalesce(nullif(o.pos_customer_email, ''), c.email) as customer_email,
-            coalesce(nullif(o.pos_customer_phone, ''), c.phone) as customer_phone
+            coalesce(nullif(o.pos_customer_phone, ''), c.phone) as customer_phone,
+            u.full_name as cashier_name
      from orders o
      left join customers c on c.id = o.customer_id
+     left join users u on u.id = o.created_by
      where ($1::text is null or o.status::text = $1)
        and ($2::text is null or coalesce(o.channel, 'online') = $2)
        and ($3::text is null or o.payment_status::text = $3)
        and ($4::uuid is null or o.shop_id = $4)
      order by o.created_at desc
-     limit 100`,
-    [status, channel, paymentStatus, shopId]
+     limit $5 offset $6`,
+    [status, channel, paymentStatus, shopId, limit, offset]
   );
-  return ok(data);
+  return ok({
+    items: data,
+    total: Number(totalRow?.c || 0),
+    limit,
+    offset
+  });
 }
 
 export async function PATCH(request: NextRequest) {

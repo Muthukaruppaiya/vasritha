@@ -122,6 +122,7 @@ const navModules: NavModule[] = [
     children: [
       { label: "Online Orders", href: "/admin/orders", icon: ShoppingBag },
       { label: "Store POS", href: "/admin/billing", icon: Receipt },
+      { label: "Shift handover", href: "/admin/billing/shift", icon: History },
       { label: "Credit dues", href: "/admin/billing/dues", icon: Wallet },
       { label: "Exchanges", href: "/admin/returns", icon: RotateCcw },
       { label: "Gift vouchers", href: "/admin/coupons", icon: TicketPercent },
@@ -223,6 +224,7 @@ function resolveTopbarMeta(pathname: string, modules: NavModule[]) {
     { href: "/admin/inventory/grn/history", kicker: "Catalogue", title: "GRN history" },
     { href: "/admin/inventory/grn", kicker: "Catalogue", title: "GRN entry" },
     { href: "/admin/inventory/approvals", kicker: "Catalogue", title: "GRN approvals" },
+    { href: "/admin/billing/shift", kicker: "Sales", title: "Shift handover" },
     { href: "/admin/billing/dues", kicker: "Sales", title: "Credit dues" },
     { href: "/admin/login-log", kicker: "People", title: "Login log" }
   ];

@@ -352,6 +352,7 @@ export const ADMIN_NAV_PERMISSIONS: Record<string, Permission[]> = {
   "/admin/categories": ["categories:manage", "products:manage"],
   "/admin/orders": ["orders:view", "orders:manage", "orders:fulfill"],
   "/admin/billing": ["pos:create", "invoices:print"],
+  "/admin/billing/shift": ["pos:create", "invoices:print"],
   "/admin/billing/dues": ["pos:create", "invoices:print", "finance:read"],
   "/admin/invoices/online": ["invoices:print", "orders:view", "orders:manage"],
   "/admin/invoices/store": ["invoices:print", "pos:create", "orders:view"],

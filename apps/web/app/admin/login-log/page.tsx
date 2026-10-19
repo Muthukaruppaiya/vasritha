@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { Eye, Filter, History, RefreshCw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Eye, Filter, RefreshCw } from "lucide-react";
 import {
   AdminAlert,
   AdminBadge,
@@ -12,6 +12,7 @@ import {
   AdminPanel,
   statusTone
 } from "../../../components/admin/admin-ui";
+import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
 import { formatDate } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
 import { OPS_PLATFORM_NAME } from "../../../lib/platform";
@@ -47,6 +48,7 @@ export default function LoginLogPage() {
   const [success, setSuccess] = useState("all");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [page, setPage] = useState(0);
 
   const path = useMemo(() => {
     const params = new URLSearchParams({ limit: "200" });
@@ -61,6 +63,15 @@ export default function LoginLogPage() {
   const { data, error, loading, reload } = useAdminQuery<LoginLogPayload>(path);
   const rows = data?.rows || [];
   const stats = data?.stats;
+
+  useEffect(() => {
+    setPage(0);
+  }, [submittedQ, client, success, from, to]);
+
+  const pagedRows = useMemo(() => {
+    const start = page * DEFAULT_PAGE_SIZE;
+    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
+  }, [rows, page]);
 
   return (
     <div className="admin-stack">
@@ -180,7 +191,7 @@ export default function LoginLogPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {pagedRows.map((row) => (
                   <tr key={row.id}>
                     <td>{formatDate(row.created_at)}</td>
                     <td>
@@ -212,12 +223,14 @@ export default function LoginLogPage() {
                 ))}
               </tbody>
             </table>
+            <AdminPagination
+              page={page}
+              total={rows.length}
+              onPageChange={setPage}
+              noun="events"
+            />
           </div>
         ) : null}
-        <p className="muted" style={{ marginTop: 12 }}>
-          <History size={14} style={{ verticalAlign: "middle", marginRight: 6 }} />
-          Showing {rows.length} event{rows.length === 1 ? "" : "s"}
-        </p>
       </AdminPanel>
     </div>
   );

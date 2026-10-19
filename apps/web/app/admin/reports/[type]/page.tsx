@@ -101,7 +101,7 @@ export default function ReportRunnerPage() {
 
   const path = useMemo(() => {
     if (!meta) return null;
-    const p = new URLSearchParams({ type, page: String(applied.page), pageSize: "50" });
+    const p = new URLSearchParams({ type, page: String(applied.page), pageSize: "10" });
     if (applied.from) p.set("from", applied.from);
     if (applied.to) p.set("to", applied.to);
     if (applied.q) p.set("q", applied.q);

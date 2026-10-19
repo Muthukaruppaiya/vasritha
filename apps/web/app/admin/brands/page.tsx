@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
+import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
 import { Ban, Pencil, Plus, Sparkles, Star } from "lucide-react";
 import {
   AdminAlert,
@@ -52,8 +53,14 @@ export default function AdminBrandsPage() {
   const [saving, setSaving] = useState(false);
   const [actionError, setActionError] = useState("");
   const [message, setMessage] = useState("");
+  const [page, setPage] = useState(0);
 
   const rows = useMemo(() => data || [], [data]);
+
+  const paged = useMemo(() => {
+    const start = page * DEFAULT_PAGE_SIZE;
+    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
+  }, [rows, page]);
 
   const openCreate = () => {
     setEditing(null);
@@ -186,7 +193,7 @@ export default function AdminBrandsPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((brand) => (
+                {paged.map((brand) => (
                   <tr key={brand.id}>
                     <td>
                       <b>{brand.name}</b>
@@ -240,6 +247,7 @@ export default function AdminBrandsPage() {
                 ))}
               </tbody>
             </table>
+            <AdminPagination page={page} total={rows.length} onPageChange={setPage} noun="brands" />
           </div>
         )}
         <p className="muted" style={{ marginTop: 12 }}>

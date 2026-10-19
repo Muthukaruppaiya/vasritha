@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Filter } from "lucide-react";
 import {
   AdminAlert,
@@ -12,6 +12,7 @@ import {
   AdminPanel,
   statusTone
 } from "../../../../components/admin/admin-ui";
+import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../../components/admin/admin-pagination";
 import { formatDate, formatMoney } from "../../../../lib/admin-api";
 import { useAdminQuery } from "../../../../hooks/use-admin-query";
 import { OPS_PLATFORM_NAME } from "../../../../lib/platform";
@@ -41,6 +42,7 @@ export default function FinanceReceivablesPage() {
   const [to, setTo] = useState("");
   const [q, setQ] = useState("");
   const [submittedQ, setSubmittedQ] = useState("");
+  const [page, setPage] = useState(0);
 
   const path = useMemo(() => {
     const params = new URLSearchParams();
@@ -52,6 +54,16 @@ export default function FinanceReceivablesPage() {
   }, [from, to, submittedQ]);
 
   const { data, error, loading } = useAdminQuery<Payload>(path);
+  const registerRows = data?.rows || [];
+
+  useEffect(() => {
+    setPage(0);
+  }, [from, to, submittedQ]);
+
+  const pagedRows = useMemo(() => {
+    const start = page * DEFAULT_PAGE_SIZE;
+    return registerRows.slice(start, start + DEFAULT_PAGE_SIZE);
+  }, [registerRows, page]);
 
   return (
     <div className="admin-stack">
@@ -109,10 +121,10 @@ export default function FinanceReceivablesPage() {
 
       <AdminPanel title="Receivable register">
         {loading ? <AdminLoading /> : null}
-        {!loading && !(data?.rows || []).length ? (
+        {!loading && !registerRows.length ? (
           <AdminEmpty title="No open receivables" body="All listed orders are paid or cancelled." />
         ) : null}
-        {(data?.rows || []).length > 0 ? (
+        {registerRows.length > 0 ? (
           <div className="admin-table-wrap">
             <table className="admin-table admin-table--zebra">
               <thead>
@@ -128,7 +140,7 @@ export default function FinanceReceivablesPage() {
                 </tr>
               </thead>
               <tbody>
-                {(data?.rows || []).map((row) => (
+                {pagedRows.map((row) => (
                   <tr key={row.order_id}>
                     <td>{formatDate(row.invoice_date)}</td>
                     <td>
@@ -154,6 +166,12 @@ export default function FinanceReceivablesPage() {
                 ))}
               </tbody>
             </table>
+            <AdminPagination
+              page={page}
+              total={registerRows.length}
+              onPageChange={setPage}
+              noun="bills"
+            />
           </div>
         ) : null}
       </AdminPanel>

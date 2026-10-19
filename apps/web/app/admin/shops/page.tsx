@@ -13,6 +13,7 @@ import {
 import { AdminFormModal } from "../../../components/admin/admin-form-modal";
 import { adminFetch } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
+import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
 import {
   firstError,
   normalizePhone10,
@@ -60,8 +61,14 @@ export default function AdminShopsPage() {
   const [saving, setSaving] = useState(false);
   const [actionError, setActionError] = useState("");
   const [message, setMessage] = useState("");
+  const [page, setPage] = useState(0);
 
   const rows = useMemo(() => data || [], [data]);
+
+  const paged = useMemo(() => {
+    const start = page * DEFAULT_PAGE_SIZE;
+    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
+  }, [rows, page]);
 
   const openCreate = () => {
     setEditing(null);
@@ -207,7 +214,7 @@ export default function AdminShopsPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((shop) => (
+                {paged.map((shop) => (
                   <tr key={shop.id}>
                     <td>
                       <b>{shop.name}</b>
@@ -263,6 +270,7 @@ export default function AdminShopsPage() {
                 ))}
               </tbody>
             </table>
+            <AdminPagination page={page} total={rows.length} onPageChange={setPage} noun="shops" />
           </div>
         )}
         <p className="muted" style={{ marginTop: 12 }}>

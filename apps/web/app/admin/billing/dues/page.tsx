@@ -11,6 +11,7 @@ import {
   AdminPanel,
   statusTone
 } from "../../../../components/admin/admin-ui";
+import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../../components/admin/admin-pagination";
 import {
   CollectionReceipt,
   type CollectionReceiptData
@@ -67,6 +68,7 @@ export default function PosCreditDuesPage() {
   const [error, setError] = useState("");
   const [tick, setTick] = useState(0);
   const [receipt, setReceipt] = useState<CollectionReceiptData | null>(null);
+  const [page, setPage] = useState(0);
 
   const path = useMemo(() => {
     const params = new URLSearchParams();
@@ -77,6 +79,16 @@ export default function PosCreditDuesPage() {
   }, [submittedQ, tick]);
 
   const { data, error: loadError, loading } = useAdminQuery<Payload>(path);
+  const customers = data?.customers || [];
+
+  useEffect(() => {
+    setPage(0);
+  }, [submittedQ]);
+
+  const pagedCustomers = useMemo(() => {
+    const start = page * DEFAULT_PAGE_SIZE;
+    return customers.slice(start, start + DEFAULT_PAGE_SIZE);
+  }, [customers, page]);
 
   useEffect(() => {
     if (!receipt) return;
@@ -190,12 +202,12 @@ export default function PosCreditDuesPage() {
 
       <AdminPanel title="Who should pay">
         {loading ? <AdminLoading /> : null}
-        {!loading && !(data?.customers || []).length ? (
+        {!loading && !customers.length ? (
           <AdminEmpty title="No credit dues" />
         ) : null}
 
         <div className="dues-list">
-          {(data?.customers || []).map((group) => (
+          {pagedCustomers.map((group) => (
             <article key={group.key} className="dues-customer">
               <header className="dues-customer-head">
                 <div>
@@ -312,6 +324,14 @@ export default function PosCreditDuesPage() {
             </article>
           ))}
         </div>
+        {customers.length > 0 ? (
+          <AdminPagination
+            page={page}
+            total={customers.length}
+            onPageChange={setPage}
+            noun="customers"
+          />
+        ) : null}
       </AdminPanel>
 
       {receipt ? (

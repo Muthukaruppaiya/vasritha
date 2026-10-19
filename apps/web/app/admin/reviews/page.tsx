@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Check, EyeOff, Star } from "lucide-react";
 import {
   AdminAlert,
@@ -12,6 +12,7 @@ import {
 } from "../../../components/admin/admin-ui";
 import { adminFetch, formatDate } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
+import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
 
 type ReviewRow = {
   id: string;
@@ -33,10 +34,22 @@ type Filter = "pending" | "approved" | "all";
 
 export default function AdminReviewsPage() {
   const [filter, setFilter] = useState<Filter>("pending");
+  const [page, setPage] = useState(0);
   const queryPath = useMemo(() => `/api/reviews?admin=1&status=${filter}`, [filter]);
   const { data, error, loading, reload } = useAdminQuery<ReviewRow[]>(queryPath);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState("");
+
+  const rows = data || [];
+
+  useEffect(() => {
+    setPage(0);
+  }, [filter]);
+
+  const paged = useMemo(() => {
+    const start = page * DEFAULT_PAGE_SIZE;
+    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
+  }, [rows, page]);
 
   const moderate = async (reviewId: string, patch: { is_approved?: boolean; is_featured?: boolean }) => {
     setBusyId(reviewId);
@@ -78,13 +91,13 @@ export default function AdminReviewsPage() {
         {loading && <AdminLoading />}
         {error && <AdminAlert>{error}</AdminAlert>}
         {actionError && <AdminAlert>{actionError}</AdminAlert>}
-        {!loading && !(data || []).length && (
+        {!loading && !rows.length && (
           <AdminEmpty
             title={filter === "pending" ? "No pending reviews" : "No reviews yet"}
             body="Customer reviews submitted from product pages will appear here."
           />
         )}
-        {(data || []).length > 0 && (
+        {rows.length > 0 && (
           <div className="admin-table-wrap">
             <table className="admin-table">
               <thead>
@@ -98,7 +111,7 @@ export default function AdminReviewsPage() {
                 </tr>
               </thead>
               <tbody>
-                {(data || []).map((row) => (
+                {paged.map((row) => (
                   <tr key={row.id}>
                     <td>
                       <b>{row.product_name || "—"}</b>
@@ -185,6 +198,7 @@ export default function AdminReviewsPage() {
                 ))}
               </tbody>
             </table>
+            <AdminPagination page={page} total={rows.length} onPageChange={setPage} noun="reviews" />
           </div>
         )}
       </AdminPanel>

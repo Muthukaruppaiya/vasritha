@@ -23,6 +23,7 @@ import {
   AdminPanel,
   statusTone
 } from "../../../components/admin/admin-ui";
+import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
 import { CourierLabel } from "../../../components/admin/courier-label";
 import { InvoiceBill } from "../../../components/admin/invoice-bill";
 import { adminFetch, formatDate, formatMoney, getAdminUser } from "../../../lib/admin-api";
@@ -164,33 +165,43 @@ export default function AdminOrdersPage() {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [printMode, setPrintMode] = useState<PrintMode>("both");
   const [deskTab, setDeskTab] = useState<DeskTab>("details");
+  const [page, setPage] = useState(0);
 
-  const ordersPath = (() => {
+  useEffect(() => {
+    setPage(0);
+  }, [statusFilter]);
+
+  const ordersPath = useMemo(() => {
     const params = new URLSearchParams({ channel: "online" });
     const boundShopId = getAdminUser()?.shopId;
     if (boundShopId) params.set("shopId", boundShopId);
+    if (statusFilter) params.set("status", statusFilter);
+    params.set("limit", String(DEFAULT_PAGE_SIZE));
+    params.set("offset", String(page * DEFAULT_PAGE_SIZE));
     return `/api/admin/orders?${params.toString()}`;
-  })();
+  }, [statusFilter, page]);
 
-  const { data, error, loading, reload } = useAdminQuery<Order[]>(ordersPath);
+  const { data, error, loading, reload } = useAdminQuery<{
+    items: Order[];
+    total: number;
+  }>(ordersPath);
+
+  const rows = data?.items || [];
+  const totalOrders = data?.total || 0;
 
   const counts = useMemo(() => {
-    const rows = data || [];
+    // Counts from current page only are misleading — show page totals as badges loosely.
     return {
-      all: rows.filter((row) => row.status !== "cancelled").length,
+      all: totalOrders,
       pending: rows.filter((row) => row.status === "pending").length,
       packing: rows.filter(
         (row) => row.status === "processing" || row.status === "confirmed"
       ).length,
       shipped: rows.filter((row) => row.status === "shipped").length
     };
-  }, [data]);
+  }, [rows, totalOrders]);
 
-  const queue = useMemo(() => {
-    const rows = data || [];
-    if (!statusFilter) return rows.filter((row) => row.status !== "cancelled");
-    return rows.filter((row) => row.status === statusFilter);
-  }, [data, statusFilter]);
+  const queue = rows;
 
   const multiSelectEnabled = queue.length > 1;
   const selectedOrders = useMemo(
@@ -554,6 +565,12 @@ export default function AdminOrdersPage() {
             })}
           </div>
         )}
+        <AdminPagination
+          page={page}
+          total={totalOrders}
+          onPageChange={setPage}
+          noun="orders"
+        />
       </AdminPanel>
 
       {loadingDetail && (
