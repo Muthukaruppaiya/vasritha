@@ -150,7 +150,7 @@ export function CustomerRegisterForm({ mode = "register" }: { mode?: "register" 
               type="password"
               name="password"
               required
-              minLength={6}
+              minLength={8}
               autoComplete="new-password"
             />
           </label>

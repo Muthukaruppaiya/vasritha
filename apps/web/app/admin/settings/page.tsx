@@ -970,7 +970,8 @@ export default function AdminSettingsPage() {
               <AdminAlert tone="ok">
                 Applies only to staff / POS login (ops domain, e.g. Sukadhaa). Super Admin and
                 Business Owner can log in from anywhere. The public website (e.g. Vasritha) is
-                never checked. Keep the master switch OFF while testing.
+                never checked. Keep the master switch OFF while testing. Account lockout is
+                always on for every login: 8 wrong passwords lock that email for 15 minutes.
               </AdminAlert>
 
               <label className="admin-check-row">

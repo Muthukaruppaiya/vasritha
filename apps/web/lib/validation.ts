@@ -69,7 +69,7 @@ export function validatePassword(
   opts?: { required?: boolean; minLength?: number }
 ): string | null {
   const pwd = String(value ?? "");
-  const min = opts?.minLength ?? 6;
+  const min = opts?.minLength ?? 8;
   if (!pwd) return opts?.required ? `Password is required (min ${min} characters)` : null;
   if (pwd.length < min) return `Password must be at least ${min} characters`;
   return null;

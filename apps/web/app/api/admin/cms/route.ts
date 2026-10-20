@@ -1,7 +1,11 @@
-import { ok } from "../../../../lib/auth/api";
+import { NextRequest } from "next/server";
+import { ok, requirePermission } from "../../../../lib/auth/api";
 
 /** @deprecated Use dedicated /api/admin/cms/* routes */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const { error } = await requirePermission(request, "cms:manage");
+  if (error) return error;
+
   return ok({
     routes: [
       "/api/admin/cms/menus",

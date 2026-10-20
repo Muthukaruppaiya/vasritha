@@ -1,8 +1,11 @@
 import { NextRequest } from "next/server";
-import { fail, ok, requirePermission, writeAuditLog } from "../../../../lib/auth/api";
+import { fail, ok, requireAnyPermission, requirePermission, writeAuditLog } from "../../../../lib/auth/api";
 import { query, queryOne } from "../../../../lib/db/pool";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const { error } = await requireAnyPermission(request, ["categories:manage", "products:manage", "cms:manage"]);
+  if (error) return error;
+
   const data = await query(
     `select id, name, slug, description from collections order by name asc`
   );

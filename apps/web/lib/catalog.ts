@@ -501,10 +501,26 @@ export async function listCollections() {
   );
 }
 
+function publicSiteSettings(row: Record<string, unknown> | null) {
+  if (!row) return null;
+  const {
+    staff_login_security_enabled: _a,
+    staff_login_require_ip: _b,
+    staff_login_require_device: _c,
+    staff_login_require_geo: _d,
+    staff_login_allowed_ips: _e,
+    staff_login_store_lat: _f,
+    staff_login_store_lng: _g,
+    staff_login_store_radius_m: _h,
+    ...rest
+  } = row;
+  return rest;
+}
+
 export async function getStorefrontBootstrap() {
   await ensureCategoriesSchema();
   const [settings, menus, banners, sections, categories] = await Promise.all([
-    queryOne(`select * from site_settings limit 1`),
+    queryOne<Record<string, unknown>>(`select * from site_settings limit 1`).then(publicSiteSettings),
     query<{ id: string } & Record<string, unknown>>(`select * from menus where is_active = true`),
     query(`select * from banners where is_active = true order by sort_order`),
     query<{ id: string } & Record<string, unknown>>(

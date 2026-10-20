@@ -261,3 +261,107 @@ export async function assertStaffLoginSecurity(input: {
 
   return { ok: true };
 }
+
+const FAIL_LIMIT = 8;
+const LOCK_MINUTES = 15;
+
+let lockSchemaReady: Promise<void> | null = null;
+
+async function ensureLoginLockoutSchema() {
+  if (!lockSchemaReady) {
+    lockSchemaReady = query(`
+      create table if not exists public.login_attempt_locks (
+        email_key text primary key,
+        fail_count integer not null default 0,
+        locked_until timestamptz,
+        updated_at timestamptz not null default now()
+      )
+    `).then(() => undefined).catch((error) => {
+      lockSchemaReady = null;
+      throw error;
+    });
+  }
+  await lockSchemaReady;
+}
+
+function emailKey(email: string) {
+  return String(email || "").trim().toLowerCase();
+}
+
+/** Blocks brute-force on a specific account (all login surfaces). */
+export async function assertLoginNotLocked(email: string): Promise<
+  { ok: true } | { ok: false; error: string; retryAfter: number }
+> {
+  await ensureLoginLockoutSchema();
+  const key = emailKey(email);
+  if (!key) return { ok: true };
+  const row = await queryOne<{ locked_until: string | null }>(
+    `select locked_until from login_attempt_locks where email_key = $1`,
+    [key]
+  );
+  if (!row?.locked_until) return { ok: true };
+  const until = new Date(row.locked_until).getTime();
+  if (!Number.isFinite(until) || until <= Date.now()) return { ok: true };
+  const retryAfter = Math.max(1, Math.ceil((until - Date.now()) / 1000));
+  return {
+    ok: false,
+    error: `Too many failed sign-ins. Try again in ${Math.ceil(retryAfter / 60)} minute(s).`,
+    retryAfter
+  };
+}
+
+export async function recordLoginFailure(email: string): Promise<
+  { locked: false } | { locked: true; error: string; retryAfter: number }
+> {
+  await ensureLoginLockoutSchema();
+  const key = emailKey(email);
+  if (!key) return { locked: false };
+  const row = await queryOne<{ fail_count: number; locked_until: string | null }>(
+    `insert into login_attempt_locks (email_key, fail_count, locked_until, updated_at)
+     values ($1, 1, null, now())
+     on conflict (email_key) do update
+       set fail_count = case
+             when login_attempt_locks.locked_until is not null
+              and login_attempt_locks.locked_until > now()
+             then login_attempt_locks.fail_count
+             when login_attempt_locks.locked_until is not null
+              and login_attempt_locks.locked_until <= now()
+             then 1
+             else login_attempt_locks.fail_count + 1
+           end,
+           locked_until = case
+             when login_attempt_locks.locked_until is not null
+              and login_attempt_locks.locked_until > now()
+             then login_attempt_locks.locked_until
+             when (
+               case
+                 when login_attempt_locks.locked_until is not null
+                  and login_attempt_locks.locked_until <= now()
+                 then 1
+                 else login_attempt_locks.fail_count + 1
+               end
+             ) >= $2
+             then now() + ($3::int * interval '1 minute')
+             else null
+           end,
+           updated_at = now()
+     returning fail_count, locked_until`,
+    [key, FAIL_LIMIT, LOCK_MINUTES]
+  );
+  if (!row?.locked_until) return { locked: false };
+  const until = new Date(row.locked_until).getTime();
+  if (!Number.isFinite(until) || until <= Date.now()) return { locked: false };
+  const retryAfter = Math.max(1, Math.ceil((until - Date.now()) / 1000));
+  return {
+    locked: true,
+    error: `Too many failed sign-ins. Try again in ${Math.ceil(retryAfter / 60)} minute(s).`,
+    retryAfter
+  };
+}
+
+export async function clearLoginFailures(email: string) {
+  await ensureLoginLockoutSchema();
+  const key = emailKey(email);
+  if (!key) return;
+  await query(`delete from login_attempt_locks where email_key = $1`, [key]);
+}

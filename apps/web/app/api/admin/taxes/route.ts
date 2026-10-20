@@ -2,7 +2,10 @@ import { NextRequest } from "next/server";
 import { fail, ok, requirePermission, writeAuditLog } from "../../../../lib/auth/api";
 import { query, queryOne } from "../../../../lib/db/pool";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const { error } = await requirePermission(request, "settings:business");
+  if (error) return error;
+
   const data = await query(`select * from taxes order by name asc`);
   return ok(data);
 }

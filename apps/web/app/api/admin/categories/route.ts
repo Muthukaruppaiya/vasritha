@@ -1,10 +1,13 @@
 import { NextRequest } from "next/server";
-import { fail, ok, requirePermission, writeAuditLog } from "../../../../lib/auth/api";
+import { fail, ok, requireAnyPermission, requirePermission, writeAuditLog } from "../../../../lib/auth/api";
 import { ensureCategoriesSchema } from "../../../../lib/catalog";
 import { query, queryOne } from "../../../../lib/db/pool";
 import { mergeCategoryNameI18n } from "../../../../lib/i18n/category-names";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const { error } = await requireAnyPermission(request, ["products:read", "categories:manage", "products:manage"]);
+  if (error) return error;
+
   await ensureCategoriesSchema();
   const data = await query(
     `select

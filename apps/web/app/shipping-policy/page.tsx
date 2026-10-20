@@ -8,7 +8,7 @@ import {
   buildPurchasePolicySummary,
   getExchangePolicySettings
 } from "../../lib/exchange-policy";
-import { formatPrice } from "../../lib/cart";
+import { formatMoney } from "../../lib/catalog";
 
 export const metadata: Metadata = {
   title: "Shipping Policy | Vasritha",
@@ -113,7 +113,7 @@ export default async function ShippingPolicyPage() {
             {settings.default_shipping_fee > 0 ? (
               <p>
                 Default delivery charge:{" "}
-                <strong>{formatPrice(settings.default_shipping_fee)}</strong> when no category rate
+                <strong>{formatMoney(settings.default_shipping_fee)}</strong> when no category rate
                 applies (unless free shipping unlocks).
               </p>
             ) : (
@@ -133,7 +133,7 @@ export default async function ShippingPolicyPage() {
                       <strong>
                         {row.shipping_is_free
                           ? "FREE"
-                          : formatPrice(Number(row.shipping_charge || 0))}
+                          : formatMoney(Number(row.shipping_charge || 0))}
                       </strong>
                     </li>
                   ))}
@@ -155,7 +155,7 @@ export default async function ShippingPolicyPage() {
             {settings.free_shipping_min > 0 ? (
               <p>
                 Enjoy <strong>FREE SHIPPING</strong> on orders of{" "}
-                <strong>{formatPrice(settings.free_shipping_min)}</strong> or more (after product
+                <strong>{formatMoney(settings.free_shipping_min)}</strong> or more (after product
                 prices, before payment).
               </p>
             ) : (

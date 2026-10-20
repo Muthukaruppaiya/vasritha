@@ -2,7 +2,10 @@ import { NextRequest } from "next/server";
 import { fail, ok, requirePermission, writeAuditLog } from "../../../../../lib/auth/api";
 import { query, queryOne } from "../../../../../lib/db/pool";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const { error } = await requirePermission(request, "cms:manage");
+  if (error) return error;
+
   const menus = await query<{ id: string }>(`select * from menus where is_active = true`);
 
   const menuIds = menus.map((m) => m.id);

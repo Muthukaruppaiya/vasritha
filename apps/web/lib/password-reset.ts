@@ -3,6 +3,7 @@ import { query, queryOne } from "./db/pool";
 import bcrypt from "bcryptjs";
 import { sendMail } from "./mail";
 import { skipEnsureIfRelationExists } from "./schema-bootstrap";
+import { clearLoginFailures } from "./login-security";
 
 let schemaReady = false;
 
@@ -98,7 +99,7 @@ export async function resetPasswordWithToken(input: {
   const token = String(input.token || "").trim();
   const password = String(input.password || "");
   if (!token) return { ok: false, error: "Reset link is missing or invalid" };
-  if (password.length < 6) return { ok: false, error: "Password must be at least 6 characters" };
+  if (password.length < 8) return { ok: false, error: "Password must be at least 8 characters" };
 
   const tokenHash = hashToken(token);
   const row = await queryOne<{ id: string; user_id: string; expires_at: string; used_at: string | null }>(
@@ -115,6 +116,7 @@ export async function resetPasswordWithToken(input: {
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
+  const user = await queryOne<{ email: string }>(`select email from users where id = $1`, [row.user_id]);
   await query(`update users set password_hash = $2, updated_at = now() where id = $1`, [
     row.user_id,
     passwordHash
@@ -125,6 +127,7 @@ export async function resetPasswordWithToken(input: {
      where user_id = $1 and used_at is null`,
     [row.user_id]
   );
+  if (user?.email) await clearLoginFailures(user.email);
 
   return { ok: true };
 }

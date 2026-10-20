@@ -1,8 +1,12 @@
 import { NextRequest } from "next/server";
 import { fail, ok, requirePermission } from "../../../lib/auth/api";
 import { query, queryOne } from "../../../lib/db/pool";
+import { clientIp, clipText, rateLimit, tooManyRequests } from "../../../lib/security";
 
 export async function POST(request: NextRequest) {
+  const limited = rateLimit(`contact:${clientIp(request)}`, 8, 15 * 60 * 1000);
+  if (!limited.ok) return tooManyRequests(limited.retryAfter);
+
   const body = (await request.json().catch(() => null)) as {
     name?: string;
     email?: string;
@@ -18,7 +22,12 @@ export async function POST(request: NextRequest) {
     `insert into contact_messages (name, email, phone, message, status)
      values ($1, $2, $3, $4, 'new')
      returning id, created_at`,
-    [body.name, body.email, body.phone ?? null, body.message]
+    [
+      clipText(body.name, 120),
+      clipText(body.email, 190),
+      body.phone ? clipText(body.phone, 20) : null,
+      clipText(body.message, 4000)
+    ]
   );
 
   return ok(data, 201);

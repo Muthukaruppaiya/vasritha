@@ -4,7 +4,8 @@ import { query, queryOne } from "../../../../lib/db/pool";
 
 export async function GET() {
   const data = await query(
-    `select * from payment_methods where is_active = true order by sort_order`
+    `select id, name, code, provider, is_online, sort_order
+     from payment_methods where is_active = true order by sort_order`
   );
   return ok(data);
 }

@@ -2,9 +2,15 @@ import { NextRequest } from "next/server";
 import { fail, ok } from "../../../../lib/auth/api";
 import { getUserRoles, signAccessToken, verifyUser } from "../../../../lib/db/auth";
 import { AppRole, highestRole, permissionsForRoles, ROLE_META } from "../../../../lib/auth/rbac";
-import { assertStaffLoginSecurity } from "../../../../lib/login-security";
+import {
+  assertLoginNotLocked,
+  assertStaffLoginSecurity,
+  clearLoginFailures,
+  recordLoginFailure
+} from "../../../../lib/login-security";
 import { recordLoginEvent } from "../../../../lib/login-events";
 import { getUserShopProfile } from "../../../../lib/shop-scope";
+import { clientIp, rateLimit, tooManyRequests } from "../../../../lib/security";
 
 /** In-store staff sessions expire after 5 minutes of idle time (JWT matches). */
 const STAFF_SESSION_SECONDS = 5 * 60;
@@ -35,7 +41,18 @@ export async function POST(request: NextRequest) {
 
   if (!body?.email || !body?.password) return fail("email and password are required");
 
-  const email = String(body.email).trim();
+  const ipLimited = rateLimit(`login:${clientIp(request)}`, 25, 15 * 60 * 1000);
+  if (!ipLimited.ok) return tooManyRequests(ipLimited.retryAfter);
+
+  const email = String(body.email).trim().toLowerCase();
+  const emailLimited = rateLimit(`login-email:${email}`, 12, 15 * 60 * 1000);
+  if (!emailLimited.ok) return tooManyRequests(emailLimited.retryAfter);
+
+  const lock = await assertLoginNotLocked(email);
+  if (!lock.ok) {
+    return tooManyRequests(lock.retryAfter, lock.error);
+  }
+
   const loginClient = String(body.client || "website").toLowerCase();
   const logBase = {
     request,
@@ -47,14 +64,16 @@ export async function POST(request: NextRequest) {
     longitude: body.longitude ?? null
   };
 
-  const user = await verifyUser(body.email, body.password);
+  const user = await verifyUser(email, body.password);
   if (!user) {
+    const failed = await recordLoginFailure(email);
     await recordLoginEvent({
       ...logBase,
       success: false,
-      failureCode: "invalid_credentials",
-      failureMessage: "Invalid email or password"
+      failureCode: failed.locked ? "account_locked" : "invalid_credentials",
+      failureMessage: failed.locked ? failed.error : "Invalid email or password"
     });
+    if (failed.locked) return tooManyRequests(failed.retryAfter, failed.error);
     return fail("Invalid email or password", 401);
   }
 
@@ -64,6 +83,8 @@ export async function POST(request: NextRequest) {
   const primary = highestRole(typedRoles);
   const staff = isStaffRole(typedRoles);
   const isOpsLogin = loginClient === "staff" || loginClient === "pos";
+
+  await clearLoginFailures(email);
 
   // Login security is only for POS / staff ops domain — never for public website shoppers.
   if (staff && isOpsLogin && !isLoginSecurityExempt(typedRoles)) {

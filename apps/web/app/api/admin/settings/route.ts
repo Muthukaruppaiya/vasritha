@@ -58,7 +58,10 @@ const ALLOWED_FIELDS = [
   "staff_login_store_radius_m"
 ] as const;
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const { error } = await requirePermission(request, "settings:business");
+  if (error) return error;
+
   await ensureGstSchema();
   await ensureLoginSecuritySchema();
   const { ensureShippingSchema } = await import("../../../../lib/shipping");

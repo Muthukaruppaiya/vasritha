@@ -3,9 +3,10 @@ import { SignJWT, jwtVerify } from "jose";
 import { query, queryOne } from "./pool";
 import type { AppRole } from "../auth/rbac";
 import { ROLE_META } from "../auth/rbac";
+import { requireJwtSecret } from "../security";
+import { clearLoginFailures } from "../login-security";
 
-const JWT_SECRET = () =>
-  new TextEncoder().encode(process.env.JWT_SECRET || "vasritha-local-dev-secret-change-me");
+const JWT_SECRET = () => new TextEncoder().encode(requireJwtSecret());
 
 export type DbUser = {
   id: string;
@@ -47,14 +48,18 @@ export async function createUser(input: {
   return user;
 }
 
+/** Dummy hash so missing accounts take the same time as a real password check. */
+const DUMMY_PASSWORD_HASH =
+  "$2b$10$kNnAj3b5mb52YgViL6rLTuYYR2v0mfI2FCpxOn7.iuuR1mT.QBBL.";
+
 export async function verifyUser(email: string, password: string) {
   const user = await queryOne<DbUser>(
     `select id, email, full_name, phone, password_hash from users where email = $1`,
     [email.toLowerCase()]
   );
-  if (!user) return null;
-  const ok = await bcrypt.compare(password, user.password_hash);
-  if (!ok) return null;
+  const hash = user?.password_hash || DUMMY_PASSWORD_HASH;
+  const ok = await bcrypt.compare(password, hash);
+  if (!user || !ok) return null;
   return user;
 }
 
@@ -172,7 +177,7 @@ export async function updateStaffUser(input: {
   }
 
   if (input.password) {
-    if (input.password.length < 6) throw new Error("Password must be at least 6 characters");
+    if (input.password.length < 8) throw new Error("Password must be at least 8 characters");
     const passwordHash = await bcrypt.hash(input.password, 10);
     await query(
       `update users
@@ -180,6 +185,7 @@ export async function updateStaffUser(input: {
        where id = $1`,
       [input.userId, fullName, email, phone, shopId, passwordHash]
     );
+    await clearLoginFailures(email);
   } else {
     await query(
       `update users

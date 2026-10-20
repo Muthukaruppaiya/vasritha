@@ -426,7 +426,7 @@ export default function AdminUsersPage() {
           <input
             required={!editing}
             type="password"
-            minLength={6}
+            minLength={8}
             value={form.password}
             placeholder={editing ? "Leave blank to keep current" : undefined}
             onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}

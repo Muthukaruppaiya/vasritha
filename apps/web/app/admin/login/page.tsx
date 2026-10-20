@@ -113,10 +113,7 @@ export default function AdminLoginPage() {
       <section className="admin-login-card">
         <div className="eyebrow">{OPS_PLATFORM_NAME}</div>
         <h1>Sign in to operations</h1>
-        <p className="muted">
-          Staff / POS login only (not the public website). Sessions auto-lock after 5 minutes of
-          inactivity. Extra login security can be turned on/off in Settings while you test.
-        </p>
+        <p className="muted">Staff / POS sign-in. Sessions lock after 5 minutes of inactivity.</p>
 
         <form className="admin-form" onSubmit={onSubmit}>
           <label>

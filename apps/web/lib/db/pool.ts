@@ -55,6 +55,8 @@ export function getPool() {
       max,
       idleTimeoutMillis: isServerlessRuntime() ? 60_000 : 30_000,
       connectionTimeoutMillis: 8_000,
+      statement_timeout: 120_000,
+      options: "-c idle_in_transaction_session_timeout=30s",
       ssl: needsSsl ? { rejectUnauthorized: false } : undefined
     });
   }

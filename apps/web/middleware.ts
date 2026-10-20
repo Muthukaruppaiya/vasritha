@@ -7,6 +7,7 @@ import {
   isOpsPath,
   isPassthroughPath
 } from "./lib/hosts";
+import { applySecurityHeaders } from "./lib/security";
 
 /**
  * Domain split:
@@ -16,21 +17,23 @@ import {
  */
 export function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
-  if (isPassthroughPath(pathname)) return NextResponse.next();
+  if (isPassthroughPath(pathname)) {
+    return applySecurityHeaders(NextResponse.next());
+  }
 
   const hostHeader =
     request.headers.get("x-forwarded-host") || request.headers.get("host");
   const role = classifyHost(hostHeader);
 
   // Dev / unset hosts: keep single-origin behaviour
-  if (role === "local") return NextResponse.next();
+  if (role === "local") return applySecurityHeaders(NextResponse.next());
 
   if (role === "storefront") {
     if (isOpsOnlyPath(pathname)) {
       const target = new URL(`${getOpsPublicUrl()}${pathname}${search}`);
-      return NextResponse.redirect(target, 308);
+      return applySecurityHeaders(NextResponse.redirect(target, 308));
     }
-    return NextResponse.next();
+    return applySecurityHeaders(NextResponse.next());
   }
 
   if (role === "ops") {
@@ -38,25 +41,26 @@ export function middleware(request: NextRequest) {
     if (pathname === "/") {
       const url = request.nextUrl.clone();
       url.pathname = "/admin";
-      return NextResponse.rewrite(url);
+      return applySecurityHeaders(NextResponse.rewrite(url));
     }
 
     if (isOpsPath(pathname)) {
-      return NextResponse.next();
+      return applySecurityHeaders(NextResponse.next());
     }
 
     // Storefront pages on ops host → send shoppers to Vasritha
     const target = new URL(`${getStorefrontPublicUrl()}${pathname}${search}`);
-    return NextResponse.redirect(target, 308);
+    return applySecurityHeaders(NextResponse.redirect(target, 308));
   }
 
   // Unknown production host: refuse to mix surfaces
   if (isOpsOnlyPath(pathname)) {
-    return NextResponse.redirect(new URL(`${getOpsPublicUrl()}${pathname}${search}`), 308);
+    return applySecurityHeaders(
+      NextResponse.redirect(new URL(`${getOpsPublicUrl()}${pathname}${search}`), 308)
+    );
   }
-  return NextResponse.redirect(
-    new URL(`${getStorefrontPublicUrl()}${pathname}${search}`),
-    308
+  return applySecurityHeaders(
+    NextResponse.redirect(new URL(`${getStorefrontPublicUrl()}${pathname}${search}`), 308)
   );
 }
 

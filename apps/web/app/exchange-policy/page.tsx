@@ -5,7 +5,7 @@ import {
   buildPurchasePolicySummary,
   getExchangePolicySettings
 } from "../../lib/exchange-policy";
-import { formatPrice } from "../../lib/cart";
+import { formatMoney } from "../../lib/catalog";
 
 export const metadata: Metadata = {
   title: "Exchange Policy | Vasritha",
@@ -109,7 +109,7 @@ export default async function ExchangePolicyPage() {
             {settings.exchange_charge > 0 ? (
               <p>
                 An exchange handling charge of{" "}
-                <strong>{formatPrice(settings.exchange_charge)}</strong> may apply (confirmed by the
+                <strong>{formatMoney(settings.exchange_charge)}</strong> may apply (confirmed by the
                 boutique when your request is reviewed).
               </p>
             ) : (

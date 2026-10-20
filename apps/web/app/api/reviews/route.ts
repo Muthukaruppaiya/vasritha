@@ -8,6 +8,41 @@ import { sendMail } from "../../../lib/mail";
 const MAX_BYTES = 4 * 1024 * 1024;
 const ALLOWED = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
+let reviewsSchemaReady: Promise<void> | null = null;
+
+async function ensureReviewsSchema() {
+  if (!reviewsSchemaReady) {
+    reviewsSchemaReady = (async () => {
+      await query(`
+        create table if not exists public.reviews (
+          id uuid primary key default gen_random_uuid(),
+          product_id uuid,
+          customer_id uuid,
+          customer_name text not null,
+          reviewer_email text,
+          rating integer not null,
+          title text,
+          body text not null,
+          image_path text,
+          is_featured boolean not null default false,
+          is_approved boolean not null default false,
+          created_at timestamptz not null default now()
+        )
+      `);
+      await query(`
+        alter table public.reviews
+          add column if not exists reviewer_email text,
+          add column if not exists title text,
+          add column if not exists image_path text
+      `);
+    })().catch((error) => {
+      reviewsSchemaReady = null;
+      throw error;
+    });
+  }
+  await reviewsSchemaReady;
+}
+
 async function saveReviewImage(dataUrl: string) {
   const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/.exec(dataUrl);
   if (!match) return { error: "Invalid image data" as const };
@@ -26,8 +61,13 @@ async function saveReviewImage(dataUrl: string) {
 }
 
 export async function GET(request: NextRequest) {
+  await ensureReviewsSchema();
   const { searchParams } = new URL(request.url);
-  const productId = searchParams.get("productId");
+  const rawProductId = searchParams.get("productId");
+  const productId =
+    rawProductId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawProductId)
+      ? rawProductId
+      : null;
   const admin = searchParams.get("admin") === "1";
 
   if (admin) {
@@ -67,6 +107,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  await ensureReviewsSchema();
   const { error, ctx } = await requireAuth(request);
   if (error || !ctx) return error;
 
@@ -202,6 +243,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  await ensureReviewsSchema();
   const { error, ctx } = await requirePermission(request, "cms:manage");
   if (error || !ctx) return error;
 
