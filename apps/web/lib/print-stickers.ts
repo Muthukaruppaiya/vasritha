@@ -498,8 +498,8 @@ function showLabelPreview(input: {
   tip.style.cssText =
     "padding:8px 16px;font-size:12px;color:#5c4030;background:#faf6f1;border-bottom:1px solid #eee;line-height:1.45;";
   tip.innerHTML =
-    `Crisp bitmap print · Paper <b>${input.pageW} × ${input.pageH} mm</b> · Scale <b>100%</b> · Margins <b>None</b> · ` +
-    "More settings → <b>Headers and footers OFF</b> (once). Printer Graphics → Dithering <b>None</b>.";
+    `Crisp bitmap print · Paper <b>${input.pageW} × ${input.pageH} mm</b> (one label row) · Scale <b>100% / Actual size</b> · Margins <b>None</b> · ` +
+    "Headers and footers <b>OFF</b>. If row 2+ drifts, set the printer to this same size and Gap/Mark feed — not extra form-feed between pages.";
 
   printBtn.addEventListener("click", () => printLabelRows(input.rows, input.pageW, input.pageH));
   downloadBtn.addEventListener("click", () => {
@@ -522,7 +522,10 @@ function showLabelPreview(input: {
 
 /**
  * Print PNG rows directly (not PDF). PDF re-encoding softens bars/text.
- * Turn Headers/footers off once in Chrome for this printer.
+ *
+ * Each row is one label (e.g. 102×25 mm). Extra CSS page-breaks / Chrome “fit”
+ * add ~0.5–2 mm of feed per row, so 1 row looks fine and 2+ rows drift.
+ * Keep one named page size, one break between rows, zero body gaps.
  */
 function printLabelRows(rows: HTMLCanvasElement[], pageW: number, pageH: number) {
   if (!rows.length) return;
@@ -532,7 +535,7 @@ function printLabelRows(rows: HTMLCanvasElement[], pageW: number, pageH: number)
   frame.id = "vasritha-label-print-frame";
   frame.title = " ";
   frame.style.cssText =
-    "position:fixed;left:12px;bottom:12px;width:520px;height:360px;border:1px solid #ccc;border-radius:8px;background:#fff;z-index:100001;box-shadow:0 8px 24px rgba(0,0,0,.2);";
+    "position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;";
   document.body.appendChild(frame);
 
   const doc = frame.contentDocument;
@@ -544,34 +547,55 @@ function printLabelRows(rows: HTMLCanvasElement[], pageW: number, pageH: number)
   }
 
   const pages = rows
-    .map((canvas) => `<div class="page"><img src="${canvas.toDataURL("image/png")}" alt="" /></div>`)
+    .map(
+      (canvas, i) =>
+        `<div class="page${i === rows.length - 1 ? " is-last" : ""}"><img src="${canvas.toDataURL("image/png")}" width="${canvas.width}" height="${canvas.height}" alt="" /></div>`
+    )
     .join("");
 
   doc.open();
   doc.write(`<!DOCTYPE html>
 <html><head><meta charset="utf-8" /><title>&nbsp;</title>
 <style>
+  @page label {
+    size: ${pageW}mm ${pageH}mm;
+    margin: 0;
+  }
   @page { size: ${pageW}mm ${pageH}mm; margin: 0; }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body {
+    margin: 0;
+    padding: 0;
+    width: ${pageW}mm;
     background: #fff;
+    font-size: 0;
+    line-height: 0;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
-    color-adjust: exact;
   }
   .page {
+    page: label;
+    box-sizing: border-box;
     width: ${pageW}mm;
     height: ${pageH}mm;
+    margin: 0;
+    padding: 0;
     overflow: hidden;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  /* One break BETWEEN rows only — not also on the last page (that extra
+     form-feed is what walks later labels off the sticker). */
+  .page:not(.is-last) {
     page-break-after: always;
     break-after: page;
   }
-  .page:last-child { page-break-after: auto; break-after: auto; }
   img {
     display: block;
     width: ${pageW}mm;
     height: ${pageH}mm;
     max-width: none;
+    max-height: none;
+    border: 0;
     image-rendering: pixelated;
     image-rendering: crisp-edges;
     -webkit-print-color-adjust: exact;
