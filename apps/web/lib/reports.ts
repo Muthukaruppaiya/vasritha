@@ -9,7 +9,7 @@ import type { ReportType } from "./report-catalog";
 import { ensureSuppliersSchema } from "./suppliers";
 
 export type { ReportType };
-export { REPORT_CATALOG } from "./report-catalog";
+export { REPORT_CATALOG, catalogForBilling } from "./report-catalog";
 
 const LOW_STOCK = 10;
 
@@ -62,6 +62,8 @@ export type ReportFilters = {
   order_status?: string;
   payment_status?: string;
   stock_status?: "all" | "low" | "out" | "in";
+  /** Limit to bills created by this user (billing staff = own login). */
+  cashierUserId?: string | null;
   page?: number;
   pageSize?: number;
   sort?: string;
@@ -163,12 +165,17 @@ export async function buildSalesReport(filters: ReportFilters = {}): Promise<Rep
       )`
     );
   }
+  if (filters.cashierUserId) {
+    params.push(filters.cashierUserId);
+    where.push(`o.created_by = $${params.length}::uuid`);
+  }
 
   const rows = await query<{
     order_id: string;
     order_number: string;
     created_at: string;
     customer_name: string | null;
+    salesman: string | null;
     subtotal: string;
     discount_amount: string;
     tax_amount: string;
@@ -183,6 +190,7 @@ export async function buildSalesReport(filters: ReportFilters = {}): Promise<Rep
     `select o.id as order_id, o.order_number, o.created_at, o.subtotal, o.discount_amount, o.tax_amount,
             o.total_amount, o.payment_status, coalesce(o.status::text,'') as status,
             coalesce(nullif(o.pos_customer_name,''), c.full_name, 'Walk-in') as customer_name,
+            coalesce(u.full_name, u.email, '—') as salesman,
             coalesce((select sum(p.amount) from payments p where p.order_id = o.id and p.status = 'paid'),0)::text as paid_sum,
             (select p.provider from payments p where p.order_id = o.id and p.status = 'paid' order by p.created_at desc limit 1) as provider,
             (select string_agg(distinct coalesce(pr.name, oi.product_name), ', ')
@@ -191,6 +199,7 @@ export async function buildSalesReport(filters: ReportFilters = {}): Promise<Rep
             coalesce((select sum(oi.quantity) from order_items oi where oi.order_id = o.id),0)::text as quantity
      from orders o
      left join customers c on c.id = o.customer_id
+     left join users u on u.id = o.created_by
      where ${where.join(" and ")}
      order by o.created_at desc
      limit 2000`,
@@ -207,6 +216,7 @@ export async function buildSalesReport(filters: ReportFilters = {}): Promise<Rep
       date: r.created_at,
       invoice: r.order_number,
       customer: r.customer_name,
+      salesman: r.salesman || "—",
       products: r.products || "—",
       quantity: Number(r.quantity),
       gross_amount: gross,
@@ -238,6 +248,7 @@ export async function buildSalesReport(filters: ReportFilters = {}): Promise<Rep
       { key: "date", label: "Date", format: "date" },
       { key: "invoice", label: "Invoice / Order" },
       { key: "customer", label: "Customer" },
+      { key: "salesman", label: "Salesman" },
       { key: "products", label: "Products" },
       { key: "quantity", label: "Qty", format: "number" },
       { key: "gross_amount", label: "Gross", format: "money" },
@@ -1403,6 +1414,226 @@ export async function buildSupplierOutstandingReport(
   );
 }
 
+/** Sales by cashier / salesman (POS created_by). Billing staff sees only their login. */
+export async function buildSalesmanReport(filters: ReportFilters = {}): Promise<ReportResult> {
+  const range = defaultRange(filters.from, filters.to);
+  const { page, pageSize } = clampPage(filters.page, filters.pageSize);
+  const params: unknown[] = [range.from, range.to];
+  const where = [
+    `o.created_at::date between $1::date and $2::date`,
+    `coalesce(o.status::text,'') not in ('cancelled')`
+  ];
+  if (filters.cashierUserId) {
+    params.push(filters.cashierUserId);
+    where.push(`o.created_by = $${params.length}::uuid`);
+  }
+  if (filters.q?.trim()) {
+    params.push(`%${filters.q.trim()}%`);
+    where.push(
+      `(coalesce(u.full_name,'') ilike $${params.length} or coalesce(u.email,'') ilike $${params.length})`
+    );
+  }
+
+  const rows = await query<{
+    salesman: string | null;
+    salesman_code: string | null;
+    bills: string;
+    items_sold: string;
+    sales_total: string;
+    paid_total: string;
+    cash_total: string;
+    upi_total: string;
+    card_total: string;
+    other_total: string;
+    due_total: string;
+  }>(
+    `select coalesce(u.full_name, u.email, 'Unassigned') as salesman,
+            u.email as salesman_code,
+            count(o.id)::text as bills,
+            coalesce(sum((
+              select coalesce(sum(oi.quantity),0) from order_items oi where oi.order_id = o.id
+            )),0)::text as items_sold,
+            coalesce(sum(o.total_amount),0)::text as sales_total,
+            coalesce(sum((
+              select coalesce(sum(p.amount),0) from payments p
+              where p.order_id = o.id and p.status = 'paid'
+            )),0)::text as paid_total,
+            coalesce(sum((
+              select coalesce(sum(p.amount),0) from payments p
+              where p.order_id = o.id and p.status = 'paid'
+                and lower(coalesce(p.provider,'')) in ('cash','pos_cash')
+            )),0)::text as cash_total,
+            coalesce(sum((
+              select coalesce(sum(p.amount),0) from payments p
+              where p.order_id = o.id and p.status = 'paid'
+                and lower(coalesce(p.provider,'')) like '%upi%'
+            )),0)::text as upi_total,
+            coalesce(sum((
+              select coalesce(sum(p.amount),0) from payments p
+              where p.order_id = o.id and p.status = 'paid'
+                and lower(coalesce(p.provider,'')) like '%card%'
+            )),0)::text as card_total,
+            coalesce(sum((
+              select coalesce(sum(p.amount),0) from payments p
+              where p.order_id = o.id and p.status = 'paid'
+                and lower(coalesce(p.provider,'')) not in ('cash','pos_cash')
+                and lower(coalesce(p.provider,'')) not like '%upi%'
+                and lower(coalesce(p.provider,'')) not like '%card%'
+            )),0)::text as other_total,
+            coalesce(sum(greatest(o.total_amount - (
+              select coalesce(sum(p.amount),0) from payments p
+              where p.order_id = o.id and p.status = 'paid'
+            ), 0)),0)::text as due_total
+     from orders o
+     left join users u on u.id = o.created_by
+     where ${where.join(" and ")}
+     group by o.created_by, u.full_name, u.email
+     order by coalesce(sum(o.total_amount),0) desc
+     limit 500`,
+    params
+  );
+
+  const mapped = rows.map((r) => ({
+    salesman: r.salesman || "Unassigned",
+    login: r.salesman_code || "—",
+    bills: Number(r.bills),
+    items_sold: Number(r.items_sold),
+    sales_total: round2(Number(r.sales_total)),
+    paid_total: round2(Number(r.paid_total)),
+    cash_total: round2(Number(r.cash_total)),
+    upi_total: round2(Number(r.upi_total)),
+    card_total: round2(Number(r.card_total)),
+    other_total: round2(Number(r.other_total)),
+    due_total: round2(Number(r.due_total))
+  }));
+
+  return paginateResult(
+    "salesman",
+    filters.cashierUserId ? "My sales report" : "Sales by salesman",
+    range,
+    [
+      { key: "salesman", label: "Salesman" },
+      { key: "login", label: "Login" },
+      { key: "bills", label: "Bills", format: "number" },
+      { key: "items_sold", label: "Items", format: "number" },
+      { key: "sales_total", label: "Sales total", format: "money" },
+      { key: "paid_total", label: "Collected", format: "money" },
+      { key: "cash_total", label: "Cash", format: "money" },
+      { key: "upi_total", label: "UPI", format: "money" },
+      { key: "card_total", label: "Card", format: "money" },
+      { key: "other_total", label: "Other", format: "money" },
+      { key: "due_total", label: "Credit due", format: "money" }
+    ],
+    mapped,
+    {
+      salesmen: mapped.length,
+      bills: mapped.reduce((s, r) => s + r.bills, 0),
+      sales_total: round2(mapped.reduce((s, r) => s + r.sales_total, 0)),
+      paid_total: round2(mapped.reduce((s, r) => s + r.paid_total, 0)),
+      due_total: round2(mapped.reduce((s, r) => s + r.due_total, 0))
+    },
+    page,
+    pageSize,
+    {
+      notes: [
+        "Grouped by the staff login that created the POS / invoice (created_by).",
+        filters.cashierUserId
+          ? "Showing only bills billed on this login."
+          : "Managers see every salesman. Billing staff see only their own bills."
+      ]
+    }
+  );
+}
+
+/** On-hand stock valued at purchase cost and selling price. */
+export async function buildStockValueReport(filters: ReportFilters = {}): Promise<ReportResult> {
+  const { page, pageSize } = clampPage(filters.page, filters.pageSize);
+  const params: unknown[] = [];
+  const where = [`1=1`];
+  if (filters.q?.trim() || filters.product?.trim()) {
+    params.push(`%${(filters.q || filters.product || "").trim()}%`);
+    where.push(
+      `(p.name ilike $${params.length} or coalesce(pv.sku,'') ilike $${params.length} or coalesce(p.slug,'') ilike $${params.length})`
+    );
+  }
+  if (filters.category?.trim()) {
+    params.push(`%${filters.category.trim()}%`);
+    where.push(`coalesce(c.name,'') ilike $${params.length}`);
+  }
+  if (filters.stock_status === "low") {
+    where.push(`pv.stock_quantity > 0 and pv.stock_quantity <= ${LOW_STOCK}`);
+  } else if (filters.stock_status === "out") {
+    where.push(`pv.stock_quantity <= 0`);
+  } else if (filters.stock_status === "in") {
+    where.push(`pv.stock_quantity > 0`);
+  }
+
+  const rows = await query<{
+    product_name: string;
+    sku: string | null;
+    category_name: string | null;
+    stock_quantity: number;
+    selling_price: string;
+    purchase_price: string;
+  }>(
+    `select p.name as product_name, pv.sku, c.name as category_name,
+            pv.stock_quantity,
+            coalesce(pv.price, p.price, 0)::text as selling_price,
+            coalesce(p.purchase_price, 0)::text as purchase_price
+     from product_variants pv
+     join products p on p.id = pv.product_id
+     left join categories c on c.id = p.category_id
+     where ${where.join(" and ")}
+     order by p.name asc
+     limit 2000`,
+    params
+  );
+
+  const mapped = rows.map((r) => {
+    const qty = Number(r.stock_quantity || 0);
+    const sell = Number(r.selling_price || 0);
+    const cost = Number(r.purchase_price || 0);
+    return {
+      product: r.product_name,
+      category: r.category_name || "—",
+      current_stock: qty,
+      purchase_price: round2(cost),
+      selling_price: round2(sell),
+      cost_value: round2(qty * cost),
+      selling_value: round2(qty * sell)
+    };
+  });
+
+  return paginateResult(
+    "stock_value",
+    "Stock value report",
+    { from: null, to: null },
+    [
+      { key: "product", label: "Product" },
+      { key: "category", label: "Category" },
+      { key: "current_stock", label: "Qty", format: "number" },
+      { key: "purchase_price", label: "Purchase price", format: "money" },
+      { key: "selling_price", label: "Selling price", format: "money" },
+      { key: "cost_value", label: "Cost value", format: "money" },
+      { key: "selling_value", label: "Selling value", format: "money" }
+    ],
+    mapped,
+    {
+      skus: mapped.length,
+      current_stock: mapped.reduce((s, r) => s + r.current_stock, 0),
+      cost_value: round2(mapped.reduce((s, r) => s + r.cost_value, 0)),
+      selling_value: round2(mapped.reduce((s, r) => s + r.selling_value, 0))
+    },
+    page,
+    pageSize,
+    {
+      notes: [
+        "Cost value = qty × purchase price. Selling value = qty × selling price."
+      ]
+    }
+  );
+}
+
 export async function runReport(type: string, filters: ReportFilters = {}): Promise<ReportResult> {
   switch (type) {
     case "sales":
@@ -1423,6 +1654,10 @@ export async function runReport(type: string, filters: ReportFilters = {}): Prom
       return buildSupplierReport(filters);
     case "inventory":
       return buildInventoryReport(filters);
+    case "stock_value":
+      return buildStockValueReport(filters);
+    case "salesman":
+      return buildSalesmanReport(filters);
     case "returns":
       return buildReturnsReport(filters);
     case "orders":
@@ -1435,7 +1670,7 @@ export async function runReport(type: string, filters: ReportFilters = {}): Prom
       return buildSupplierOutstandingReport(filters);
     default:
       throw new Error(
-        "Unknown report type. Use sales|purchases|product_sales|category_sales|payments|expenses|customers|suppliers|inventory|returns|orders|profit|customer_outstanding|supplier_outstanding"
+        "Unknown report type. Use sales|purchases|product_sales|category_sales|payments|expenses|customers|suppliers|inventory|stock_value|salesman|returns|orders|profit|customer_outstanding|supplier_outstanding"
       );
   }
 }

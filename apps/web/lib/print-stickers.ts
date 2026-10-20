@@ -231,9 +231,9 @@ function drawSideSlug(
   const raw = text.trim();
   if (!raw) return;
   ctx.save();
-  // Bold + slightly larger so thermal / binarize does not erase thin rotated strokes.
-  const drawSize = Math.max(sizeDots, Math.round(DOTS_PER_MM * 0.7));
-  ctx.font = `700 ${drawSize}px Arial, Helvetica, sans-serif`;
+  // Normal weight, larger size — only the side slug is oversized vs other label text.
+  const drawSize = Math.max(sizeDots, Math.round(DOTS_PER_MM * 1.05));
+  ctx.font = `400 ${drawSize}px Arial, Helvetica, sans-serif`;
   ctx.fillStyle = "#000000";
   ctx.textAlign = "center";
   // After -90° rotate, local +Y maps into the label (right). "top" keeps ink inside.
@@ -244,9 +244,7 @@ function drawSideSlug(
   const leftInset = Math.round(DOTS_PER_MM * 3.2);
   ctx.translate(x0 + leftInset, labelH / 2);
   ctx.rotate(-Math.PI / 2);
-  // Double-strike for solid black on 203 dpi printers.
   ctx.fillText(label, 0, 0);
-  ctx.fillText(label, 0, 1);
   ctx.restore();
 }
 
@@ -288,12 +286,13 @@ function renderRowCanvas(spec: LayoutSpec, cards: LabelCard[]) {
   // 3-up is tighter; 2-up can use more room.
   // Extra left pad reserves a column for the sideways slug (avoids corner clip on print).
   const tight = spec.cols >= 3;
-  const slugCol = Math.round(DOTS_PER_MM * (tight ? 4.2 : 4.5));
+  const slugCol = Math.round(DOTS_PER_MM * (tight ? 4.8 : 5.2));
   const sidePad = slugCol + (tight ? 8 : 10);
   const pad = tight ? 7 : 9;
   const textPt = tight ? 6.5 : 7.5;
   const pricePt = tight ? 7.5 : 9;
-  const slugPt = tight ? 5.5 : 6;
+  // Side slug only — larger than brand/code text, normal (not bold) weight.
+  const slugPt = tight ? 8 : 9;
   const textDots = ptToDots(textPt);
   const priceDots = ptToDots(pricePt);
   const slugDots = ptToDots(slugPt);

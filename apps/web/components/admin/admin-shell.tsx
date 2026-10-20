@@ -161,9 +161,11 @@ const navModules: NavModule[] = [
     children: [
       { label: "All reports", href: "/admin/reports", icon: ChartColumn },
       { label: "Sales", href: "/admin/reports/sales", icon: ShoppingBag },
+      { label: "Sales by salesman", href: "/admin/reports/salesman", icon: Users },
+      { label: "P&L", href: "/admin/reports/profit", icon: FileText },
+      { label: "Stock value", href: "/admin/reports/stock_value", icon: Warehouse },
       { label: "Purchases", href: "/admin/reports/purchases", icon: Truck },
       { label: "Inventory", href: "/admin/reports/inventory", icon: Warehouse },
-      { label: "Profit", href: "/admin/reports/profit", icon: FileText },
       { label: "Customer outstanding", href: "/admin/reports/customer_outstanding", icon: Users }
     ]
   },

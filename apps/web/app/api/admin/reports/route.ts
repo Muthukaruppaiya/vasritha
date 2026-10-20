@@ -1,5 +1,10 @@
 import { NextRequest } from "next/server";
 import { fail, ok, requireAnyPermission } from "../../../../lib/auth/api";
+import {
+  canAccessReportType,
+  isBillingOnlyStaff
+} from "../../../../lib/auth/rbac";
+import { catalogForBilling } from "../../../../lib/report-catalog";
 import { REPORT_CATALOG, runReport } from "../../../../lib/reports";
 import {
   attachmentHeaders,
@@ -25,8 +30,12 @@ function filtersFrom(searchParams: URLSearchParams) {
   };
 }
 
-async function loadFullReport(type: string, searchParams: URLSearchParams) {
-  const base = filtersFrom(searchParams);
+async function loadFullReport(
+  type: string,
+  searchParams: URLSearchParams,
+  cashierUserId?: string | null
+) {
+  const base = { ...filtersFrom(searchParams), cashierUserId };
   const probe = await runReport(type, { ...base, page: 1, pageSize: 200 });
   if (probe.pagination.total <= probe.rows.length) return probe;
   return runReport(type, {
@@ -37,7 +46,7 @@ async function loadFullReport(type: string, searchParams: URLSearchParams) {
 }
 
 export async function GET(request: NextRequest) {
-  const { error } = await requireAnyPermission(request, [
+  const { error, ctx } = await requireAnyPermission(request, [
     "reports:ops",
     "reports:finance",
     "exports:finance",
@@ -46,24 +55,30 @@ export async function GET(request: NextRequest) {
     "dashboard:all",
     "finance:read"
   ]);
-  if (error) return error;
+  if (error || !ctx) return error;
+
+  const billingOnly = isBillingOnlyStaff(ctx.roles);
+  const cashierUserId = billingOnly ? ctx.userId : null;
 
   const { searchParams } = new URL(request.url);
   const listOnly = searchParams.get("list") === "1";
   if (listOnly) {
-    return ok({ reports: REPORT_CATALOG });
+    return ok({ reports: billingOnly ? catalogForBilling() : REPORT_CATALOG });
   }
 
   const type = searchParams.get("type") || "";
   if (!type) {
     return fail("type is required (or use list=1)");
   }
+  if (!canAccessReportType(ctx.roles, type)) {
+    return fail("This report is not available for your role", 403);
+  }
 
   const format = (searchParams.get("format") || "").toLowerCase();
 
   try {
     if (format === "csv" || format === "xlsx" || format === "excel" || format === "pdf") {
-      const all = await loadFullReport(type, searchParams);
+      const all = await loadFullReport(type, searchParams, cashierUserId);
       const stamp = new Date().toISOString().slice(0, 10);
       const subtitle = [all.from && `From ${all.from}`, all.to && `To ${all.to}`]
         .filter(Boolean)
@@ -103,6 +118,7 @@ export async function GET(request: NextRequest) {
 
     const result = await runReport(type, {
       ...filtersFrom(searchParams),
+      cashierUserId,
       page: Number(searchParams.get("page") || 1),
       pageSize: Number(searchParams.get("pageSize") || 10)
     });

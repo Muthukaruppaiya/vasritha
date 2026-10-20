@@ -25,10 +25,11 @@ import {
   AdminPageHeader,
   AdminPanel
 } from "../../../../components/admin/admin-ui";
-import { formatDate, formatMoney, getAdminToken } from "../../../../lib/admin-api";
+import { formatDate, formatMoney, getAdminToken, getAdminUser } from "../../../../lib/admin-api";
 import { useAdminQuery } from "../../../../hooks/use-admin-query";
 import { getReportMeta } from "../../../../lib/report-catalog";
 import { OPS_PLATFORM_NAME } from "../../../../lib/platform";
+import { canAccessAdminPath, canAccessReportType, isAppRole } from "../../../../lib/auth/rbac";
 
 type Column = { key: string; label: string; format?: "money" | "date" | "number" | "text" };
 
@@ -60,7 +61,9 @@ function summaryLabel(key: string) {
 export default function ReportRunnerPage() {
   const params = useParams<{ type: string }>();
   const type = String(params.type || "");
+  const roles = (getAdminUser()?.roles || []).filter(isAppRole);
   const meta = getReportMeta(type);
+  const allowed = Boolean(meta && canAccessReportType(roles, type));
 
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -119,10 +122,17 @@ export default function ReportRunnerPage() {
 
   const { data, error, loading, reload } = useAdminQuery<ReportPayload>(path);
 
-  if (!meta) {
+  if (!meta || !allowed) {
     return (
       <div className="admin-stack">
-        <AdminPageHeader title="Report not found" description="Unknown report type." />
+        <AdminPageHeader
+          title={!meta ? "Report not found" : "Not available"}
+          description={
+            !meta
+              ? "Unknown report type."
+              : "This report is not part of the sales-person workspace."
+          }
+        />
         <Link href="/admin/reports" className="btn">
           Back to reports
         </Link>
@@ -130,14 +140,16 @@ export default function ReportRunnerPage() {
     );
   }
 
-  const showDates = type !== "inventory";
+  const showDates = type !== "inventory" && type !== "stock_value";
   const showCustomer = ["sales", "customers", "customer_outstanding", "orders"].includes(type);
-  const showProduct = ["sales", "product_sales", "inventory"].includes(type);
-  const showCategory = ["sales", "product_sales", "category_sales", "inventory"].includes(type);
+  const showProduct = ["sales", "product_sales", "inventory", "stock_value"].includes(type);
+  const showCategory = ["sales", "product_sales", "category_sales", "inventory", "stock_value"].includes(
+    type
+  );
   const showPayMethod = ["sales", "orders", "payments"].includes(type);
   const showOrderStatus = ["sales", "orders"].includes(type);
   const showPaymentStatus = ["sales", "orders"].includes(type);
-  const showStock = type === "inventory";
+  const showStock = type === "inventory" || type === "stock_value";
 
   const exportReport = async (format: "csv" | "xlsx" | "pdf") => {
     const p = new URLSearchParams({ type, format });
@@ -455,9 +467,11 @@ export default function ReportRunnerPage() {
         <p className="muted no-print">{data.notes.join(" · ")}</p>
       ) : null}
 
-      {data?.links?.length ? (
+      {data?.links?.filter((l) => canAccessAdminPath(roles, l.href)).length ? (
         <p className="no-print">
-          {data.links.map((l) => (
+          {data.links
+            .filter((l) => canAccessAdminPath(roles, l.href))
+            .map((l) => (
             <Link key={l.href} href={l.href} style={{ marginRight: 12 }}>
               {l.label} →
             </Link>

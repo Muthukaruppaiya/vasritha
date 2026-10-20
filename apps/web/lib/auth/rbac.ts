@@ -109,9 +109,9 @@ export const ROLE_META: Record<
     name: "Billing Staff",
     purpose: "Retail billing",
     typicalPermissions:
-      "Customer search, POS, invoice print/share, permitted return initiation",
+      "POS, own shift, store invoices, own sales reports, P&L, stock value",
     mvp: true,
-    restrictedFrom: "Tax setup, user roles, unrestricted stock adjustments"
+    restrictedFrom: "Catalogue, purchases, finance ledgers, other staff sales, system settings"
   },
   inventory_staff: {
     name: "Inventory Staff",
@@ -280,7 +280,8 @@ export const ROLE_PERMISSIONS: Record<AppRole, Permission[]> = {
     "pos:create",
     "invoices:print",
     "invoices:share",
-    "returns:initiate"
+    "returns:initiate",
+    "reports:ops"
   ],
 
   // Spec: products, purchase receipt, counts, transfers, damage, approved adjustments
@@ -383,8 +384,61 @@ export const ADMIN_NAV_PERMISSIONS: Record<string, Permission[]> = {
   "/admin/finance/expenses": ["finance:read", "finance:write", "reports:finance", "dashboard:finance"],
   "/admin/finance/cash-bank": ["finance:read", "finance:write", "reports:finance", "dashboard:finance"],
   "/admin/finance/reports": ["finance:read", "finance:write", "reports:finance", "exports:finance", "dashboard:finance"],
-  "/admin/reports": ["reports:ops", "reports:finance", "exports:finance", "dashboard:ops", "dashboard:finance", "dashboard:all", "finance:read"]
+  "/admin/reports": ["reports:ops", "reports:finance", "exports:finance", "dashboard:ops", "dashboard:finance", "dashboard:all", "finance:read"],
+  "/admin/reports/sales": ["reports:ops", "reports:finance", "dashboard:ops"],
+  "/admin/reports/profit": ["reports:ops", "reports:finance", "dashboard:ops", "finance:read"],
+  "/admin/reports/salesman": ["reports:ops", "reports:finance", "dashboard:ops"],
+  "/admin/reports/stock_value": ["reports:ops", "reports:finance", "dashboard:ops", "stock:operate"]
 };
+
+/** Paths a billing-only staff member may open (sales-person workspace). */
+export const BILLING_STAFF_PATHS = [
+  "/admin",
+  "/admin/billing",
+  "/admin/billing/shift",
+  "/admin/billing/dues",
+  "/admin/returns",
+  "/admin/invoices/store",
+  "/admin/customers",
+  "/admin/reports",
+  "/admin/reports/sales",
+  "/admin/reports/profit",
+  "/admin/reports/salesman",
+  "/admin/reports/stock_value"
+] as const;
+
+export const BILLING_REPORT_TYPES = [
+  "sales",
+  "profit",
+  "salesman",
+  "stock_value"
+] as const;
+
+/** True when the session is only billing staff (not also owner/manager). */
+export function isBillingOnlyStaff(roles: AppRole[]) {
+  const staff = roles.filter((role) => role !== "customer");
+  return staff.length > 0 && staff.every((role) => role === "billing_staff");
+}
+
+export function canAccessReportType(roles: AppRole[], type: string) {
+  if (
+    !hasAnyPermission(roles, [
+      "reports:ops",
+      "reports:finance",
+      "exports:finance",
+      "dashboard:ops",
+      "dashboard:finance",
+      "dashboard:all",
+      "finance:read"
+    ])
+  ) {
+    return false;
+  }
+  if (isBillingOnlyStaff(roles)) {
+    return (BILLING_REPORT_TYPES as readonly string[]).includes(type);
+  }
+  return true;
+}
 
 export function permissionsForRoles(roles: AppRole[]): Set<Permission> {
   const set = new Set<Permission>();
@@ -404,9 +458,16 @@ export function hasAnyPermission(roles: AppRole[], permissions: Permission[]) {
 }
 
 export function canAccessAdminPath(roles: AppRole[], href: string) {
+  if (isBillingOnlyStaff(roles)) {
+    return (BILLING_STAFF_PATHS as readonly string[]).includes(href);
+  }
   const required = ADMIN_NAV_PERMISSIONS[href];
-  if (!required?.length) return true;
-  return hasAnyPermission(roles, required);
+  if (required?.length) return hasAnyPermission(roles, required);
+  if (href.startsWith("/admin/reports/")) {
+    const type = href.slice("/admin/reports/".length);
+    return canAccessReportType(roles, type);
+  }
+  return true;
 }
 
 export function isStaffRole(role: AppRole) {

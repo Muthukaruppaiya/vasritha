@@ -3,7 +3,8 @@ export const REPORT_CATALOG = [
     type: "sales",
     label: "Sales report",
     description: "Invoice-level sales with tax, discount, payments and status.",
-    group: "Sales"
+    group: "Sales",
+    billing: true
   },
   {
     type: "orders",
@@ -28,6 +29,13 @@ export const REPORT_CATALOG = [
     label: "Payment report",
     description: "Collections by cash / UPI / card / online with refunds.",
     group: "Sales"
+  },
+  {
+    type: "salesman",
+    label: "Sales by salesman",
+    description: "Bills and collections grouped by the cashier who billed them.",
+    group: "Sales",
+    billing: true
   },
   {
     type: "customers",
@@ -69,16 +77,23 @@ export const REPORT_CATALOG = [
   },
   {
     type: "profit",
-    label: "Profit report",
+    label: "P&L report",
     description: "Sales, discounts, returns, purchases, expenses and net profit.",
     group: "Finance",
-    reuseHref: "/admin/finance/pnl"
+    billing: true
   },
   {
     type: "inventory",
     label: "Inventory report",
     description: "Current stock, value at selling price, low / out of stock.",
     group: "Catalogue"
+  },
+  {
+    type: "stock_value",
+    label: "Stock value report",
+    description: "On-hand quantity valued at purchase cost and selling price.",
+    group: "Catalogue",
+    billing: true
   },
   {
     type: "returns",
@@ -92,4 +107,8 @@ export type ReportType = (typeof REPORT_CATALOG)[number]["type"];
 
 export function getReportMeta(type: string) {
   return REPORT_CATALOG.find((r) => r.type === type) || null;
+}
+
+export function catalogForBilling() {
+  return REPORT_CATALOG.filter((r) => "billing" in r && Boolean(r.billing));
 }

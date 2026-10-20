@@ -22,7 +22,7 @@
   --font-hi:"Noto Sans Devanagari",sans-serif;
   --font-pa:"Noto Sans Gurmukhi",sans-serif;
   --font-gu:"Noto Sans Gujarati",sans-serif;
-  --font-price:var(--font-heading),serif;
+  --font-price:var(--font-body),sans-serif;
   /* Ops UI density */
   --admin-bg:#f4efe8;
   --admin-surface:#ffffff;
@@ -11733,8 +11733,8 @@ body:has(.pos-screen) .admin-topbar-title {
   box-shadow: 0 6px 16px rgb(0 0 0 / 6%);
   font: 400 15px/1.3 var(--bill-font);
   font-weight: 400;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
   -webkit-font-smoothing: none;
   -moz-osx-font-smoothing: unset;
   font-smooth: never;
@@ -11931,7 +11931,7 @@ body:has(.pos-screen) .admin-topbar-title {
 }
 .invoice-bill-table th.is-amt,
 .invoice-bill-table td.is-amt {
-  width: 52px;
+  width: 64px;
   padding-left: 6px;
   padding-right: 0;
   text-align: right;
@@ -13413,8 +13413,8 @@ body:has(.pos-screen) .admin-topbar-title {
     color: #000 !important;
     font: 400 15px/1.3 "Courier New", Courier, monospace !important;
     font-weight: 400 !important;
-    letter-spacing: 0.04em !important;
-    text-transform: uppercase !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
     -webkit-font-smoothing: none !important;
     font-smooth: never !important;
     text-rendering: geometricPrecision !important;
@@ -13434,8 +13434,8 @@ body:has(.pos-screen) .admin-topbar-title {
     font-family: inherit !important;
     font-weight: 400 !important;
     font-style: normal !important;
-    letter-spacing: inherit !important;
-    text-transform: uppercase !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
     text-shadow: none !important;
     -webkit-font-smoothing: none !important;
     print-color-adjust: exact !important;

@@ -423,12 +423,6 @@ function BarcodesPageInner() {
               onPageChange={setPage}
               noun="barcodes"
             />
-            <AdminPagination
-              page={page}
-              total={rows.length}
-              onPageChange={setPage}
-              noun="barcodes"
-            />
           </div>
         )}
       </AdminPanel>

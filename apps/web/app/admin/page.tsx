@@ -29,9 +29,10 @@ import {
   AdminTrend,
   statusTone
 } from "../../components/admin/admin-ui";
-import { formatMoney, formatDate } from "../../lib/admin-api";
+import { formatMoney, formatDate, getAdminUser } from "../../lib/admin-api";
 import { useAdminQuery } from "../../hooks/use-admin-query";
 import { CATEGORY_LABELS } from "../../lib/finance-labels";
+import { canAccessAdminPath, isAppRole } from "../../lib/auth/rbac";
 
 type DashboardData = {
   period: { from: string; to: string; key: string };
@@ -164,8 +165,13 @@ type DashboardData = {
   };
 };
 
-const quickLinks = [
+const allQuickLinks = [
   { href: "/admin/billing", label: "Store POS", icon: IndianRupee },
+  { href: "/admin/billing/shift", label: "Shift handover", icon: Activity },
+  { href: "/admin/reports/sales", label: "Sales report", icon: LineChart },
+  { href: "/admin/reports/salesman", label: "My sales", icon: PieChart },
+  { href: "/admin/reports/profit", label: "P&L report", icon: Wallet },
+  { href: "/admin/reports/stock_value", label: "Stock value", icon: Tags },
   { href: "/admin/orders", label: "Online orders", icon: ShoppingBag },
   { href: "/admin/products", label: "Products", icon: Package },
   { href: "/admin/inventory", label: "Inventory", icon: Tags },
@@ -211,6 +217,11 @@ function Metric({
 }
 
 export default function AdminDashboardPage() {
+  const roles = (getAdminUser()?.roles || []).filter(isAppRole);
+  const quickLinks = useMemo(
+    () => allQuickLinks.filter((item) => canAccessAdminPath(roles, item.href)),
+    [roles]
+  );
   const path = useMemo(() => {
     const params = new URLSearchParams({ period: "this_month" });
     return `/api/admin/dashboard?${params.toString()}`;
