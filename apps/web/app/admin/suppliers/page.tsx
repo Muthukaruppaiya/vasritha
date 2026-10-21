@@ -13,7 +13,7 @@ import {
 import { AdminFormModal } from "../../../components/admin/admin-form-modal";
 import { adminFetch } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
-import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
+import { AdminPagination, useAdminPageSize } from "../../../components/admin/admin-pagination";
 import {
   firstError,
   normalizePhone10,
@@ -80,6 +80,7 @@ export default function AdminSuppliersPage() {
   const [message, setMessage] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useAdminPageSize();
 
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -105,12 +106,12 @@ export default function AdminSuppliersPage() {
 
   useEffect(() => {
     setPage(0);
-  }, [search]);
+  }, [search, pageSize]);
 
   const paged = useMemo(() => {
-    const start = page * DEFAULT_PAGE_SIZE;
-    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
-  }, [rows, page]);
+    const start = page * pageSize;
+    return rows.slice(start, start + pageSize);
+  }, [rows, page, pageSize]);
 
   const openCreate = () => {
     setEditing(null);
@@ -338,6 +339,8 @@ export default function AdminSuppliersPage() {
               page={page}
               total={rows.length}
               onPageChange={setPage}
+              pageSize={pageSize}
+              onPageSizeChange={setPageSize}
               noun="suppliers"
             />
           </div>

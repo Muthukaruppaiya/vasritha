@@ -13,7 +13,7 @@ import {
 import { AdminFormModal } from "../../../components/admin/admin-form-modal";
 import { adminFetch, formatDate } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
-import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
+import { AdminPagination, useAdminPageSize } from "../../../components/admin/admin-pagination";
 import {
   firstError,
   normalizePhone10,
@@ -80,6 +80,7 @@ export default function AdminUsersPage() {
   const [actionError, setActionError] = useState("");
   const [form, setForm] = useState(blankForm);
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useAdminPageSize();
 
   const path = useMemo(
     () => `/api/admin/users${submitted ? `?q=${encodeURIComponent(submitted)}` : ""}`,
@@ -93,12 +94,12 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     setPage(0);
-  }, [submitted]);
+  }, [submitted, pageSize]);
 
   const paged = useMemo(() => {
-    const start = page * DEFAULT_PAGE_SIZE;
-    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
-  }, [rows, page]);
+    const start = page * pageSize;
+    return rows.slice(start, start + pageSize);
+  }, [rows, page, pageSize]);
 
   const staffRoles = (roles || []).filter((role) => role.code !== "customer");
   const activeShops = (shops || []).filter((shop) => shop.is_active);
@@ -373,7 +374,14 @@ export default function AdminUsersPage() {
                 })}
               </tbody>
             </table>
-            <AdminPagination page={page} total={rows.length} onPageChange={setPage} noun="users" />
+            <AdminPagination
+              page={page}
+              pageSize={pageSize}
+              total={rows.length}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+              noun="users"
+            />
           </div>
         )}
       </AdminPanel>

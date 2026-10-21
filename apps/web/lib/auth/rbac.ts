@@ -364,6 +364,7 @@ export const ADMIN_NAV_PERMISSIONS: Record<string, Permission[]> = {
   "/admin/inventory/grn": ["stock:operate", "stock:approve", "purchases:operate"],
   "/admin/inventory/grn/history": ["stock:operate", "stock:approve", "purchases:operate"],
   "/admin/inventory/approvals": ["stock:operate", "stock:approve", "purchases:operate"],
+  "/admin/inventory/ledger": ["stock:operate", "stock:approve", "purchases:operate"],
   "/admin/barcodes": ["products:manage", "products:read", "stock:operate", "purchases:operate"],
   "/admin/suppliers": ["purchases:operate", "settings:business", "stock:operate"],
   "/admin/coupons": ["coupons:manage", "pricing:manage", "pricing:limited"],

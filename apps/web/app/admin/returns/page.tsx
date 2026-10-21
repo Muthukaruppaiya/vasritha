@@ -13,7 +13,7 @@ import {
 } from "../../../components/admin/admin-ui";
 import { adminFetch, formatDate } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
-import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
+import { AdminPagination, useAdminPageSize } from "../../../components/admin/admin-pagination";
 
 type ReturnRow = {
   id: string;
@@ -49,13 +49,14 @@ const STATUS_ACTION: Record<
 export default function AdminReturnsPage() {
   const { data, error, loading, reload } = useAdminQuery<ReturnRow[]>("/api/admin/returns");
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useAdminPageSize();
 
   const rows = data || [];
 
   const paged = useMemo(() => {
-    const start = page * DEFAULT_PAGE_SIZE;
-    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
-  }, [rows, page]);
+    const start = page * pageSize;
+    return rows.slice(start, start + pageSize);
+  }, [rows, page, pageSize]);
 
   const update = async (returnId: string, status: string) => {
     const result = await adminFetch("/api/admin/returns", {
@@ -150,6 +151,8 @@ export default function AdminReturnsPage() {
               page={page}
               total={rows.length}
               onPageChange={setPage}
+              pageSize={pageSize}
+              onPageSizeChange={setPageSize}
               noun="exchange requests"
             />
           </div>

@@ -111,6 +111,7 @@ const navModules: NavModule[] = [
       { label: "GRN entry", href: "/admin/inventory/grn", icon: ArrowDownToLine },
       { label: "GRN approvals", href: "/admin/inventory/approvals", icon: ClipboardCheck },
       { label: "GRN history", href: "/admin/inventory/grn/history", icon: History },
+      { label: "Stock ledger", href: "/admin/inventory/ledger", icon: BookOpen },
       { label: "Print barcodes", href: "/admin/barcodes", icon: Printer },
       { label: "Supplier Master", href: "/admin/suppliers", icon: Truck }
     ]
@@ -226,6 +227,7 @@ function resolveTopbarMeta(pathname: string, modules: NavModule[]) {
     { href: "/admin/inventory/grn/history", kicker: "Catalogue", title: "GRN history" },
     { href: "/admin/inventory/grn", kicker: "Catalogue", title: "GRN entry" },
     { href: "/admin/inventory/approvals", kicker: "Catalogue", title: "GRN approvals" },
+    { href: "/admin/inventory/ledger", kicker: "Catalogue", title: "Stock ledger" },
     { href: "/admin/billing/shift", kicker: "Sales", title: "Shift handover" },
     { href: "/admin/billing/dues", kicker: "Sales", title: "Credit dues" },
     { href: "/admin/login-log", kicker: "People", title: "Login log" }

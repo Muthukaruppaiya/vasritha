@@ -11,7 +11,7 @@ import {
   AdminPanel,
   statusTone
 } from "../../../../components/admin/admin-ui";
-import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../../components/admin/admin-pagination";
+import { AdminPagination, useAdminPageSize } from "../../../../components/admin/admin-pagination";
 import {
   CollectionReceipt,
   type CollectionReceiptData
@@ -69,6 +69,7 @@ export default function PosCreditDuesPage() {
   const [tick, setTick] = useState(0);
   const [receipt, setReceipt] = useState<CollectionReceiptData | null>(null);
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useAdminPageSize();
 
   const path = useMemo(() => {
     const params = new URLSearchParams();
@@ -83,12 +84,12 @@ export default function PosCreditDuesPage() {
 
   useEffect(() => {
     setPage(0);
-  }, [submittedQ]);
+  }, [submittedQ, pageSize]);
 
   const pagedCustomers = useMemo(() => {
-    const start = page * DEFAULT_PAGE_SIZE;
-    return customers.slice(start, start + DEFAULT_PAGE_SIZE);
-  }, [customers, page]);
+    const start = page * pageSize;
+    return customers.slice(start, start + pageSize);
+  }, [customers, page, pageSize]);
 
   useEffect(() => {
     if (!receipt) return;
@@ -329,6 +330,8 @@ export default function PosCreditDuesPage() {
             page={page}
             total={customers.length}
             onPageChange={setPage}
+            pageSize={pageSize}
+            onPageSizeChange={setPageSize}
             noun="customers"
           />
         ) : null}

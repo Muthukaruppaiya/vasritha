@@ -12,7 +12,7 @@ import {
 } from "../../../components/admin/admin-ui";
 import { formatDate, formatMoney } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
-import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
+import { AdminPagination, useAdminPageSize } from "../../../components/admin/admin-pagination";
 
 type CustomerChannel = "online" | "offline";
 
@@ -33,6 +33,7 @@ export default function AdminCustomersPage() {
   const [submitted, setSubmitted] = useState("");
   const [channelFilter, setChannelFilter] = useState<"all" | CustomerChannel>("all");
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useAdminPageSize();
 
   const path = useMemo(() => {
     const params = new URLSearchParams();
@@ -48,12 +49,12 @@ export default function AdminCustomersPage() {
 
   useEffect(() => {
     setPage(0);
-  }, [submitted, channelFilter]);
+  }, [submitted, channelFilter, pageSize]);
 
   const paged = useMemo(() => {
-    const start = page * DEFAULT_PAGE_SIZE;
-    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
-  }, [rows, page]);
+    const start = page * pageSize;
+    return rows.slice(start, start + pageSize);
+  }, [rows, page, pageSize]);
 
   return (
     <>
@@ -172,6 +173,8 @@ export default function AdminCustomersPage() {
               page={page}
               total={rows.length}
               onPageChange={setPage}
+              pageSize={pageSize}
+              onPageSizeChange={setPageSize}
               noun="customers"
             />
           </div>

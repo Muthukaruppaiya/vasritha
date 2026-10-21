@@ -11,7 +11,7 @@ import {
   AdminPanel,
   statusTone
 } from "../../../../components/admin/admin-ui";
-import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../../components/admin/admin-pagination";
+import { AdminPagination, useAdminPageSize } from "../../../../components/admin/admin-pagination";
 import { adminFetch, formatDate, formatMoney } from "../../../../lib/admin-api";
 import { useAdminQuery } from "../../../../hooks/use-admin-query";
 import { OPS_PLATFORM_NAME } from "../../../../lib/platform";
@@ -46,6 +46,7 @@ export default function FinancePayablesPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useAdminPageSize();
 
   const path = useMemo(() => {
     const params = new URLSearchParams();
@@ -61,12 +62,12 @@ export default function FinancePayablesPage() {
 
   useEffect(() => {
     setPage(0);
-  }, [from, to, submittedQ]);
+  }, [from, to, submittedQ, pageSize]);
 
   const pagedRows = useMemo(() => {
-    const start = page * DEFAULT_PAGE_SIZE;
-    return registerRows.slice(start, start + DEFAULT_PAGE_SIZE);
-  }, [registerRows, page]);
+    const start = page * pageSize;
+    return registerRows.slice(start, start + pageSize);
+  }, [registerRows, page, pageSize]);
 
   const markPaid = async (entryId: string) => {
     setBusyId(entryId);
@@ -206,6 +207,8 @@ export default function FinancePayablesPage() {
               page={page}
               total={registerRows.length}
               onPageChange={setPage}
+              pageSize={pageSize}
+              onPageSizeChange={setPageSize}
               noun="bills"
             />
           </div>

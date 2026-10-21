@@ -10,7 +10,7 @@ import {
   AdminPageHeader,
   AdminPanel
 } from "../../../../components/admin/admin-ui";
-import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../../components/admin/admin-pagination";
+import { AdminPagination, useAdminPageSize } from "../../../../components/admin/admin-pagination";
 import { AdminFormModal } from "../../../../components/admin/admin-form-modal";
 import { adminFetch, formatMoney } from "../../../../lib/admin-api";
 import { useAdminQuery } from "../../../../hooks/use-admin-query";
@@ -44,12 +44,13 @@ export default function FinanceCashBankPage() {
     notes: ""
   });
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useAdminPageSize();
 
   const rows = data || [];
   const pagedRows = useMemo(() => {
-    const start = page * DEFAULT_PAGE_SIZE;
-    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
-  }, [rows, page]);
+    const start = page * pageSize;
+    return rows.slice(start, start + pageSize);
+  }, [rows, page, pageSize]);
 
   const onSave = async (e: FormEvent) => {
     e.preventDefault();
@@ -139,6 +140,8 @@ export default function FinanceCashBankPage() {
               page={page}
               total={rows.length}
               onPageChange={setPage}
+              pageSize={pageSize}
+              onPageSizeChange={setPageSize}
               noun="wallets"
             />
           </div>

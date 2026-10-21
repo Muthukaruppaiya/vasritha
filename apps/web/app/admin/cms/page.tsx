@@ -10,7 +10,7 @@ import {
   AdminPageHeader,
   AdminPanel
 } from "../../../components/admin/admin-ui";
-import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
+import { AdminPagination, useAdminPageSize } from "../../../components/admin/admin-pagination";
 import { AdminFormModal } from "../../../components/admin/admin-form-modal";
 import { adminFetch, formatDate } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
@@ -91,12 +91,13 @@ export default function AdminCmsPage() {
   const [pageForm, setPageForm] = useState(blankPage);
   const [sectionForm, setSectionForm] = useState(blankSection);
   const [pagesPage, setPagesPage] = useState(0);
+  const [pageSize, setPageSize] = useAdminPageSize();
 
   const pageRows = pages.data || [];
   const pagedPageRows = useMemo(() => {
-    const start = pagesPage * DEFAULT_PAGE_SIZE;
-    return pageRows.slice(start, start + DEFAULT_PAGE_SIZE);
-  }, [pageRows, pagesPage]);
+    const start = pagesPage * pageSize;
+    return pageRows.slice(start, start + pageSize);
+  }, [pageRows, pagesPage, pageSize]);
 
   const createBanner = async (event: FormEvent) => {
     event.preventDefault();
@@ -289,6 +290,8 @@ export default function AdminCmsPage() {
                 page={pagesPage}
                 total={pageRows.length}
                 onPageChange={setPagesPage}
+                pageSize={pageSize}
+                onPageSizeChange={setPageSize}
                 noun="pages"
               />
             </div>

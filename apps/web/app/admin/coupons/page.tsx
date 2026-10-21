@@ -14,7 +14,7 @@ import {
 import { AdminFormModal } from "../../../components/admin/admin-form-modal";
 import { adminFetch, formatDate, formatMoney } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
-import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
+import { AdminPagination, useAdminPageSize } from "../../../components/admin/admin-pagination";
 
 type Coupon = {
   id: string;
@@ -55,13 +55,14 @@ export default function AdminCouponsPage() {
   const [formError, setFormError] = useState("");
   const [form, setForm] = useState(blankForm);
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useAdminPageSize();
 
   const rows = data || [];
 
   const paged = useMemo(() => {
-    const start = page * DEFAULT_PAGE_SIZE;
-    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
-  }, [rows, page]);
+    const start = page * pageSize;
+    return rows.slice(start, start + pageSize);
+  }, [rows, page, pageSize]);
 
   const openCreate = () => {
     setForm(blankForm());
@@ -191,7 +192,14 @@ export default function AdminCouponsPage() {
                 ))}
               </tbody>
             </table>
-            <AdminPagination page={page} total={rows.length} onPageChange={setPage} noun="coupons" />
+            <AdminPagination
+              page={page}
+              pageSize={pageSize}
+              total={rows.length}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+              noun="coupons"
+            />
           </div>
         )}
       </AdminPanel>

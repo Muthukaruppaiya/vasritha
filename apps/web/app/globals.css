@@ -7556,6 +7556,22 @@ body:has(.admin-login) .whatsapp-float {
   gap: 0.75rem;
   margin-top: 0.85rem;
 }
+.inv-page-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--admin-muted, #6b5b4f);
+}
+.inv-page-size select {
+  min-height: 32px;
+  padding: 2px 8px;
+  border: 1px solid var(--line, #e0d0c0);
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+  color: inherit;
+}
 .inv-label-type {
   display: inline-flex;
   align-items: center;
@@ -8097,6 +8113,20 @@ body:has(.admin-login) .whatsapp-float {
   margin: 0 0 4px;
   font-size: 0.84rem;
   line-height: 1.4;
+}
+.admin-link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.admin-link-btn:hover b,
+.admin-link-btn:focus-visible b {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 .inv-qty-in { color: #047857; font-weight: 700; }
 .inv-qty-out { color: #b91c1c; font-weight: 700; }

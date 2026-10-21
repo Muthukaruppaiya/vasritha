@@ -12,7 +12,7 @@ import {
   statusTone
 } from "./admin-ui";
 import { AdminFormModal } from "./admin-form-modal";
-import { AdminPagination, DEFAULT_PAGE_SIZE } from "./admin-pagination";
+import { AdminPagination, useAdminPageSize } from "./admin-pagination";
 import { adminFetch, formatDate, formatMoney } from "../../lib/admin-api";
 import { useAdminQuery } from "../../hooks/use-admin-query";
 import { CATEGORY_LABELS } from "../../lib/finance-labels";
@@ -91,6 +91,7 @@ export function FinancePaymentsPanel({
   const [q, setQ] = useState("");
   const [submittedQ, setSubmittedQ] = useState("");
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useAdminPageSize();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<FinanceEntry | null>(null);
   const [saving, setSaving] = useState(false);
@@ -118,12 +119,12 @@ export function FinancePaymentsPanel({
 
   useEffect(() => {
     setPage(0);
-  }, [from, to, status, submittedQ, direction]);
+  }, [from, to, status, submittedQ, direction, pageSize]);
 
   const pagedRows = useMemo(() => {
-    const start = page * DEFAULT_PAGE_SIZE;
-    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
-  }, [rows, page]);
+    const start = page * pageSize;
+    return rows.slice(start, start + pageSize);
+  }, [rows, page, pageSize]);
 
   const openCreate = () => {
     setEditing(null);
@@ -350,6 +351,8 @@ export function FinancePaymentsPanel({
               page={page}
               total={rows.length}
               onPageChange={setPage}
+              pageSize={pageSize}
+              onPageSizeChange={setPageSize}
               noun="payments"
             />
           </div>

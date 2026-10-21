@@ -11,7 +11,7 @@ import {
   AdminPanel,
   statusTone
 } from "./admin-ui";
-import { AdminPagination, DEFAULT_PAGE_SIZE } from "./admin-pagination";
+import { AdminPagination, useAdminPageSize } from "./admin-pagination";
 import { InvoiceBill, type InvoiceBillData } from "./invoice-bill";
 import { adminFetch, formatDate, formatMoney, getAdminUser } from "../../lib/admin-api";
 import { useAdminQuery } from "../../hooks/use-admin-query";
@@ -44,6 +44,7 @@ export function InvoiceDirectory({
   const [actionError, setActionError] = useState("");
 
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useAdminPageSize();
 
   const path = useMemo(() => {
     const params = new URLSearchParams();
@@ -51,10 +52,10 @@ export function InvoiceDirectory({
     if (channel === "pos") params.set("paymentStatus", "paid");
     const boundShopId = getAdminUser()?.shopId;
     if (boundShopId) params.set("shopId", boundShopId);
-    params.set("limit", String(DEFAULT_PAGE_SIZE));
-    params.set("offset", String(page * DEFAULT_PAGE_SIZE));
+    params.set("limit", String(pageSize));
+    params.set("offset", String(page * pageSize));
     return `/api/admin/orders?${params.toString()}`;
-  }, [channel, page]);
+  }, [channel, page, pageSize]);
 
   const { data, error, loading } = useAdminQuery<{
     items: InvoiceRow[];
@@ -63,7 +64,7 @@ export function InvoiceDirectory({
 
   useEffect(() => {
     setPage(0);
-  }, [channel, submitted]);
+  }, [channel, submitted, pageSize]);
 
   const rows = useMemo(() => {
     const list = data?.items || [];
@@ -211,6 +212,8 @@ export function InvoiceDirectory({
           total={data?.total || 0}
           page={page}
           onPageChange={setPage}
+          pageSize={pageSize}
+          onPageSizeChange={setPageSize}
           noun="invoices"
         />
       </AdminPanel>

@@ -18,7 +18,7 @@ import {
   AdminPageHeader,
   AdminPanel
 } from "../../../../components/admin/admin-ui";
-import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../../components/admin/admin-pagination";
+import { AdminPagination, useAdminPageSize } from "../../../../components/admin/admin-pagination";
 import {
   ShiftHandoverReceipt,
   type ShiftHandoverReceiptData
@@ -69,6 +69,7 @@ export default function AdminShiftHandoverPage() {
   const sessionShopId = getAdminUser()?.shopId || null;
   const me = getAdminUser();
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useAdminPageSize();
   const [openingFloat, setOpeningFloat] = useState("0");
   const [closingCash, setClosingCash] = useState("");
   const [handoverTo, setHandoverTo] = useState("");
@@ -80,11 +81,11 @@ export default function AdminShiftHandoverPage() {
 
   const listUrl = useMemo(() => {
     const params = new URLSearchParams();
-    params.set("limit", String(DEFAULT_PAGE_SIZE));
-    params.set("offset", String(page * DEFAULT_PAGE_SIZE));
+    params.set("limit", String(pageSize));
+    params.set("offset", String(page * pageSize));
     if (sessionShopId) params.set("shopId", sessionShopId);
     return `/api/admin/pos/shifts?${params.toString()}`;
-  }, [page, sessionShopId]);
+  }, [page, pageSize, sessionShopId]);
 
   const { data, loading, error: loadError, reload } = useAdminQuery<ShiftApi>(listUrl);
 
@@ -454,6 +455,8 @@ export default function AdminShiftHandoverPage() {
           page={page}
           total={data?.total || 0}
           onPageChange={setPage}
+          pageSize={pageSize}
+          onPageSizeChange={setPageSize}
           noun="shifts"
         />
       </AdminPanel>

@@ -9,7 +9,7 @@ export type ProductColour = {
   is_active: boolean;
 };
 
-const DEFAULT_COLOURS: Array<{ name: string; hex: string; sort: number }> = [
+const DEFAULT_COLOURS: Array<{ name: string; hex: string | null; sort: number }> = [
   { name: "Crimson Red", hex: "#B91C1C", sort: 10 },
   { name: "Blush Pink", hex: "#F9A8D4", sort: 20 },
   { name: "Ivory Cream", hex: "#FFF8E7", sort: 30 },
@@ -21,10 +21,36 @@ const DEFAULT_COLOURS: Array<{ name: string; hex: string; sort: number }> = [
   { name: "Black", hex: "#111827", sort: 90 },
   { name: "White", hex: "#F8FAFC", sort: 100 },
   { name: "Natural Wood", hex: "#A16207", sort: 110 },
-  { name: "Antique Brass", hex: "#B45309", sort: 120 }
+  { name: "Antique Brass", hex: "#B45309", sort: 120 },
+  { name: "Multi", hex: null, sort: 5 }
 ];
 
+/** Colours that must exist even on databases seeded before they were added. */
+const REQUIRED_COLOURS: Array<{ name: string; sort: number }> = [{ name: "Multi", sort: 5 }];
+
 let coloursSchemaReady: Promise<void> | null = null;
+let requiredColoursReady: Promise<void> | null = null;
+
+function ensureRequiredColours() {
+  if (!requiredColoursReady) {
+    requiredColoursReady = (async () => {
+      for (const colour of REQUIRED_COLOURS) {
+        await query(
+          `insert into public.product_colours (name, hex, sort_order)
+           select $1, null, $2
+           where not exists (
+             select 1 from public.product_colours where lower(name) = lower($1)
+           )`,
+          [colour.name, colour.sort]
+        );
+      }
+    })().catch((error) => {
+      requiredColoursReady = null;
+      throw error;
+    });
+  }
+  return requiredColoursReady;
+}
 
 async function runEnsureColoursSchema() {
   await query(`
@@ -78,6 +104,7 @@ export async function ensureColoursSchema() {
         ).catch(() => null);
       }
     }
+    await ensureRequiredColours().catch(() => null);
     return;
   }
   if (!coloursSchemaReady) {
@@ -86,7 +113,8 @@ export async function ensureColoursSchema() {
       throw error;
     });
   }
-  return coloursSchemaReady;
+  await coloursSchemaReady;
+  await ensureRequiredColours().catch(() => null);
 }
 
 export async function listProductColours(opts?: { activeOnly?: boolean; q?: string }) {

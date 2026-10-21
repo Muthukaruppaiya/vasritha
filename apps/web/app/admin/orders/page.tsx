@@ -23,7 +23,7 @@ import {
   AdminPanel,
   statusTone
 } from "../../../components/admin/admin-ui";
-import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
+import { AdminPagination, useAdminPageSize } from "../../../components/admin/admin-pagination";
 import { CourierLabel } from "../../../components/admin/courier-label";
 import { InvoiceBill } from "../../../components/admin/invoice-bill";
 import { adminFetch, formatDate, formatMoney, getAdminUser } from "../../../lib/admin-api";
@@ -166,20 +166,21 @@ export default function AdminOrdersPage() {
   const [printMode, setPrintMode] = useState<PrintMode>("both");
   const [deskTab, setDeskTab] = useState<DeskTab>("details");
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useAdminPageSize();
 
   useEffect(() => {
     setPage(0);
-  }, [statusFilter]);
+  }, [statusFilter, pageSize]);
 
   const ordersPath = useMemo(() => {
     const params = new URLSearchParams({ channel: "online" });
     const boundShopId = getAdminUser()?.shopId;
     if (boundShopId) params.set("shopId", boundShopId);
     if (statusFilter) params.set("status", statusFilter);
-    params.set("limit", String(DEFAULT_PAGE_SIZE));
-    params.set("offset", String(page * DEFAULT_PAGE_SIZE));
+    params.set("limit", String(pageSize));
+    params.set("offset", String(page * pageSize));
     return `/api/admin/orders?${params.toString()}`;
-  }, [statusFilter, page]);
+  }, [statusFilter, page, pageSize]);
 
   const { data, error, loading, reload } = useAdminQuery<{
     items: Order[];
@@ -569,6 +570,8 @@ export default function AdminOrdersPage() {
           page={page}
           total={totalOrders}
           onPageChange={setPage}
+          pageSize={pageSize}
+          onPageSizeChange={setPageSize}
           noun="orders"
         />
       </AdminPanel>

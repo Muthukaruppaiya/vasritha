@@ -1,9 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import JsBarcode from "jsbarcode";
 import QRCode from "qrcode";
-import { Pencil, Printer, Upload, X } from "lucide-react";
+import { BookOpen, Pencil, Printer, Upload, X } from "lucide-react";
 import { AdminBadge, AdminLoading, statusTone } from "./admin-ui";
 import { adminFetch, formatDate, formatMoney, getAdminToken } from "../../lib/admin-api";
 import { buildProductUploadPageUrl } from "../../lib/product-upload-url";
@@ -565,6 +566,17 @@ export function ProductDetailModal({
               <X size={16} strokeWidth={2} />
               <span>Close</span>
             </button>
+            {data ? (
+              <Link
+                className="admin-icon-tip"
+                href={`/admin/inventory/ledger?product=${encodeURIComponent(data.id)}`}
+                data-tooltip="Stock ledger for this product"
+                aria-label="Stock ledger for this product"
+              >
+                <BookOpen size={16} strokeWidth={2} />
+                <span>Stock ledger</span>
+              </Link>
+            ) : null}
             {data ? (
               <button
                 type="button"

@@ -23,7 +23,7 @@ import {
   AdminPanel,
   statusTone
 } from "../../../../components/admin/admin-ui";
-import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../../components/admin/admin-pagination";
+import { AdminPagination, useAdminPageSize } from "../../../../components/admin/admin-pagination";
 import {
   adminFetch,
   formatDate,
@@ -86,6 +86,7 @@ function AdminGrnApprovalsInner() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useAdminPageSize();
 
   const { data: suppliers } = useAdminQuery<Supplier[]>("/api/admin/suppliers?active=1");
 
@@ -106,12 +107,12 @@ function AdminGrnApprovalsInner() {
 
   useEffect(() => {
     setPage(0);
-  }, [statusFilter, supplierFilter]);
+  }, [statusFilter, supplierFilter, pageSize]);
 
   const pagedGrns = useMemo(() => {
-    const start = page * DEFAULT_PAGE_SIZE;
-    return (listedGrns || []).slice(start, start + DEFAULT_PAGE_SIZE);
-  }, [listedGrns, page]);
+    const start = page * pageSize;
+    return (listedGrns || []).slice(start, start + pageSize);
+  }, [listedGrns, page, pageSize]);
 
   const eligiblePending = useMemo(
     () => (listedGrns || []).filter((row) => row.status === "pending_approval"),
@@ -510,6 +511,8 @@ function AdminGrnApprovalsInner() {
               page={page}
               total={(listedGrns || []).length}
               onPageChange={setPage}
+              pageSize={pageSize}
+              onPageSizeChange={setPageSize}
               noun="GRNs"
             />
           </div>

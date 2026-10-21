@@ -21,7 +21,7 @@ import {
   AdminPageHeader,
   AdminPanel
 } from "../../../components/admin/admin-ui";
-import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
+import { AdminPagination, useAdminPageSize } from "../../../components/admin/admin-pagination";
 import { adminFetch, formatDate, formatMoney } from "../../../lib/admin-api";
 import {
   LABEL_LAYOUT_OPTIONS,
@@ -58,6 +58,7 @@ type BarcodeItem = {
   label_size: "accessory" | "dress" | null;
   compare_at_price: string | null;
   category_name: string | null;
+  subcategory_name?: string | null;
   date_added: string;
 };
 
@@ -72,6 +73,9 @@ function BarcodesPageInner() {
   const labelParam = searchParams.get("label");
   const [search, setSearch] = useState("");
   const [unprintedOnly, setUnprintedOnly] = useState(true);
+  const [categoryFilter, setCategoryFilter] = useState("");
+  const [subcategoryFilter, setSubcategoryFilter] = useState("");
+  const [addedFilter, setAddedFilter] = useState("");
   const [labelLayout, setLabelLayout] = useState<LabelLayout>(() => {
     if (labelParam === "set3" || labelParam === "accessory") return "set3";
     if (labelParam === "set2" || labelParam === "dress") return "set2";
@@ -82,6 +86,7 @@ function BarcodesPageInner() {
   const [message, setMessage] = useState("");
   const [actionError, setActionError] = useState("");
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useAdminPageSize();
 
   useEffect(() => {
     if (labelParam === "set3" || labelParam === "accessory") setLabelLayout("set3");
@@ -99,21 +104,35 @@ function BarcodesPageInner() {
     else params.set("unprinted", "0");
     if (search.trim()) params.set("q", search.trim());
     if (productFilter) params.set("product", productFilter);
+    if (categoryFilter) params.set("categoryId", categoryFilter);
+    if (subcategoryFilter) params.set("subcategoryId", subcategoryFilter);
+    if (addedFilter) params.set("addedDays", addedFilter);
     return `/api/admin/barcodes?${params.toString()}`;
-  }, [unprintedOnly, search, productFilter]);
+  }, [unprintedOnly, search, productFilter, categoryFilter, subcategoryFilter, addedFilter]);
 
   const { data, loading, error, reload } = useAdminQuery<BarcodeData>(queryPath);
+  const { data: categories } = useAdminQuery<
+    Array<{
+      id: string;
+      name: string;
+      subcategories?: Array<{ id: string; name: string }>;
+    }>
+  >("/api/admin/categories");
 
   useEffect(() => {
     setSelected(new Set());
     setPage(0);
   }, [queryPath]);
 
+  useEffect(() => {
+    setPage(0);
+  }, [pageSize]);
+
   const rows = data?.items || [];
   const pagedRows = useMemo(() => {
-    const start = page * DEFAULT_PAGE_SIZE;
-    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
-  }, [rows, page]);
+    const start = page * pageSize;
+    return rows.slice(start, start + pageSize);
+  }, [rows, page, pageSize]);
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -336,6 +355,49 @@ function BarcodesPageInner() {
               <option value="all">All sellable pieces</option>
             </select>
           </label>
+          <label>
+            <span>Added</span>
+            <select value={addedFilter} onChange={(e) => setAddedFilter(e.target.value)}>
+              <option value="">Any time</option>
+              <option value="1">Today</option>
+              <option value="7">Last 7 days</option>
+              <option value="30">Last 30 days</option>
+            </select>
+          </label>
+          <label>
+            <span>Category</span>
+            <select
+              value={categoryFilter}
+              onChange={(e) => {
+                setCategoryFilter(e.target.value);
+                setSubcategoryFilter("");
+              }}
+            >
+              <option value="">All categories</option>
+              {(categories || []).map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>Subcategory</span>
+            <select
+              value={subcategoryFilter}
+              onChange={(e) => setSubcategoryFilter(e.target.value)}
+              disabled={!categoryFilter}
+            >
+              <option value="">All subcategories</option>
+              {((categories || []).find((c) => c.id === categoryFilter)?.subcategories || []).map(
+                (item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.name}
+                  </option>
+                )
+              )}
+            </select>
+          </label>
           {productFilter ? (
             <AdminAlert tone="ok">
               Filtered to one product. <Link href="/admin/barcodes">Show all</Link>
@@ -385,7 +447,9 @@ function BarcodesPageInner() {
                     <td>
                       <b>{row.product_name}</b>
                       <div className="muted admin-sub">
-                        {[row.color, row.category_name].filter(Boolean).join(" · ") || "—"}
+                        {[row.color, row.category_name, row.subcategory_name]
+                          .filter(Boolean)
+                          .join(" · ") || "—"}
                       </div>
                     </td>
                     <td>
@@ -419,8 +483,10 @@ function BarcodesPageInner() {
             </table>
             <AdminPagination
               page={page}
+              pageSize={pageSize}
               total={rows.length}
               onPageChange={setPage}
+              onPageSizeChange={setPageSize}
               noun="barcodes"
             />
           </div>

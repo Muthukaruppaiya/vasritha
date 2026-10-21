@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import {
   ArrowDownToLine,
+  BookOpen,
   ClipboardCheck,
   Download,
   History,
@@ -24,13 +25,13 @@ import {
   AdminPageHeader,
   AdminPanel
 } from "../../../components/admin/admin-ui";
-import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
+import { AdminPagination, useAdminPageSize } from "../../../components/admin/admin-pagination";
 import { AdminFormModal } from "../../../components/admin/admin-form-modal";
 import {
   ProductPickModal,
   type ProductPickRow
 } from "../../../components/admin/product-pick-modal";
-import { adminFetch, formatDate, getAdminUser } from "../../../lib/admin-api";
+import { adminFetch, getAdminUser } from "../../../lib/admin-api";
 import { downloadAdminExport } from "../../../lib/download-export";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
 import {
@@ -60,18 +61,6 @@ type StockRow = {
 };
 
 type InventoryData = {
-  movements: Array<{
-    id: string;
-    product_variant_id: string;
-    type: string;
-    quantity: number;
-    note: string | null;
-    created_at: string;
-    sku?: string | null;
-    variant_name?: string | null;
-    product_id?: string;
-    product_name?: string | null;
-  }>;
   stock: StockRow[];
   summary?: {
     skuCount: number;
@@ -87,8 +76,6 @@ type InventoryData = {
   limit?: number;
   offset?: number;
 };
-
-const PAGE_SIZE = DEFAULT_PAGE_SIZE;
 
 const blankAdjust = (variantId = "") => ({
   productVariantId: variantId,
@@ -109,17 +96,6 @@ function stockLabel(qty: number, low: number) {
   return "In stock";
 }
 
-function movementLabel(type: string) {
-  const map: Record<string, string> = {
-    purchase: "Inward / purchase",
-    opening_stock: "Opening stock",
-    manual_adjustment: "Adjustment",
-    return: "Return in",
-    sale: "Sale out"
-  };
-  return map[type] || type;
-}
-
 function AdminInventoryPageInner() {
   const searchParams = useSearchParams();
   const focusProduct = searchParams.get("product") || "";
@@ -133,6 +109,7 @@ function AdminInventoryPageInner() {
   const [categoryFilter, setCategoryFilter] = useState("");
   const [subcategoryFilter, setSubcategoryFilter] = useState("");
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useAdminPageSize();
   const [labelLayout, setLabelLayout] = useState<LabelLayout>("set2");
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [adjustPickerOpen, setAdjustPickerOpen] = useState(false);
@@ -157,7 +134,7 @@ function AdminInventoryPageInner() {
 
   useEffect(() => {
     setPage(0);
-  }, [debouncedSearch, stockFilter, categoryFilter, subcategoryFilter, focusProduct]);
+  }, [debouncedSearch, stockFilter, categoryFilter, subcategoryFilter, focusProduct, pageSize]);
 
   const queryPath = useMemo(() => {
     const params = new URLSearchParams();
@@ -167,8 +144,8 @@ function AdminInventoryPageInner() {
     if (stockFilter) params.set("stockLevel", stockFilter);
     if (categoryFilter) params.set("categoryId", categoryFilter);
     if (subcategoryFilter) params.set("subcategoryId", subcategoryFilter);
-    params.set("limit", String(PAGE_SIZE));
-    params.set("offset", String(page * PAGE_SIZE));
+    params.set("limit", String(pageSize));
+    params.set("offset", String(page * pageSize));
     return `/api/admin/inventory?${params.toString()}`;
   }, [
     focusProduct,
@@ -177,7 +154,8 @@ function AdminInventoryPageInner() {
     stockFilter,
     categoryFilter,
     subcategoryFilter,
-    page
+    page,
+    pageSize
   ]);
 
   const { data, loading, error, reload } = useAdminQuery<InventoryData>(queryPath);
@@ -285,6 +263,15 @@ function AdminInventoryPageInner() {
             >
               <History size={16} strokeWidth={2} />
               <span>GRN history</span>
+            </Link>
+            <Link
+              className="admin-icon-tip"
+              href="/admin/inventory/ledger"
+              data-tooltip="Stock ledger"
+              aria-label="Stock ledger"
+            >
+              <BookOpen size={16} strokeWidth={2} />
+              <span>Stock ledger</span>
             </Link>
             <label className="inv-label-type" title="Barcode label layout for printing">
               <span>Label</span>
@@ -459,7 +446,12 @@ function AdminInventoryPageInner() {
             }
           />
         )}
-        {!loading && !summary?.skuCount ? (
+        {!loading &&
+        !summary?.skuCount &&
+        !debouncedSearch &&
+        !categoryFilter &&
+        !subcategoryFilter &&
+        !focusProduct ? (
           <div className="inv-empty-actions">
             <Link
               className="admin-icon-tip admin-action-btn--primary"
@@ -565,6 +557,15 @@ function AdminInventoryPageInner() {
                           <Printer size={15} strokeWidth={2} />
                           <span>Labels</span>
                         </Link>
+                        <Link
+                          className="admin-action-btn"
+                          href={`/admin/inventory/ledger?product=${encodeURIComponent(row.product_id)}`}
+                          data-tooltip="Stock ledger"
+                          aria-label={`Stock ledger for ${row.product_name}`}
+                        >
+                          <BookOpen size={15} strokeWidth={2} />
+                          <span>Ledger</span>
+                        </Link>
                       </div>
                     </td>
                   </tr>
@@ -573,54 +574,12 @@ function AdminInventoryPageInner() {
             </table>
             <AdminPagination
               page={page}
+              pageSize={pageSize}
               total={total}
               onPageChange={setPage}
+              onPageSizeChange={setPageSize}
               noun="products"
             />
-          </div>
-        )}
-      </AdminPanel>
-
-      <AdminPanel title="Stock ledger (recent movements)">
-        {loading && <AdminLoading />}
-        {!loading && !(data?.movements || []).length && (
-          <AdminEmpty
-            title="No movements yet"
-            body="Receive inward stock or post an adjustment to start the ledger."
-          />
-        )}
-        {(data?.movements || []).length > 0 && (
-          <div className="admin-table-wrap">
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>When</th>
-                  <th>Product</th>
-                  <th>Type</th>
-                  <th>Qty</th>
-                  <th>Note</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(data?.movements || []).map((movement) => (
-                  <tr key={movement.id}>
-                    <td>{formatDate(movement.created_at)}</td>
-                    <td>
-                      <b>{movement.product_name || "—"}</b>
-                      {movement.variant_name ? (
-                        <div className="muted admin-sub">{movement.variant_name}</div>
-                      ) : null}
-                    </td>
-                    <td>{movementLabel(movement.type)}</td>
-                    <td className={Number(movement.quantity) < 0 ? "inv-qty-out" : "inv-qty-in"}>
-                      {Number(movement.quantity) > 0 ? "+" : ""}
-                      {movement.quantity}
-                    </td>
-                    <td>{movement.note || "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
         )}
       </AdminPanel>

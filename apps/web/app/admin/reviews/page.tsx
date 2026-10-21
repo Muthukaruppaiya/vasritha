@@ -12,7 +12,7 @@ import {
 } from "../../../components/admin/admin-ui";
 import { adminFetch, formatDate } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
-import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
+import { AdminPagination, useAdminPageSize } from "../../../components/admin/admin-pagination";
 
 type ReviewRow = {
   id: string;
@@ -35,6 +35,7 @@ type Filter = "pending" | "approved" | "all";
 export default function AdminReviewsPage() {
   const [filter, setFilter] = useState<Filter>("pending");
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useAdminPageSize();
   const queryPath = useMemo(() => `/api/reviews?admin=1&status=${filter}`, [filter]);
   const { data, error, loading, reload } = useAdminQuery<ReviewRow[]>(queryPath);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -44,12 +45,12 @@ export default function AdminReviewsPage() {
 
   useEffect(() => {
     setPage(0);
-  }, [filter]);
+  }, [filter, pageSize]);
 
   const paged = useMemo(() => {
-    const start = page * DEFAULT_PAGE_SIZE;
-    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
-  }, [rows, page]);
+    const start = page * pageSize;
+    return rows.slice(start, start + pageSize);
+  }, [rows, page, pageSize]);
 
   const moderate = async (reviewId: string, patch: { is_approved?: boolean; is_featured?: boolean }) => {
     setBusyId(reviewId);
@@ -198,7 +199,14 @@ export default function AdminReviewsPage() {
                 ))}
               </tbody>
             </table>
-            <AdminPagination page={page} total={rows.length} onPageChange={setPage} noun="reviews" />
+            <AdminPagination
+              page={page}
+              pageSize={pageSize}
+              total={rows.length}
+              onPageChange={setPage}
+              onPageSizeChange={setPageSize}
+              noun="reviews"
+            />
           </div>
         )}
       </AdminPanel>

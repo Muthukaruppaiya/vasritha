@@ -11,7 +11,7 @@ import {
   slugify
 } from "../../../components/admin/admin-ui";
 import { AdminFormModal } from "../../../components/admin/admin-form-modal";
-import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
+import { AdminPagination, useAdminPageSize } from "../../../components/admin/admin-pagination";
 import { adminFetch, adminUpload, formatDate } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
 import {
@@ -73,11 +73,12 @@ const blankForm = () => ({
 export default function AdminCategoriesPage() {
   const { data, error, loading, reload } = useAdminQuery<Category[]>("/api/admin/categories");
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useAdminPageSize();
   const categories = data || [];
   const pagedCategories = useMemo(() => {
-    const start = page * DEFAULT_PAGE_SIZE;
-    return categories.slice(start, start + DEFAULT_PAGE_SIZE);
-  }, [categories, page]);
+    const start = page * pageSize;
+    return categories.slice(start, start + pageSize);
+  }, [categories, page, pageSize]);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Category | null>(null);
   const [saving, setSaving] = useState(false);
@@ -553,6 +554,8 @@ export default function AdminCategoriesPage() {
           page={page}
           total={categories.length}
           onPageChange={setPage}
+          pageSize={pageSize}
+          onPageSizeChange={setPageSize}
           noun="categories"
         />
       </AdminPanel>

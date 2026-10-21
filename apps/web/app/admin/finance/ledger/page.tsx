@@ -11,7 +11,7 @@ import {
   AdminPanel,
   statusTone
 } from "../../../../components/admin/admin-ui";
-import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../../components/admin/admin-pagination";
+import { AdminPagination, useAdminPageSize } from "../../../../components/admin/admin-pagination";
 import { formatDate, formatMoney } from "../../../../lib/admin-api";
 import { useAdminQuery } from "../../../../hooks/use-admin-query";
 import { CATEGORY_LABELS } from "../../../../lib/finance-labels";
@@ -38,6 +38,7 @@ export default function FinanceLedgerPage() {
   const [q, setQ] = useState("");
   const [submittedQ, setSubmittedQ] = useState("");
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useAdminPageSize();
 
   const path = useMemo(() => {
     const params = new URLSearchParams();
@@ -53,12 +54,12 @@ export default function FinanceLedgerPage() {
 
   useEffect(() => {
     setPage(0);
-  }, [from, to, submittedQ]);
+  }, [from, to, submittedQ, pageSize]);
 
   const pagedRows = useMemo(() => {
-    const start = page * DEFAULT_PAGE_SIZE;
-    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
-  }, [rows, page]);
+    const start = page * pageSize;
+    return rows.slice(start, start + pageSize);
+  }, [rows, page, pageSize]);
 
   return (
     <div className="admin-stack">
@@ -155,6 +156,8 @@ export default function FinanceLedgerPage() {
               page={page}
               total={rows.length}
               onPageChange={setPage}
+              pageSize={pageSize}
+              onPageSizeChange={setPageSize}
               noun="entries"
             />
           </div>

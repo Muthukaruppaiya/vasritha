@@ -11,7 +11,7 @@ import {
   AdminPanel,
   statusTone
 } from "../../../components/admin/admin-ui";
-import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
+import { AdminPagination, useAdminPageSize } from "../../../components/admin/admin-pagination";
 import { AdminFormModal } from "../../../components/admin/admin-form-modal";
 import { adminFetch, adminUpload } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
@@ -154,11 +154,12 @@ export default function AdminLoyaltyPage() {
   const [popupErr, setPopupErr] = useState("");
   const [popupUploadBusy, setPopupUploadBusy] = useState(false);
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useAdminPageSize();
 
   const pagedRows = useMemo(() => {
-    const start = page * DEFAULT_PAGE_SIZE;
-    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
-  }, [rows, page]);
+    const start = page * pageSize;
+    return rows.slice(start, start + pageSize);
+  }, [rows, page, pageSize]);
 
   useEffect(() => {
     let cancelled = false;
@@ -574,6 +575,8 @@ export default function AdminLoyaltyPage() {
               page={page}
               total={rows.length}
               onPageChange={setPage}
+              pageSize={pageSize}
+              onPageSizeChange={setPageSize}
               noun="rules"
             />
           </div>

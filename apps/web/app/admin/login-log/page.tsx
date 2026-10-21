@@ -12,7 +12,7 @@ import {
   AdminPanel,
   statusTone
 } from "../../../components/admin/admin-ui";
-import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
+import { AdminPagination, useAdminPageSize } from "../../../components/admin/admin-pagination";
 import { formatDate } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
 import { OPS_PLATFORM_NAME } from "../../../lib/platform";
@@ -49,6 +49,7 @@ export default function LoginLogPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useAdminPageSize();
 
   const path = useMemo(() => {
     const params = new URLSearchParams({ limit: "200" });
@@ -66,12 +67,12 @@ export default function LoginLogPage() {
 
   useEffect(() => {
     setPage(0);
-  }, [submittedQ, client, success, from, to]);
+  }, [submittedQ, client, success, from, to, pageSize]);
 
   const pagedRows = useMemo(() => {
-    const start = page * DEFAULT_PAGE_SIZE;
-    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
-  }, [rows, page]);
+    const start = page * pageSize;
+    return rows.slice(start, start + pageSize);
+  }, [rows, page, pageSize]);
 
   return (
     <div className="admin-stack">
@@ -227,6 +228,8 @@ export default function LoginLogPage() {
               page={page}
               total={rows.length}
               onPageChange={setPage}
+              pageSize={pageSize}
+              onPageSizeChange={setPageSize}
               noun="events"
             />
           </div>

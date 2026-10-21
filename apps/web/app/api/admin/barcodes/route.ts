@@ -17,6 +17,9 @@ export async function GET(request: NextRequest) {
   const unprintedOnly = searchParams.get("unprinted") !== "0";
   const q = String(searchParams.get("q") || "").trim();
   const productId = String(searchParams.get("product") || "").trim();
+  const categoryId = String(searchParams.get("categoryId") || "").trim();
+  const subcategoryId = String(searchParams.get("subcategoryId") || "").trim();
+  const addedDays = Number(searchParams.get("addedDays") || "0");
 
   const params: unknown[] = [];
   const where: string[] = [`i.status::text = 'to_sell'`];
@@ -27,6 +30,21 @@ export async function GET(request: NextRequest) {
   if (productId) {
     params.push(productId);
     where.push(`p.id = $${params.length}`);
+  }
+  if (categoryId) {
+    params.push(categoryId);
+    where.push(`p.category_id = $${params.length}::uuid`);
+  }
+  if (subcategoryId) {
+    params.push(subcategoryId);
+    where.push(`p.subcategory_id = $${params.length}::uuid`);
+  }
+  if (Number.isFinite(addedDays) && addedDays > 0) {
+    // 1 = today (since local midnight IST), N = last N days.
+    params.push(Math.min(Math.floor(addedDays), 365));
+    where.push(
+      `i.date_added >= ((now() at time zone 'Asia/Kolkata')::date - ($${params.length}::int - 1))::timestamp at time zone 'Asia/Kolkata'`
+    );
   }
   if (q) {
     params.push(`%${q}%`);
@@ -54,6 +72,7 @@ export async function GET(request: NextRequest) {
     label_size: "accessory" | "dress" | null;
     compare_at_price: string | null;
     category_name: string | null;
+    subcategory_name: string | null;
     date_added: string;
   }>(
     `select
@@ -75,11 +94,13 @@ export async function GET(request: NextRequest) {
        p.label_size::text as label_size,
        p.compare_at_price::text as compare_at_price,
        c.name as category_name,
+       sc.name as subcategory_name,
        i.date_added::text as date_added
      from product_items i
      join products p on p.id = i.product_id
      left join product_variants pv on pv.id = i.variant_id
      left join categories c on c.id = p.category_id
+     left join subcategories sc on sc.id = p.subcategory_id
      where ${where.join(" and ")}
      order by i.date_added desc, i.seq asc
      limit 800`,

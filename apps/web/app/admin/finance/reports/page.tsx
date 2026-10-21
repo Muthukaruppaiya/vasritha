@@ -11,7 +11,7 @@ import {
   AdminPageHeader,
   AdminPanel
 } from "../../../../components/admin/admin-ui";
-import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../../components/admin/admin-pagination";
+import { AdminPagination, useAdminPageSize } from "../../../../components/admin/admin-pagination";
 import { formatDate, formatMoney } from "../../../../lib/admin-api";
 import { downloadAdminExport } from "../../../../lib/download-export";
 import { useAdminQuery } from "../../../../hooks/use-admin-query";
@@ -55,6 +55,7 @@ export default function FinanceReportsHubPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useAdminPageSize();
 
   const path = useMemo(() => {
     const params = new URLSearchParams({ type });
@@ -68,12 +69,12 @@ export default function FinanceReportsHubPage() {
 
   useEffect(() => {
     setPage(0);
-  }, [type, from, to]);
+  }, [type, from, to, pageSize]);
 
   const pagedRows = useMemo(() => {
-    const start = page * DEFAULT_PAGE_SIZE;
-    return rows.slice(start, start + DEFAULT_PAGE_SIZE);
-  }, [rows, page]);
+    const start = page * pageSize;
+    return rows.slice(start, start + pageSize);
+  }, [rows, page, pageSize]);
 
   return (
     <div className="admin-stack">
@@ -286,6 +287,8 @@ export default function FinanceReportsHubPage() {
                 page={page}
                 total={rows.length}
                 onPageChange={setPage}
+                pageSize={pageSize}
+                onPageSizeChange={setPageSize}
                 noun="rows"
               />
             </div>

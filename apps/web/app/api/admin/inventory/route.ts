@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     return fail(err instanceof Error ? err.message : "No active shop");
   }
 
-  const stockWhere = `
+  const scopeWhere = `
     where (
       $1::text = ''
       or p.name ilike '%' || $1 || '%'
@@ -46,6 +46,10 @@ export async function GET(request: NextRequest) {
     and ($2::uuid is null or p.id = $2::uuid)
     and ($4::uuid is null or p.category_id = $4::uuid)
     and ($5::uuid is null or p.subcategory_id = $5::uuid)
+  `;
+
+  const stockWhere = `
+    ${scopeWhere}
     and (
       $6::text = ''
       or ($6 = 'in' and coalesce(svs.stock_quantity, 0) > $7)
@@ -64,31 +68,7 @@ export async function GET(request: NextRequest) {
     LOW_STOCK
   ];
 
-  const [movements, stock, totalRow, summaryRow] = await Promise.all([
-    query(
-      `select
-         m.id,
-         m.product_variant_id,
-         m.type,
-         m.quantity,
-         m.reference_type,
-         m.reference_id,
-         m.note,
-         m.created_by,
-         m.created_at,
-         m.shop_id,
-         pv.sku,
-         pv.name as variant_name,
-         p.id as product_id,
-         p.name as product_name
-       from inventory_movements m
-       join product_variants pv on pv.id = m.product_variant_id
-       join products p on p.id = pv.product_id
-       where m.shop_id = $1
-       order by m.created_at desc
-       limit 40`,
-      [shopId]
-    ),
+  const [stock, totalRow, summaryRow] = await Promise.all([
     query(
       `select
          pv.id as variant_id,
@@ -128,7 +108,8 @@ export async function GET(request: NextRequest) {
        ${stockWhere}`,
       baseParams
     ),
-    // Shop-wide cards (not narrowed by search/page filters)
+    // Cards follow search / category / subcategory, but not the stock-level filter,
+    // so the in / low / out breakdown stays visible for the selected scope.
     queryOne<{
       sku_count: number;
       on_hand: number;
@@ -139,17 +120,19 @@ export async function GET(request: NextRequest) {
       `select
          count(*)::int as sku_count,
          coalesce(sum(coalesce(svs.stock_quantity, 0)), 0)::int as on_hand,
-         count(*) filter (where coalesce(svs.stock_quantity, 0) > $2)::int as in_stock,
+         count(*) filter (where coalesce(svs.stock_quantity, 0) > $6)::int as in_stock,
          count(*) filter (
            where coalesce(svs.stock_quantity, 0) > 0
-             and coalesce(svs.stock_quantity, 0) <= $2
+             and coalesce(svs.stock_quantity, 0) <= $6
          )::int as low_stock,
          count(*) filter (where coalesce(svs.stock_quantity, 0) <= 0)::int as out_of_stock
        from product_variants pv
        join products p on p.id = pv.product_id
        left join shop_variant_stock svs
-         on svs.variant_id = pv.id and svs.shop_id = $1`,
-      [shopId, LOW_STOCK]
+         on svs.variant_id = pv.id and svs.shop_id = $3
+       left join categories c on c.id = p.category_id
+       ${scopeWhere}`,
+      [q, productId || null, shopId, categoryId || null, subcategoryId || null, LOW_STOCK]
     )
   ]);
 
@@ -164,7 +147,6 @@ export async function GET(request: NextRequest) {
   };
 
   return ok({
-    movements,
     stock,
     summary,
     lowStockThreshold: LOW_STOCK,

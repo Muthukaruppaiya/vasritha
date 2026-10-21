@@ -21,7 +21,7 @@ import {
   AdminPanel,
   statusTone
 } from "../../../../../components/admin/admin-ui";
-import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../../../components/admin/admin-pagination";
+import { AdminPagination, useAdminPageSize } from "../../../../../components/admin/admin-pagination";
 import {
   adminFetch,
   formatDate,
@@ -64,6 +64,7 @@ export default function AdminGrnHistoryPage() {
   const [search, setSearch] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useAdminPageSize();
   const [printingId, setPrintingId] = useState<string | null>(null);
   const [printError, setPrintError] = useState("");
   const [detail, setDetail] = useState<GrnPrintDetail | null>(null);
@@ -79,7 +80,7 @@ export default function AdminGrnHistoryPage() {
 
   useEffect(() => {
     setPage(0);
-  }, [statusFilter, supplierFilter, debouncedQ]);
+  }, [statusFilter, supplierFilter, debouncedQ, pageSize]);
 
   const listUrl = useMemo(() => {
     const params = new URLSearchParams();
@@ -98,9 +99,9 @@ export default function AdminGrnHistoryPage() {
   } = useAdminQuery<ListedGrn[]>(listUrl);
 
   const pagedGrns = useMemo(() => {
-    const start = page * DEFAULT_PAGE_SIZE;
-    return (listedGrns || []).slice(start, start + DEFAULT_PAGE_SIZE);
-  }, [listedGrns, page]);
+    const start = page * pageSize;
+    return (listedGrns || []).slice(start, start + pageSize);
+  }, [listedGrns, page, pageSize]);
 
   const openDetails = async (id: string) => {
     setDetailLoading(true);
@@ -317,6 +318,8 @@ export default function AdminGrnHistoryPage() {
               page={page}
               total={(listedGrns || []).length}
               onPageChange={setPage}
+              pageSize={pageSize}
+              onPageSizeChange={setPageSize}
               noun="GRNs"
             />
           </div>

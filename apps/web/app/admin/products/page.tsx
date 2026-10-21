@@ -36,7 +36,7 @@ import {
   AdminPanel,
   statusTone
 } from "../../../components/admin/admin-ui";
-import { AdminPagination, DEFAULT_PAGE_SIZE } from "../../../components/admin/admin-pagination";
+import { AdminPagination, useAdminPageSize } from "../../../components/admin/admin-pagination";
 import { ProductDetailModal } from "../../../components/admin/product-detail-modal";
 import { adminFetch, formatMoney, getAdminToken, getAdminUser } from "../../../lib/admin-api";
 import { downloadAdminExport } from "../../../lib/download-export";
@@ -137,6 +137,7 @@ function AdminProductsPageInner() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useAdminPageSize();
 
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -281,13 +282,14 @@ function AdminProductsPageInner() {
     featuredFilter,
     priceMin,
     priceMax,
-    sortBy
+    sortBy,
+    pageSize
   ]);
 
   const paged = useMemo(() => {
-    const start = page * DEFAULT_PAGE_SIZE;
-    return filtered.slice(start, start + DEFAULT_PAGE_SIZE);
-  }, [filtered, page]);
+    const start = page * pageSize;
+    return filtered.slice(start, start + pageSize);
+  }, [filtered, page, pageSize]);
 
   const advancedFilterCount = [
     statusFilter,
@@ -694,7 +696,12 @@ function AdminProductsPageInner() {
                   "/api/admin/products/import/template",
                   "vasritha-product-import-template.xlsx"
                 ).catch((err) =>
-                  setImportError(err instanceof Error ? err.message : "Could not download template")
+                  setImportDialog({
+                    kind: "errors",
+                    summary:
+                      err instanceof Error ? err.message : "Could not download template",
+                    errors: []
+                  })
                 );
               }}
             >
@@ -1522,6 +1529,8 @@ function AdminProductsPageInner() {
               page={page}
               total={filtered.length}
               onPageChange={setPage}
+              pageSize={pageSize}
+              onPageSizeChange={setPageSize}
               noun="products"
             />
           </div>
