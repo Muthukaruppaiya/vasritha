@@ -11,5 +11,5 @@ export const DEFAULT_BRAND_NAME = "Vasritha";
  * Canonical public domains (documentation defaults).
  * Runtime host lists come from STOREFRONT_HOSTS / OPS_HOSTS env vars.
  */
-export const DEFAULT_STOREFRONT_DOMAIN = "vasritha.in";
-export const DEFAULT_OPS_DOMAIN = "sukadhaa.in";
+export const DEFAULT_STOREFRONT_DOMAIN = "vasritha.com";
+export const DEFAULT_OPS_DOMAIN = "sukadhaa.com";

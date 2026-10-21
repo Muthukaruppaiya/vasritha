@@ -1,16 +1,30 @@
 /**
  * Host / domain helpers for storefront (Vasritha) vs ops (Sukadhaa).
  *
- * Production example:
- *   STOREFRONT_HOSTS=vasritha.in,www.vasritha.in
- *   OPS_HOSTS=sukadhaa.in,www.sukadhaa.in
- *   NEXT_PUBLIC_SITE_URL=https://vasritha.in
- *   OPS_PUBLIC_URL=https://sukadhaa.in
+ * vasritha.com / vasritha.in → customer website
+ * sukadhaa.com / sukadhaa.in → operations / POS / admin
  *
+ * Extra hosts can still be added with STOREFRONT_HOSTS / OPS_HOSTS.
  * Localhost skips host gating so / and /admin both work on one port.
  */
 
+import { isHostedRuntime } from "./runtime";
+
 export type HostRole = "storefront" | "ops" | "local" | "unknown";
+
+const DEFAULT_STOREFRONT_HOSTS = [
+  "vasritha.com",
+  "www.vasritha.com",
+  "vasritha.in",
+  "www.vasritha.in"
+];
+
+const DEFAULT_OPS_HOSTS = [
+  "sukadhaa.com",
+  "www.sukadhaa.com",
+  "sukadhaa.in",
+  "www.sukadhaa.in"
+];
 
 function splitHosts(raw: string | undefined): string[] {
   return String(raw || "")
@@ -18,6 +32,27 @@ function splitHosts(raw: string | undefined): string[] {
     .map((h) => h.trim().toLowerCase())
     .filter(Boolean)
     .map((h) => h.replace(/:\d+$/, ""));
+}
+
+function uniqueHosts(...groups: string[][]) {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const group of groups) {
+    for (const host of group) {
+      if (!host || seen.has(host)) continue;
+      seen.add(host);
+      out.push(host);
+    }
+  }
+  return out;
+}
+
+function hostMatches(host: string, list: string[]) {
+  if (list.includes(host)) return true;
+  return list.some((entry) => {
+    const e = entry.replace(/^www\./, "");
+    return host === e || host === `www.${e}` || host.endsWith(`.${e}`);
+  });
 }
 
 export function normalizeHost(host: string | null | undefined): string {
@@ -40,18 +75,18 @@ export function isLocalDevHost(host: string): boolean {
 }
 
 export function getStorefrontHosts(): string[] {
-  return splitHosts(process.env.STOREFRONT_HOSTS);
+  return uniqueHosts(splitHosts(process.env.STOREFRONT_HOSTS), DEFAULT_STOREFRONT_HOSTS);
 }
 
 export function getOpsHosts(): string[] {
-  return splitHosts(process.env.OPS_HOSTS);
+  return uniqueHosts(splitHosts(process.env.OPS_HOSTS), DEFAULT_OPS_HOSTS);
 }
 
 /** Canonical customer website URL (Vasritha). */
 export function getStorefrontPublicUrl(): string {
   return (
     String(process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "") ||
-    "http://localhost:3000"
+    (isHostedRuntime() ? "https://vasritha.com" : "http://localhost:3000")
   );
 }
 
@@ -59,7 +94,7 @@ export function getStorefrontPublicUrl(): string {
 export function getOpsPublicUrl(): string {
   return (
     String(process.env.OPS_PUBLIC_URL || "").replace(/\/$/, "") ||
-    getStorefrontPublicUrl()
+    (isHostedRuntime() ? "https://sukadhaa.com" : getStorefrontPublicUrl())
   );
 }
 
@@ -71,11 +106,8 @@ export function classifyHost(hostRaw: string | null | undefined): HostRole {
   const storefront = getStorefrontHosts();
   const ops = getOpsHosts();
 
-  // No lists configured → treat as local (no gating)
-  if (!storefront.length && !ops.length) return "local";
-
-  if (ops.includes(host)) return "ops";
-  if (storefront.includes(host)) return "storefront";
+  if (hostMatches(host, ops)) return "ops";
+  if (hostMatches(host, storefront)) return "storefront";
   return "unknown";
 }
 

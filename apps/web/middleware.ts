@@ -37,7 +37,7 @@ export function middleware(request: NextRequest) {
   }
 
   if (role === "ops") {
-    // Clean ops home: sukadhaa.in/ → admin
+    // Clean ops home: sukadhaa.com/ → admin
     if (pathname === "/") {
       const url = request.nextUrl.clone();
       url.pathname = "/admin";
