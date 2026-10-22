@@ -13,6 +13,18 @@ export { Header } from "./site-header";
 type NavCategory = { name: string; slug: string; nameI18n?: Record<string, string> };
 type NavCollection = { name: string; slug: string };
 
+const DEFAULT_SUPPORT_PHONE = "9043904425";
+const DEFAULT_SUPPORT_EMAIL = "hello@vasritha.com";
+
+function phoneLinks(raw: string) {
+  const digits = raw.replace(/\D/g, "");
+  const local = digits.length === 12 && digits.startsWith("91") ? digits.slice(2) : digits;
+  if (local.length === 10) {
+    return { href: `tel:+91${local}`, label: `+91 ${local.slice(0, 5)} ${local.slice(5)}` };
+  }
+  return { href: `tel:${digits.startsWith("+") ? digits : `+${digits}`}`, label: raw.trim() };
+}
+
 export function Footer({
   categories: initialCategories
 }: {
@@ -22,6 +34,20 @@ export function Footer({
   const { locale } = useLocale();
   const year = new Date().getFullYear();
   const [categories, setCategories] = useState<NavCategory[]>(initialCategories || []);
+  const [supportPhone, setSupportPhone] = useState(DEFAULT_SUPPORT_PHONE);
+  const [supportEmail, setSupportEmail] = useState(DEFAULT_SUPPORT_EMAIL);
+  const phone = phoneLinks(supportPhone);
+
+  useEffect(() => {
+    fetch("/api/site-branding")
+      .then((res) => res.json())
+      .then((payload) => {
+        const data = payload?.data as { supportPhone?: string | null; supportEmail?: string | null };
+        if (data?.supportPhone) setSupportPhone(data.supportPhone);
+        if (data?.supportEmail) setSupportEmail(data.supportEmail);
+      })
+      .catch(() => undefined);
+  }, []);
   const collections: NavCollection[] = [
     { name: t("footer.kanchipuram"), slug: "sarees" },
     { name: t("footer.banarasi"), slug: "sarees" },
@@ -66,8 +92,8 @@ export function Footer({
           </Link>
           <p>{t("footer.tagline")}</p>
           <div className="footer-contact">
-            <a href="mailto:hello@vasritha.com">hello@vasritha.com</a>
-            <a href="tel:+919876543210">+91 98765 43210</a>
+            <a href={`mailto:${supportEmail}`}>{supportEmail}</a>
+            <a href={phone.href}>{phone.label}</a>
             <span>{t("footer.worldwide")}</span>
           </div>
         </div>

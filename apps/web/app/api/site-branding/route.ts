@@ -13,8 +13,10 @@ export async function GET() {
     site_name: string | null;
     logo_path: string | null;
     header_logo_path: string | null;
+    support_phone: string | null;
+    support_email: string | null;
   }>(
-    `select site_name, logo_path, header_logo_path
+    `select site_name, logo_path, header_logo_path, support_phone, support_email
      from site_settings
      limit 1`
   );
@@ -22,6 +24,8 @@ export async function GET() {
   return cachedOk({
     siteName: data?.site_name || "Vasritha",
     logoPath: customUpload(data?.logo_path) || GOLD_LOGO,
-    headerLogoPath: customUpload(data?.header_logo_path) || GOLD_LOGO
+    headerLogoPath: customUpload(data?.header_logo_path) || GOLD_LOGO,
+    supportPhone: data?.support_phone?.trim() || null,
+    supportEmail: data?.support_email?.trim() || null
   });
 }

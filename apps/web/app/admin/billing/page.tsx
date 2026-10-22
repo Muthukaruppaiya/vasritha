@@ -1117,7 +1117,13 @@ export default function AdminBillingPage() {
                           <div>
                             <strong>{line.name}</strong>
                             <p className="muted">
-                              {[line.color, line.variantName].filter(Boolean).join(" · ") || "—"}
+                              {[
+                                line.color,
+                                line.itemId ? null : line.variantName,
+                                line.sku || line.barcode
+                              ]
+                                .filter(Boolean)
+                                .join(" · ") || "—"}
                             </p>
                             <p className="pos-unit">{formatMoney(line.price)} each</p>
                           </div>
