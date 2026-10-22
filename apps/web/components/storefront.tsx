@@ -7,6 +7,7 @@ import { BuyButton } from "./buy-button";
 import type { StoreProduct } from "../lib/catalog";
 import { useLocale, useT } from "../lib/i18n/provider";
 import { localizeCategoryName, localizeProductFields } from "../lib/i18n/catalog-local";
+import { fetchPublicJson } from "../lib/public-fetch-cache";
 
 export { Header } from "./site-header";
 
@@ -36,24 +37,41 @@ export function Footer({
   const [categories, setCategories] = useState<NavCategory[]>(initialCategories || []);
   const [supportPhone, setSupportPhone] = useState(DEFAULT_SUPPORT_PHONE);
   const [supportEmail, setSupportEmail] = useState(DEFAULT_SUPPORT_EMAIL);
+  const [social, setSocial] = useState<{
+    facebookUrl: string;
+    instagramUrl: string;
+    whatsappUrl: string;
+  }>({ facebookUrl: "", instagramUrl: "", whatsappUrl: "" });
   const phone = phoneLinks(supportPhone);
-
-  useEffect(() => {
-    fetch("/api/site-branding")
-      .then((res) => res.json())
-      .then((payload) => {
-        const data = payload?.data as { supportPhone?: string | null; supportEmail?: string | null };
-        if (data?.supportPhone) setSupportPhone(data.supportPhone);
-        if (data?.supportEmail) setSupportEmail(data.supportEmail);
-      })
-      .catch(() => undefined);
-  }, []);
   const collections: NavCollection[] = [
     { name: t("footer.kanchipuram"), slug: "sarees" },
     { name: t("footer.banarasi"), slug: "sarees" },
     { name: t("footer.softSilk"), slug: "sarees" },
     { name: t("footer.cottonWeaves"), slug: "sarees" }
   ];
+
+  useEffect(() => {
+    fetchPublicJson<{
+      data?: {
+        facebookUrl?: string;
+        instagramUrl?: string;
+        whatsappUrl?: string;
+        supportPhone?: string | null;
+        supportEmail?: string | null;
+      };
+    }>("/api/site-branding")
+      .then((payload) => {
+        const data = payload?.data;
+        setSocial({
+          facebookUrl: data?.facebookUrl || "",
+          instagramUrl: data?.instagramUrl || "",
+          whatsappUrl: data?.whatsappUrl || ""
+        });
+        if (data?.supportPhone) setSupportPhone(data.supportPhone);
+        if (data?.supportEmail) setSupportEmail(data.supportEmail);
+      })
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     if (initialCategories?.length) {
@@ -144,15 +162,21 @@ export function Footer({
             <button type="submit">{t("footer.join")}</button>
           </form>
           <div className="footer-social">
-            <a href="#" aria-label="Instagram">
-              Instagram
-            </a>
-            <a href="#" aria-label="Facebook">
-              Facebook
-            </a>
-            <a href="#" aria-label="WhatsApp">
-              WhatsApp
-            </a>
+            {social.instagramUrl ? (
+              <a href={social.instagramUrl} target="_blank" rel="noreferrer" aria-label="Instagram">
+                Instagram
+              </a>
+            ) : null}
+            {social.facebookUrl ? (
+              <a href={social.facebookUrl} target="_blank" rel="noreferrer" aria-label="Facebook">
+                Facebook
+              </a>
+            ) : null}
+            {social.whatsappUrl ? (
+              <a href={social.whatsappUrl} target="_blank" rel="noreferrer" aria-label="WhatsApp">
+                WhatsApp
+              </a>
+            ) : null}
           </div>
         </div>
       </div>

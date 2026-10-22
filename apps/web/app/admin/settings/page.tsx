@@ -66,6 +66,9 @@ type Settings = {
   staff_login_store_lat?: string | number | null;
   staff_login_store_lng?: string | number | null;
   staff_login_store_radius_m?: number | null;
+  social_links?: Record<string, unknown> | null;
+  facebook_url?: string | null;
+  instagram_url?: string | null;
 };
 
 type LoginDevice = {
@@ -146,7 +149,9 @@ export default function AdminSettingsPage() {
     staff_login_allowed_ips: "",
     staff_login_store_lat: "",
     staff_login_store_lng: "",
-    staff_login_store_radius_m: 300
+    staff_login_store_radius_m: 300,
+    facebook_url: "",
+    instagram_url: ""
   });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -242,7 +247,19 @@ export default function AdminSettingsPage() {
       staff_login_allowed_ips: data.staff_login_allowed_ips || "",
       staff_login_store_lat: data.staff_login_store_lat ?? "",
       staff_login_store_lng: data.staff_login_store_lng ?? "",
-      staff_login_store_radius_m: data.staff_login_store_radius_m ?? 300
+      staff_login_store_radius_m: data.staff_login_store_radius_m ?? 300,
+      facebook_url:
+        String(
+          data.facebook_url ||
+            (data.social_links as { facebook?: string } | null)?.facebook ||
+            ""
+        ),
+      instagram_url:
+        String(
+          data.instagram_url ||
+            (data.social_links as { instagram?: string } | null)?.instagram ||
+            ""
+        )
     });
   }, [data]);
 
@@ -327,7 +344,11 @@ export default function AdminSettingsPage() {
         doc_prefix_online: form.doc_prefix_online || "VAS",
         doc_prefix_product: form.doc_prefix_product || "VAS",
         doc_number_pad: Number(form.doc_number_pad || 3),
-        doc_number_year_mode: form.doc_number_year_mode === "fy" ? "fy" : "calendar"
+        doc_number_year_mode: form.doc_number_year_mode === "fy" ? "fy" : "calendar",
+        social_links: {
+          facebook: String(form.facebook_url || "").trim(),
+          instagram: String(form.instagram_url || "").trim()
+        }
       }
     });
     setSaving(false);
@@ -853,6 +874,24 @@ export default function AdminSettingsPage() {
                     value={form.whatsapp_number || ""}
                     onChange={(e) => setForm((f) => ({ ...f, whatsapp_number: e.target.value }))}
                     placeholder="919000000000"
+                  />
+                </label>
+                <label>
+                  <span>Facebook URL</span>
+                  <input
+                    type="url"
+                    value={form.facebook_url || ""}
+                    onChange={(e) => setForm((f) => ({ ...f, facebook_url: e.target.value }))}
+                    placeholder="https://facebook.com/vasritha"
+                  />
+                </label>
+                <label>
+                  <span>Instagram URL</span>
+                  <input
+                    type="url"
+                    value={form.instagram_url || ""}
+                    onChange={(e) => setForm((f) => ({ ...f, instagram_url: e.target.value }))}
+                    placeholder="https://instagram.com/vasritha"
                   />
                 </label>
 
