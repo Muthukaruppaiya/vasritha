@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
-import { query, queryOne } from "./db/pool";
+import type { QueryResultRow } from "pg";
+import { query, queryOne, withTransaction } from "./db/pool";
 import { subcategoryBelongsToCategory } from "./db/taxonomy";
 import { ensureColourName, ensureColoursSchema, listProductColours } from "./colours";
 import { ALLOWED_GST_RATES, normalizeHsn, normalizeGstRate, resolveSaleGstRate } from "./gst";
@@ -18,9 +19,45 @@ import {
 import type { AppRole } from "./auth/rbac";
 import { writeAuditLog } from "./auth/api";
 
+type ImportDb = {
+  query: <R extends QueryResultRow = QueryResultRow>(
+    text: string,
+    params?: unknown[]
+  ) => Promise<R[]>;
+  queryOne: <R extends QueryResultRow = QueryResultRow>(
+    text: string,
+    params?: unknown[]
+  ) => Promise<R | null>;
+};
+
+class ProductImportAbort extends Error {
+  failed: Array<{ name: string; row?: number; error: string }>;
+  constructor(failed: Array<{ name: string; row?: number; error: string }>) {
+    super(failed[0]?.error || "Import failed");
+    this.name = "ProductImportAbort";
+    this.failed = failed;
+  }
+}
+
+function formatImportDbError(raw: string) {
+  if (/products_gst_rate_chk/i.test(raw)) {
+    return `Invalid gst_rate — must be one of ${ALLOWED_GST_RATES.join(", ")}`;
+  }
+  if (/violates check constraint/i.test(raw)) {
+    return `Database rejected this row (${raw.replace(/^.*constraint "/, "").replace(/".*$/, "") || "check constraint"})`;
+  }
+  if (/duplicate key|unique constraint/i.test(raw)) {
+    return "Duplicate product code / slug / barcode already exists";
+  }
+  if (/data.?validat/i.test(raw)) {
+    return "Spreadsheet dropdown / data-validation cells could not be read. Save the file as .xlsx or copy values into a fresh template.";
+  }
+  return raw;
+}
+
 /** Columns shown in the Excel template — matches Product Master form. */
 export const PRODUCT_IMPORT_COLUMNS = [
-  { key: "name", label: "name *", required: true, hint: "MANDATORY — Product name" },
+  { key: "name", label: "name *", required: true, hint: "MANDATORY — Unique product name" },
   { key: "short_name", label: "short_name", required: false, hint: "Short name for cards" },
   {
     key: "slug",
@@ -127,12 +164,16 @@ function slugify(value: string) {
     .replace(/(^-|-$)/g, "");
 }
 
-async function allocateUniqueProductSlug(base: string, excludeId?: string | null) {
+async function allocateUniqueProductSlug(
+  db: ImportDb,
+  base: string,
+  excludeId?: string | null
+) {
   const root = slugify(base) || `product-${Date.now().toString(36)}`;
   let candidate = root;
   let n = 2;
   for (;;) {
-    const clash = await queryOne<{ id: string }>(
+    const clash = await db.queryOne<{ id: string }>(
       `select id from products where slug = $1 and ($2::uuid is null or id <> $2) limit 1`,
       [candidate, excludeId || null]
     );
@@ -265,9 +306,14 @@ export async function parseWorkbookBuffer(buffer: ArrayBuffer | Buffer): Promise
   const bytes = Uint8Array.from(
     buffer instanceof ArrayBuffer ? new Uint8Array(buffer) : buffer
   );
-  // exceljs 4 load typing conflicts with outdated @types/exceljs
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await (workbook.xlsx as any).load(bytes);
+  try {
+    // exceljs 4 load typing conflicts with outdated @types/exceljs
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (workbook.xlsx as any).load(bytes);
+  } catch (err) {
+    const raw = err instanceof Error ? err.message : "Could not read Excel file";
+    throw new Error(formatImportDbError(raw));
+  }
   const sheet =
     workbook.getWorksheet("Products") ||
     workbook.worksheets.find((ws) => ws.name.toLowerCase() === "products") ||
@@ -439,18 +485,21 @@ export async function parseImportFile(file: File): Promise<string[][]> {
   return parseCsvText(text);
 }
 
-async function upsertDefaultVariant(input: {
-  productId: string;
-  sku: string;
-  barcode: string | null;
-  price: number;
-}) {
-  const existing = await queryOne<{ id: string }>(
+async function upsertDefaultVariant(
+  db: ImportDb,
+  input: {
+    productId: string;
+    sku: string;
+    barcode: string | null;
+    price: number;
+  }
+) {
+  const existing = await db.queryOne<{ id: string }>(
     `select id from product_variants where product_id = $1 order by name asc limit 1`,
     [input.productId]
   );
   if (existing) {
-    return queryOne<{ id: string }>(
+    return db.queryOne<{ id: string }>(
       `update product_variants
        set sku = $2, barcode = $3, price = $4
        where id = $1
@@ -458,7 +507,7 @@ async function upsertDefaultVariant(input: {
       [existing.id, input.sku, input.barcode, input.price]
     );
   }
-  return queryOne<{ id: string }>(
+  return db.queryOne<{ id: string }>(
     `insert into product_variants (product_id, name, sku, barcode, price, stock_quantity, attributes)
      values ($1, 'Default', $2, $3, $4, 0, '{}'::jsonb)
      returning *`,
@@ -502,16 +551,20 @@ export async function buildProductImportTemplate(): Promise<Buffer> {
     "  • Put colour-wise qty in colour_stock, e.g. Red:5, Green:3, Blue:2",
     "  • Do NOT use opening_stock for multicolour rows",
     "",
-    "SAME NAME / DUPLICATE SLUG:",
-    "  • Allowed. Duplicate slugs are auto-suffixed (e.g. silk-saree-2).",
-    "  • Optional purchase_price = cost; selling_price = customer price.",
+    "PRODUCT NAMES MUST BE UNIQUE:",
+    "  • Same name twice in the file = blocked. Name already in Product Master = blocked.",
+    "  • Any error blocks the whole file — nothing is saved.",
+    "  • To change an existing product, put its sku. Blank sku always creates a new product (and fails if the name exists).",
+    "  • Duplicate slugs are auto-suffixed (e.g. silk-saree-2).",
     "",
     "1. Fill rows on the Products sheet. Do not rename column headers.",
     "2. Use dropdowns for category, subcategory, colours, status, yes/no fields.",
-    "3. Upload checks every row first. Errors show as Line # in a popup.",
-    "4. colour_stock / opening_stock create pieces only when the product still has 0 stock.",
-    "5. Extra stock later → use GRN.",
-    "6. Lookups sheet lists valid categories, subcategories, colours, and brands.",
+    "3. Excel may show “Invalid value” / data validation if you type outside a dropdown — that is Excel, not the importer. You can keep a real value (new colour, etc.) and save.",
+    "4. Leave sku blank only for brand-new products with a new unique name.",
+    "5. Upload checks every row first. If any row fails, nothing is saved.",
+    "6. colour_stock / opening_stock create pieces only when the product still has 0 stock.",
+    "7. Extra stock later → use GRN.",
+    "8. Lookups sheet lists valid categories, subcategories, colours, and brands.",
     "",
     `Generated: ${new Date().toISOString().slice(0, 19)}`
   ];
@@ -519,7 +572,7 @@ export async function buildProductImportTemplate(): Promise<Buffer> {
     const cell = instructions.getCell(i + 1, 1);
     cell.value = line;
     if (i === 0) cell.font = { bold: true, size: 14, color: { argb: "FF2B1A10" } };
-    if (i === 2 || i === 4 || i === 9) cell.font = { bold: true, color: { argb: "FFB91C1C" } };
+    if (i === 2 || i === 4 || i === 10) cell.font = { bold: true, color: { argb: "FFB91C1C" } };
   });
 
   const lookups = workbook.addWorksheet("Lookups");
@@ -652,8 +705,10 @@ export async function buildProductImportTemplate(): Promise<Buffer> {
         allowBlank: true,
         formulae: [formula],
         showErrorMessage: true,
-        errorTitle: "Invalid value",
-        error: "Pick a value from the dropdown list."
+        errorStyle: "warning",
+        errorTitle: "Not in dropdown list",
+        error:
+          "This is not in the dropdown. You can still keep it if it is a real value (for example a new colour), then save and upload."
       };
     }
   };
@@ -686,12 +741,14 @@ export type ImportRunResult = {
   createdNames: string[];
   updatedNames: string[];
   checked: number;
+  rolledBack?: boolean;
 };
 
 export type ImportValidateResult = {
   ok: boolean;
   checked: number;
   errors: ImportLineError[];
+  blankSkuCount: number;
 };
 
 async function loadImportTaxonomy() {
@@ -709,6 +766,10 @@ async function loadImportTaxonomy() {
     byCatSlug: new Map(categories.map((c) => [c.slug.toLowerCase(), c])),
     byCatName: new Map(categories.map((c) => [c.name.toLowerCase(), c]))
   };
+}
+
+function productNameKey(name: string) {
+  return name.trim().toLowerCase();
 }
 
 function resolveSubcategoryId(
@@ -732,12 +793,76 @@ export async function validateProductImportRows(
   const errors: ImportLineError[] = [];
   const seenSku = new Map<string, number>();
   const seenSlug = new Map<string, number>();
+  const seenName = new Map<string, number>();
+
+  const names = [
+    ...new Set(rows.map((row) => productNameKey(row.name)).filter(Boolean))
+  ];
+  const skus = [
+    ...new Set(
+      rows.filter((row) => !row.sku_auto && row.sku.trim()).map((row) => row.sku.trim())
+    )
+  ];
+  const [existingByNameRows, existingBySkuRows] = await Promise.all([
+    names.length
+      ? query<{ id: string; name: string; sku: string | null }>(
+          `select id, name, sku from products where lower(btrim(name)) = any($1::text[])`,
+          [names]
+        )
+      : Promise.resolve([]),
+    skus.length
+      ? query<{ id: string; name: string; sku: string | null }>(
+          `select id, name, sku from products where sku = any($1::text[])`,
+          [skus]
+        )
+      : Promise.resolve([])
+  ]);
+  const existingByName = new Map<string, Array<{ id: string; sku: string }>>();
+  for (const product of existingByNameRows) {
+    const key = productNameKey(product.name);
+    const list = existingByName.get(key) || [];
+    list.push({ id: product.id, sku: (product.sku || "").trim() });
+    existingByName.set(key, list);
+  }
+  const existingBySku = new Map(
+    existingBySkuRows.map((product) => [String(product.sku || "").trim(), product])
+  );
 
   for (const row of rows) {
     const label = row.name.trim() || "(blank name)";
     if (!row.name.trim()) {
       errors.push({ row: row.rowNumber, name: label, error: "name * is required" });
       continue;
+    }
+    const nameKey = productNameKey(row.name);
+    const prevName = seenName.get(nameKey);
+    if (prevName) {
+      errors.push({
+        row: row.rowNumber,
+        name: label,
+        error: `Duplicate product name in file (also line ${prevName})`
+      });
+    } else {
+      seenName.set(nameKey, row.rowNumber);
+    }
+    const nameOwners = existingByName.get(nameKey) || [];
+    const skuRow = !row.sku_auto ? existingBySku.get(row.sku.trim()) : undefined;
+    const creating = row.sku_auto || !skuRow;
+    const otherOwner = nameOwners.find((owner) => !skuRow || owner.id !== skuRow.id);
+    if (creating && nameOwners.length) {
+      const skuHint = nameOwners[0]?.sku ? ` (sku ${nameOwners[0].sku})` : "";
+      errors.push({
+        row: row.rowNumber,
+        name: label,
+        error: `Product name already exists${skuHint}. Duplicate names are not imported.`
+      });
+    } else if (!creating && otherOwner) {
+      const skuHint = otherOwner.sku ? ` (sku ${otherOwner.sku})` : "";
+      errors.push({
+        row: row.rowNumber,
+        name: label,
+        error: `Product name already exists${skuHint}. Duplicate names are not imported.`
+      });
     }
     if (!row.category.trim()) {
       errors.push({ row: row.rowNumber, name: label, error: "category * is required" });
@@ -861,7 +986,16 @@ export async function validateProductImportRows(
     }
   }
 
-  return { ok: errors.length === 0, checked: rows.length, errors };
+  return {
+    ok: errors.length === 0,
+    checked: rows.length,
+    errors,
+    blankSkuCount: rows.filter((row) => row.sku_auto).length
+  };
+}
+
+function abortImportRow(row: ProductImportRow, error: string): never {
+  throw new ProductImportAbort([{ name: row.name || "(blank)", row: row.rowNumber, error }]);
 }
 
 export async function runProductImport(input: {
@@ -872,331 +1006,314 @@ export async function runProductImport(input: {
   await ensureProductUnitsSchema();
   const canApprove = canApproveProducts(input.roles || []);
   const { byCatSlug, byCatName, subcategories } = await loadImportTaxonomy();
+  const { nextDocumentNumber } = await import("./document-numbers");
 
-  const created: string[] = [];
-  const updated: string[] = [];
-  const failed: Array<{ name: string; row?: number; error: string }> = [];
+  const emptyResult = (failed: ImportRunResult["failed"]): ImportRunResult => ({
+    created: 0,
+    updated: 0,
+    failed,
+    createdNames: [],
+    updatedNames: [],
+    checked: input.rows.length,
+    rolledBack: true
+  });
 
-  for (const row of input.rows) {
-    try {
-      if (!row.name.trim()) {
-        failed.push({ name: "(blank)", row: row.rowNumber, error: "name * is required" });
-        continue;
-      }
-      if (!Number.isFinite(row.price) || row.price < 0) {
-        failed.push({
-          name: row.name,
-          row: row.rowNumber,
-          error: "Valid selling_price * is required"
-        });
-        continue;
-      }
-
-      const category =
-        byCatSlug.get(row.category.toLowerCase()) || byCatName.get(row.category.toLowerCase());
-      if (!category) {
-        failed.push({
-          name: row.name,
-          row: row.rowNumber,
-          error: `Unknown category: ${row.category || "(empty)"}`
-        });
-        continue;
-      }
-
-      let subcategoryId: string | null = null;
-      const subRaw = row.subcategory.trim();
-      if (subRaw) {
-        subcategoryId = resolveSubcategoryId(category.id, subRaw, subcategories);
-        if (!subcategoryId) {
-          const plain = subRaw.includes("|") ? subRaw.split("|").pop()!.trim() : subRaw;
-          failed.push({
-            name: row.name,
-            row: row.rowNumber,
-            error: `Unknown subcategory for ${category.name}: ${plain}`
-          });
-          continue;
-        }
-      }
-      if (!(await subcategoryBelongsToCategory(category.id, subcategoryId))) {
-        failed.push({
-          name: row.name,
-          row: row.rowNumber,
-          error: "Subcategory must belong to the selected category"
-        });
-        continue;
-      }
-
-      const isMulticolour = row.is_multicolour || row.colour_batches.length > 0;
-      const productColor = isMulticolour ? "" : row.colour.trim();
-      if (!isMulticolour && !productColor) {
-        failed.push({
-          name: row.name,
-          row: row.rowNumber,
-          error: "colour is required unless is_multicolour = yes (or colour_stock is set)"
-        });
-        continue;
-      }
-      if (row.colour_stock_raw.startsWith("__ERROR__:")) {
-        failed.push({
-          name: row.name,
-          row: row.rowNumber,
-          error: row.colour_stock_raw.replace(/^__ERROR__:/, "")
-        });
-        continue;
-      }
-      if (productColor) await ensureColourName(productColor);
-      for (const batch of row.colour_batches) {
-        await ensureColourName(batch.color);
-      }
-
-      const status = normalizeProductStatus(row.status, {
-        canApprove,
-        fallback: canApprove ? "draft" : "pending_approval"
-      }) as ProductStatus;
-
-      const gstRate = normalizeGstRate(
-        resolveSaleGstRate({
-          hsnCode: row.hsn_code,
-          saleValuePerPiece: row.price,
-          fallbackRate: row.gst_rate
-        }),
-        5
-      );
-      if (!(ALLOWED_GST_RATES as readonly number[]).includes(gstRate)) {
-        failed.push({
-          name: row.name,
-          row: row.rowNumber,
-          error: `gst_rate must be one of ${ALLOWED_GST_RATES.join(", ")} (got ${gstRate})`
-        });
-        continue;
-      }
-
-      let brandId: string | null = null;
-      if (row.brand.trim()) {
-        const brand = await queryOne<{ id: string }>(
-          `select id from brands where lower(name) = lower($1) limit 1`,
-          [row.brand.trim()]
-        );
-        brandId = brand?.id || null;
-      } else {
-        brandId = await resolveBrandId(null).catch(() => null);
-      }
-
-      let parentProductId: string | null = null;
-      if (row.parent_sku.trim()) {
-        const parent = await queryOne<{ id: string; parent_product_id: string | null }>(
-          `select id, parent_product_id from products where upper(sku) = $1 limit 1`,
-          [row.parent_sku.trim()]
-        );
-        if (!parent) {
-          failed.push({
-            name: row.name,
-            row: row.rowNumber,
-            error: `Parent product not found: ${row.parent_sku}`
-          });
-          continue;
-        }
-        if (parent.parent_product_id) {
-          failed.push({
-            name: row.name,
-            row: row.rowNumber,
-            error: "Parent must be a top-level product"
-          });
-          continue;
-        }
-        parentProductId = parent.id;
-      }
-
-      let sku = row.sku;
-      let tag = row.tag;
-      if (row.sku_auto) {
-        const { nextDocumentNumber } = await import("./document-numbers");
-        sku = await nextDocumentNumber("product");
-        tag = (row.tag && !row.tag.startsWith("AUTO-") ? row.tag : sku).toUpperCase();
-      }
-      // Family barcode always auto from product code unless spreadsheet set a real one.
-      const barcodeProvided =
-        Boolean(row.barcode?.trim()) &&
-        !row.barcode.startsWith("AUTO") &&
-        !row.sku_auto;
-      const familyBarcode = barcodeProvided
-        ? row.barcode.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 16)
-        : sku.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 16);
-
-      // Match existing only by product code — duplicate slugs create new rows (auto-suffixed).
-      const existing = !row.sku_auto
-        ? await queryOne<{ id: string }>(`select id from products where sku = $1 limit 1`, [sku])
-        : null;
-
-      const slug = existing
-        ? await allocateUniqueProductSlug(row.slug || row.name, existing.id)
-        : await allocateUniqueProductSlug(row.slug || row.name);
-
-      const colourBatches = row.colour_batches;
-      const openingStock = colourBatches.length
-        ? colourBatches.reduce((sum, b) => sum + b.count, 0)
-        : isMulticolour
-          ? 0
-          : row.opening_stock;
-
-      const applyStockIfEmpty = async (productId: string, variantId: string) => {
-        if (openingStock <= 0 && colourBatches.length === 0) return;
-        const existingPieces = await queryOne<{ c: number }>(
-          `select count(*)::int as c from product_items where product_id = $1`,
-          [productId]
-        );
-        if (Number(existingPieces?.c || 0) > 0) return;
-        await createUnitsAndSync({
-          productId,
-          variantId,
-          tag: tag.toUpperCase(),
-          sku,
-          count: colourBatches.length ? 0 : openingStock,
-          color: colourBatches.length ? null : productColor || null,
-          colorBatches: colourBatches.length ? colourBatches : undefined
-        });
-      };
-
-      if (existing) {
-        const data = await queryOne(
-          `update products
-           set name = $2, slug = $3, sku = $4, barcode = $5, tag = $6, sku_prefix = $7,
-               label_size = $8, category_id = $9, subcategory_id = $10,
-               short_name = $11, short_description = $12, color = $13, is_multicolour = $14,
-               description = $15, price = $16, compare_at_price = $17, hsn_code = $18,
-               gst_rate = $19, status = $20, is_featured = $21, restock_expected = $22,
-               parent_product_id = $23, brand_id = coalesce($24, brand_id),
-               purchase_price = $25, updated_at = now()
-           where id = $1
-           returning *`,
-          [
-            existing.id,
-            row.name,
-            slug,
-            sku,
-            familyBarcode,
-            tag.toUpperCase(),
-            row.sku_prefix,
-            row.label_size,
-            category.id,
-            subcategoryId,
-            row.short_name,
-            row.short_description,
-            productColor,
-            isMulticolour,
-            row.description,
-            row.price,
-            row.compare_at_price,
-            row.hsn_code,
-            gstRate,
-            status,
-            row.is_featured,
-            row.restock_expected,
-            parentProductId,
-            brandId,
-            row.purchase_price
-          ]
-        );
-        const variant = await upsertDefaultVariant({
-          productId: existing.id,
-          sku,
-          barcode: familyBarcode,
-          price: row.price
-        });
-        if (variant?.id) await applyStockIfEmpty(existing.id, variant.id);
-        await writeAuditLog({
-          actorUserId: input.actorUserId,
-          action: "import_update",
-          entityType: "products",
-          entityId: existing.id,
-          after: data
-        });
-        updated.push(row.name);
-      } else {
-        const data = await queryOne<{ id: string }>(
-          `insert into products
-             (name, slug, sku, barcode, tag, sku_prefix, label_size, category_id, subcategory_id,
-              short_name, short_description, color, is_multicolour, description,
-              price, compare_at_price, hsn_code, gst_rate, status, stock_quantity, is_featured,
-              parent_product_id, brand_id, restock_expected, purchase_price)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,0,$20,$21,$22,$23,$24)
-           returning *`,
-          [
-            row.name,
-            slug,
-            sku,
-            familyBarcode,
-            tag.toUpperCase(),
-            row.sku_prefix,
-            row.label_size,
-            category.id,
-            subcategoryId,
-            row.short_name,
-            row.short_description,
-            productColor,
-            isMulticolour,
-            row.description,
-            row.price,
-            row.compare_at_price,
-            row.hsn_code,
-            gstRate,
-            status,
-            row.is_featured,
-            parentProductId,
-            brandId,
-            row.restock_expected,
-            row.purchase_price
-          ]
-        );
-        if (!data) {
-          failed.push({ name: row.name, row: row.rowNumber, error: "Insert failed" });
-          continue;
-        }
-        const variant = await upsertDefaultVariant({
-          productId: data.id,
-          sku,
-          barcode: familyBarcode,
-          price: row.price
-        });
-        if (variant?.id) await applyStockIfEmpty(data.id, variant.id);
-        await recordPriceHistory(data.id, row.price);
-        await writeAuditLog({
-          actorUserId: input.actorUserId,
-          action: "import_create",
-          entityType: "products",
-          entityId: data.id,
-          after: {
-            ...data,
-            opening_stock: openingStock,
-            colour_stock: colourBatches
-          }
-        });
-        created.push(row.name);
-      }
-    } catch (err) {
-      const raw = err instanceof Error ? err.message : "Import failed";
-      let message = raw;
-      if (/products_gst_rate_chk/i.test(raw)) {
-        message = `Invalid gst_rate — must be one of ${ALLOWED_GST_RATES.join(", ")}`;
-      } else if (/violates check constraint/i.test(raw)) {
-        message = `Database rejected this row (${raw.replace(/^.*constraint "/, "").replace(/".*$/, "") || "check constraint"})`;
-      } else if (/duplicate key|unique constraint/i.test(raw)) {
-        message = "Duplicate product code / slug / barcode already exists";
-      }
-      failed.push({
-        name: row.name,
-        row: row.rowNumber,
-        error: message
-      });
-    }
+  const precheck = await validateProductImportRows(input.rows);
+  if (!precheck.ok) {
+    return emptyResult(
+      precheck.errors.map((item) => ({
+        name: item.name,
+        row: item.row,
+        error: item.error
+      }))
+    );
   }
 
-  return {
-    created: created.length,
-    updated: updated.length,
-    failed,
-    createdNames: created,
-    updatedNames: updated,
-    checked: input.rows.length
-  };
+  try {
+    return await withTransaction(async (db) => {
+      const created: string[] = [];
+      const updated: string[] = [];
+
+      for (const row of input.rows) {
+        if (!row.name.trim()) abortImportRow(row, "name * is required");
+        if (!Number.isFinite(row.price) || row.price < 0) {
+          abortImportRow(row, "Valid selling_price * is required");
+        }
+
+        const category =
+          byCatSlug.get(row.category.toLowerCase()) || byCatName.get(row.category.toLowerCase());
+        if (!category) {
+          abortImportRow(row, `Unknown category: ${row.category || "(empty)"}`);
+        }
+
+        let subcategoryId: string | null = null;
+        const subRaw = row.subcategory.trim();
+        if (subRaw) {
+          subcategoryId = resolveSubcategoryId(category.id, subRaw, subcategories);
+          if (!subcategoryId) {
+            const plain = subRaw.includes("|") ? subRaw.split("|").pop()!.trim() : subRaw;
+            abortImportRow(row, `Unknown subcategory for ${category.name}: ${plain}`);
+          }
+        }
+        if (!(await subcategoryBelongsToCategory(category.id, subcategoryId))) {
+          abortImportRow(row, "Subcategory must belong to the selected category");
+        }
+
+        const isMulticolour = row.is_multicolour || row.colour_batches.length > 0;
+        const productColor = isMulticolour ? "" : row.colour.trim();
+        if (!isMulticolour && !productColor) {
+          abortImportRow(
+            row,
+            "colour is required unless is_multicolour = yes (or colour_stock is set)"
+          );
+        }
+        if (row.colour_stock_raw.startsWith("__ERROR__:")) {
+          abortImportRow(row, row.colour_stock_raw.replace(/^__ERROR__:/, ""));
+        }
+        if (productColor) await ensureColourName(productColor);
+        for (const batch of row.colour_batches) {
+          await ensureColourName(batch.color);
+        }
+
+        const status = normalizeProductStatus(row.status, {
+          canApprove,
+          fallback: canApprove ? "draft" : "pending_approval"
+        }) as ProductStatus;
+
+        const gstRate = normalizeGstRate(
+          resolveSaleGstRate({
+            hsnCode: row.hsn_code,
+            saleValuePerPiece: row.price,
+            fallbackRate: row.gst_rate
+          }),
+          5
+        );
+        if (!(ALLOWED_GST_RATES as readonly number[]).includes(gstRate)) {
+          abortImportRow(
+            row,
+            `gst_rate must be one of ${ALLOWED_GST_RATES.join(", ")} (got ${gstRate})`
+          );
+        }
+
+        let brandId: string | null = null;
+        if (row.brand.trim()) {
+          const brand = await db.queryOne<{ id: string }>(
+            `select id from brands where lower(name) = lower($1) limit 1`,
+            [row.brand.trim()]
+          );
+          brandId = brand?.id || null;
+        } else {
+          brandId = await resolveBrandId(null).catch(() => null);
+        }
+
+        let parentProductId: string | null = null;
+        if (row.parent_sku.trim()) {
+          const parent = await db.queryOne<{ id: string; parent_product_id: string | null }>(
+            `select id, parent_product_id from products where upper(sku) = $1 limit 1`,
+            [row.parent_sku.trim()]
+          );
+          if (!parent) abortImportRow(row, `Parent product not found: ${row.parent_sku}`);
+          if (parent.parent_product_id) abortImportRow(row, "Parent must be a top-level product");
+          parentProductId = parent.id;
+        }
+
+        const nameClash = await db.queryOne<{ id: string; sku: string | null }>(
+          `select id, sku from products
+           where lower(btrim(name)) = lower(btrim($1))
+           limit 1`,
+          [row.name]
+        );
+        const existing = !row.sku_auto
+          ? await db.queryOne<{ id: string; sku: string }>(
+              `select id, sku from products where sku = $1 limit 1`,
+              [row.sku]
+            )
+          : null;
+        if (!existing && nameClash) {
+          abortImportRow(
+            row,
+            `Product name already exists${nameClash.sku ? ` (sku ${nameClash.sku})` : ""}. Duplicate names are not imported.`
+          );
+        }
+        if (existing && nameClash && nameClash.id !== existing.id) {
+          abortImportRow(
+            row,
+            `Product name already exists${nameClash.sku ? ` (sku ${nameClash.sku})` : ""}. Duplicate names are not imported.`
+          );
+        }
+
+        let sku = row.sku_auto ? "" : row.sku;
+        if (row.sku_auto) {
+          sku = await nextDocumentNumber("product", db);
+        }
+        const tag = (row.tag && !row.tag.startsWith("AUTO-") ? row.tag : sku).toUpperCase();
+        const barcodeProvided =
+          Boolean(row.barcode?.trim()) &&
+          !row.barcode.startsWith("AUTO") &&
+          !row.sku_auto;
+        const familyBarcode = barcodeProvided
+          ? row.barcode.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 16)
+          : sku.replace(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 16);
+
+        const slug = existing
+          ? await allocateUniqueProductSlug(db, row.slug || row.name, existing.id)
+          : await allocateUniqueProductSlug(db, row.slug || row.name);
+
+        const colourBatches = row.colour_batches;
+        const openingStock = colourBatches.length
+          ? colourBatches.reduce((sum, b) => sum + b.count, 0)
+          : isMulticolour
+            ? 0
+            : row.opening_stock;
+
+        const applyStockIfEmpty = async (productId: string, variantId: string) => {
+          if (openingStock <= 0 && colourBatches.length === 0) return;
+          const existingPieces = await db.queryOne<{ c: number }>(
+            `select count(*)::int as c from product_items where product_id = $1`,
+            [productId]
+          );
+          if (Number(existingPieces?.c || 0) > 0) return;
+          await createUnitsAndSync({
+            productId,
+            variantId,
+            tag: tag.toUpperCase(),
+            sku,
+            count: colourBatches.length ? 0 : openingStock,
+            color: colourBatches.length ? null : productColor || null,
+            colorBatches: colourBatches.length ? colourBatches : undefined,
+            db
+          });
+        };
+
+        if (existing) {
+          const data = await db.queryOne(
+            `update products
+             set name = $2, slug = $3, sku = $4, barcode = $5, tag = $6, sku_prefix = $7,
+                 label_size = $8, category_id = $9, subcategory_id = $10,
+                 short_name = $11, short_description = $12, color = $13, is_multicolour = $14,
+                 description = $15, price = $16, compare_at_price = $17, hsn_code = $18,
+                 gst_rate = $19, status = $20, is_featured = $21, restock_expected = $22,
+                 parent_product_id = $23, brand_id = coalesce($24, brand_id),
+                 purchase_price = $25, updated_at = now()
+             where id = $1
+             returning *`,
+            [
+              existing.id,
+              row.name,
+              slug,
+              sku,
+              familyBarcode,
+              tag.toUpperCase(),
+              row.sku_prefix,
+              row.label_size,
+              category.id,
+              subcategoryId,
+              row.short_name,
+              row.short_description,
+              productColor,
+              isMulticolour,
+              row.description,
+              row.price,
+              row.compare_at_price,
+              row.hsn_code,
+              gstRate,
+              status,
+              row.is_featured,
+              row.restock_expected,
+              parentProductId,
+              brandId,
+              row.purchase_price
+            ]
+          );
+          const variant = await upsertDefaultVariant(db, {
+            productId: existing.id,
+            sku,
+            barcode: familyBarcode,
+            price: row.price
+          });
+          if (variant?.id) await applyStockIfEmpty(existing.id, variant.id);
+          await writeAuditLog({
+            actorUserId: input.actorUserId,
+            action: "import_update",
+            entityType: "products",
+            entityId: existing.id,
+            after: data,
+            db
+          });
+          updated.push(row.name);
+        } else {
+          const data = await db.queryOne<{ id: string }>(
+            `insert into products
+               (name, slug, sku, barcode, tag, sku_prefix, label_size, category_id, subcategory_id,
+                short_name, short_description, color, is_multicolour, description,
+                price, compare_at_price, hsn_code, gst_rate, status, stock_quantity, is_featured,
+                parent_product_id, brand_id, restock_expected, purchase_price)
+             values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,0,$20,$21,$22,$23,$24)
+             returning *`,
+            [
+              row.name,
+              slug,
+              sku,
+              familyBarcode,
+              tag.toUpperCase(),
+              row.sku_prefix,
+              row.label_size,
+              category.id,
+              subcategoryId,
+              row.short_name,
+              row.short_description,
+              productColor,
+              isMulticolour,
+              row.description,
+              row.price,
+              row.compare_at_price,
+              row.hsn_code,
+              gstRate,
+              status,
+              row.is_featured,
+              parentProductId,
+              brandId,
+              row.restock_expected,
+              row.purchase_price
+            ]
+          );
+          if (!data) abortImportRow(row, "Insert failed");
+          const variant = await upsertDefaultVariant(db, {
+            productId: data.id,
+            sku,
+            barcode: familyBarcode,
+            price: row.price
+          });
+          if (variant?.id) await applyStockIfEmpty(data.id, variant.id);
+          await recordPriceHistory(data.id, row.price, db);
+          await writeAuditLog({
+            actorUserId: input.actorUserId,
+            action: "import_create",
+            entityType: "products",
+            entityId: data.id,
+            after: {
+              ...data,
+              opening_stock: openingStock,
+              colour_stock: colourBatches
+            },
+            db
+          });
+          created.push(row.name);
+        }
+      }
+
+      return {
+        created: created.length,
+        updated: updated.length,
+        failed: [],
+        createdNames: created,
+        updatedNames: updated,
+        checked: input.rows.length
+      };
+    });
+  } catch (err) {
+    if (err instanceof ProductImportAbort) return emptyResult(err.failed);
+    const raw = err instanceof Error ? err.message : "Import failed";
+    return emptyResult([{ name: "(import)", error: formatImportDbError(raw) }]);
+  }
 }

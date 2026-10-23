@@ -78,5 +78,19 @@ export async function POST(request: NextRequest) {
     roles: (ctx.roles || []) as AppRole[]
   });
 
+  if (result.rolledBack || (result.failed.length > 0 && result.created === 0 && result.updated === 0)) {
+    const first = result.failed[0]?.error || "Import failed";
+    return fail(`Import did not save any rows: ${first}`, 400, {
+      mode: "import",
+      rolledBack: true,
+      errors: result.failed.map((item) => ({
+        row: item.row || 0,
+        name: item.name,
+        error: item.error
+      })),
+      ...result
+    });
+  }
+
   return ok({ mode: "import", ...result });
 }

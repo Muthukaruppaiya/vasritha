@@ -154,6 +154,7 @@ function AdminProductsPageInner() {
         kind: "confirm";
         fileName: string;
         rowCount: number;
+        blankSkuCount: number;
         file: File;
       }
   >(null);
@@ -491,12 +492,21 @@ function AdminProductsPageInner() {
       if (!res.ok) {
         const blocked = payload as {
           error?: string;
+          rolledBack?: boolean;
           errors?: Array<{ row: number; name: string; error: string }>;
+          failed?: Array<{ row?: number; name: string; error: string }>;
         };
+        const lineErrors = (blocked.errors || blocked.failed || []).map((item) => ({
+          row: item.row || 0,
+          name: item.name,
+          error: item.error
+        }));
         setImportDialog({
           kind: "errors",
-          summary: blocked.error || "Import blocked by validation errors",
-          errors: blocked.errors || []
+          summary: blocked.rolledBack
+            ? `${blocked.error || "Import failed"}. Nothing was saved.`
+            : blocked.error || "Import blocked by validation errors",
+          errors: lineErrors
         });
         return;
       }
@@ -579,6 +589,7 @@ function AdminProductsPageInner() {
           data?: {
             ok?: boolean;
             checked?: number;
+            blankSkuCount?: number;
             errors?: Array<{ row: number; name: string; error: string }>;
           };
         }
@@ -589,7 +600,7 @@ function AdminProductsPageInner() {
       if (!checkData?.ok || lineErrors.length) {
         setImportDialog({
           kind: "errors",
-          summary: `File check failed — ${lineErrors.length} error(s) in ${rowCount} row(s). Fix the lines below and upload again.`,
+          summary: `File check failed — ${lineErrors.length} error(s) in ${rowCount} row(s). Fix the lines below and upload again. Nothing was imported.`,
           errors: lineErrors
         });
         return;
@@ -600,6 +611,7 @@ function AdminProductsPageInner() {
         kind: "confirm",
         fileName: fileCopy.name,
         rowCount,
+        blankSkuCount: Number(checkData?.blankSkuCount || 0),
         file: fileCopy
       });
     } catch (err) {
@@ -834,6 +846,14 @@ function AdminProductsPageInner() {
                     Do you want to import <strong>{importDialog.rowCount}</strong> product row
                     {importDialog.rowCount === 1 ? "" : "s"} now?
                   </p>
+                  {importDialog.blankSkuCount > 0 ? (
+                    <p className="muted">
+                      {importDialog.blankSkuCount} row
+                      {importDialog.blankSkuCount === 1 ? " has" : "s have"} a blank SKU.
+                      Product names must be unique. If a name already exists, the whole file
+                      is blocked and nothing is saved.
+                    </p>
+                  ) : null}
                 </div>
               ) : (
                 <>

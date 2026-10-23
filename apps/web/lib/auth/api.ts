@@ -144,8 +144,12 @@ export async function writeAuditLog(input: {
   entityId?: string;
   before?: unknown;
   after?: unknown;
+  db?: {
+    query: (text: string, params?: unknown[]) => Promise<unknown>;
+  };
 }) {
-  await query(
+  const runner = input.db || { query };
+  await runner.query(
     `insert into audit_logs (actor_user_id, action, entity_type, entity_id, before, after)
      values ($1, $2, $3, $4, $5::jsonb, $6::jsonb)`,
     [

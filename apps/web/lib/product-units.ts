@@ -403,8 +403,9 @@ export async function getShopVariantStock(
   return Number(counted?.c || 0);
 }
 
-export async function recordPriceHistory(productId: string, price: number) {
-  await query(
+export async function recordPriceHistory(productId: string, price: number, db?: Db) {
+  const runner = db || { query };
+  await runner.query(
     `insert into product_price_history (product_id, price) values ($1, $2)`,
     [productId, price]
   );
@@ -615,6 +616,7 @@ export async function createUnitsAndSync(input: {
   shopId?: string | null;
   color?: string | null;
   colorBatches?: Array<{ color: string; count: number }>;
+  db?: Db;
 }) {
   // Inventory / POS stock is per-shop — never leave new pieces without a shop.
   let shopId = input.shopId || null;
@@ -623,7 +625,7 @@ export async function createUnitsAndSync(input: {
     shopId = shop?.id || null;
   }
 
-  return withTransaction(async (db) => {
+  const run = async (db: Db) => {
     const items = await createProductUnits(db, {
       ...input,
       shopId
@@ -643,6 +645,9 @@ export async function createUnitsAndSync(input: {
       [input.productId]
     );
     return items;
-  });
+  };
+
+  if (input.db) return run(input.db);
+  return withTransaction(run);
 }
 
