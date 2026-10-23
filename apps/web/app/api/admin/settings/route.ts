@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { fail, ok, requirePermission, writeAuditLog } from "../../../../lib/auth/api";
 import { queryOne } from "../../../../lib/db/pool";
 import { ensureGstSchema } from "../../../../lib/gst";
+import { ensureCompanySettingsSchema } from "../../../../lib/company-settings";
 import { ensureLoginSecuritySchema } from "../../../../lib/login-security";
 
 const ALLOWED_FIELDS = [
@@ -63,6 +64,7 @@ export async function GET(request: NextRequest) {
   if (error) return error;
 
   await ensureGstSchema();
+  await ensureCompanySettingsSchema();
   await ensureLoginSecuritySchema();
   const { ensureShippingSchema } = await import("../../../../lib/shipping");
   await ensureShippingSchema();
@@ -79,6 +81,7 @@ export async function PATCH(request: NextRequest) {
   if (error || !ctx) return error;
 
   await ensureGstSchema();
+  await ensureCompanySettingsSchema();
   await ensureLoginSecuritySchema();
   const { ensureShippingSchema } = await import("../../../../lib/shipping");
   await ensureShippingSchema();

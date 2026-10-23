@@ -1,8 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useAdminQuery } from "../../hooks/use-admin-query";
-import { adminFetch } from "../../lib/admin-api";
 
 type ColourRow = {
   id: string;
@@ -17,7 +16,7 @@ type Props = {
   required?: boolean;
   placeholder?: string;
   id?: string;
-  /** Persist newly typed colour into master table on blur. */
+  /** Kept for call-site compatibility; colours now come from Settings → Colours. */
   upsertOnBlur?: boolean;
 };
 
@@ -26,48 +25,34 @@ export function ColorField({
   onChange,
   disabled,
   required,
-  placeholder = "Colour",
-  id = "colour-field",
-  upsertOnBlur = true
+  placeholder = "Select colour",
+  id = "colour-field"
 }: Props) {
-  const { data, reload } = useAdminQuery<{ colours: ColourRow[] }>("/api/admin/colours");
-  const [busy, setBusy] = useState(false);
-  const listId = `${id}-suggestions`;
-
+  const { data } = useAdminQuery<{ colours: ColourRow[] }>("/api/admin/colours");
   const colours = useMemo(() => data?.colours || [], [data?.colours]);
-
-  const persistIfNew = async () => {
-    const name = value.trim();
-    if (!upsertOnBlur || !name || disabled || busy) return;
-    const exists = colours.some((c) => c.name.toLowerCase() === name.toLowerCase());
-    if (exists) return;
-    setBusy(true);
-    await adminFetch("/api/admin/colours", {
-      method: "POST",
-      json: { name }
-    });
-    setBusy(false);
-    void reload();
-  };
+  const options = useMemo(() => {
+    const list = [...colours];
+    const current = value.trim();
+    if (current && !list.some((c) => c.name.toLowerCase() === current.toLowerCase())) {
+      list.unshift({ id: `current-${current}`, name: current, hex: null });
+    }
+    return list;
+  }, [colours, value]);
 
   return (
-    <>
-      <input
-        id={id}
-        list={listId}
-        value={value}
-        disabled={disabled}
-        required={required}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        onBlur={() => void persistIfNew()}
-        autoComplete="off"
-      />
-      <datalist id={listId}>
-        {colours.map((colour) => (
-          <option key={colour.id} value={colour.name} />
-        ))}
-      </datalist>
-    </>
+    <select
+      id={id}
+      value={value}
+      disabled={disabled}
+      required={required}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      <option value="">{placeholder}</option>
+      {options.map((colour) => (
+        <option key={colour.id} value={colour.name}>
+          {colour.name}
+        </option>
+      ))}
+    </select>
   );
 }

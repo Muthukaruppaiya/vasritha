@@ -38,6 +38,7 @@ import {
   Printer,
   Wallet,
   ChartColumn,
+  Palette,
   type LucideIcon
 } from "lucide-react";
 import {
@@ -196,6 +197,7 @@ const navModules: NavModule[] = [
     icon: Settings,
     children: [
       { label: "Settings", href: "/admin/settings", icon: Settings },
+      { label: "Colours", href: "/admin/settings?tab=colours", icon: Palette },
       { label: "Brands", href: "/admin/brands", icon: Sparkles },
       { label: "Shops", href: "/admin/shops", icon: Store },
       { label: "Integrations", href: "/admin/integrations", icon: Plug }
@@ -208,9 +210,10 @@ function sessionRoles(user: AdminSessionUser | null): AppRole[] {
 }
 
 function pathMatches(pathname: string, href: string) {
-  if (href === "/admin") return pathname === "/admin";
-  if (pathname === href) return true;
-  if (!pathname.startsWith(`${href}/`)) return false;
+  const path = href.split("?")[0];
+  if (path === "/admin") return pathname === "/admin";
+  if (pathname === path) return true;
+  if (!pathname.startsWith(`${path}/`)) return false;
   // GRN entry must not stay active on /grn/history
   if (href === "/admin/inventory/grn") return false;
   return true;

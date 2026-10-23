@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Ban, Check, Plus } from "lucide-react";
 import {
   AdminAlert,
@@ -16,6 +17,9 @@ import { adminFetch, adminUpload, formatDate } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
 import { ROLE_META, ROLE_ORDER, type AppRole } from "../../../lib/auth/rbac";
 import { previewDocumentNumber } from "../../../lib/document-numbers-format";
+import { SettingsColoursPanel } from "../../../components/admin/settings-colours-panel";
+
+type SettingsTab = "site" | "company" | "colours" | "roles" | "security";
 
 type Settings = {
   site_name: string | null;
@@ -98,7 +102,24 @@ const SYSTEM_TEMPLATES = ROLE_ORDER.filter((code) => code !== "customer").map((c
 }));
 
 export default function AdminSettingsPage() {
-  const [tab, setTab] = useState<"site" | "company" | "roles" | "security">("site");
+  return (
+    <Suspense fallback={<AdminLoading />}>
+      <AdminSettingsPageInner />
+    </Suspense>
+  );
+}
+
+function AdminSettingsPageInner() {
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get("tab");
+  const [tab, setTab] = useState<SettingsTab>(
+    initialTab === "company" ||
+      initialTab === "colours" ||
+      initialTab === "roles" ||
+      initialTab === "security"
+      ? initialTab
+      : "site"
+  );
   const { data, error, loading, reload } = useAdminQuery<Settings>("/api/admin/settings");
   const rolesQuery = useAdminQuery<RoleRow[]>("/api/admin/roles");
   const devicesQuery = useAdminQuery<LoginDevice[]>("/api/admin/settings/login-devices");
@@ -398,7 +419,7 @@ export default function AdminSettingsPage() {
       <AdminPageHeader
         eyebrow="Store setup"
         title="Settings"
-        description="Site identity, company details, logos, and staff roles."
+        description="Site identity, colours, company details, logos, and staff roles."
         actions={
           tab === "roles" ? (
             <button
@@ -427,6 +448,17 @@ export default function AdminSettingsPage() {
       <div className="admin-tabs">
         <button type="button" className={tab === "site" ? "is-active" : ""} onClick={() => setTab("site")}>
           Site
+        </button>
+        <button
+          type="button"
+          className={tab === "colours" ? "is-active" : ""}
+          onClick={() => {
+            setMessage("");
+            setSaveError("");
+            setTab("colours");
+          }}
+        >
+          Colours
         </button>
         <button
           type="button"
@@ -478,6 +510,24 @@ export default function AdminSettingsPage() {
                 <input
                   value={form.tagline || ""}
                   onChange={(e) => setForm((f) => ({ ...f, tagline: e.target.value }))}
+                />
+              </label>
+              <label>
+                <span>Facebook URL</span>
+                <input
+                  type="url"
+                  value={form.facebook_url || ""}
+                  onChange={(e) => setForm((f) => ({ ...f, facebook_url: e.target.value }))}
+                  placeholder="https://facebook.com/vasritha"
+                />
+              </label>
+              <label>
+                <span>Instagram URL</span>
+                <input
+                  type="url"
+                  value={form.instagram_url || ""}
+                  onChange={(e) => setForm((f) => ({ ...f, instagram_url: e.target.value }))}
+                  placeholder="https://instagram.com/vasritha"
                 />
               </label>
               <label>
@@ -732,6 +782,8 @@ export default function AdminSettingsPage() {
           )}
         </AdminPanel>
       )}
+
+      {tab === "colours" && <SettingsColoursPanel />}
 
       {tab === "company" && (
         <AdminPanel title="Company details">

@@ -1,5 +1,6 @@
-import { cachedOk } from "../../../lib/auth/api";
+import { ok } from "../../../lib/auth/api";
 import { queryOne } from "../../../lib/db/pool";
+import { ensureCompanySettingsSchema } from "../../../lib/company-settings";
 
 const GOLD_LOGO = "/vasritha-logo.png";
 
@@ -28,6 +29,7 @@ function socialUrl(
 }
 
 export async function GET() {
+  await ensureCompanySettingsSchema().catch(() => undefined);
   const data = await queryOne<{
     site_name: string | null;
     logo_path: string | null;
@@ -46,14 +48,18 @@ export async function GET() {
   const links = data?.social_links || {};
   const whatsapp = String(data?.whatsapp_number || "").replace(/\D/g, "");
 
-  return cachedOk({
-    siteName: data?.site_name || "Vasritha",
-    logoPath: customUpload(data?.logo_path) || GOLD_LOGO,
-    headerLogoPath: customUpload(data?.header_logo_path) || GOLD_LOGO,
-    supportPhone: data?.support_phone?.trim() || null,
-    supportEmail: data?.support_email?.trim() || null,
-    facebookUrl: socialUrl(links, "facebook", "facebookUrl", "fb"),
-    instagramUrl: socialUrl(links, "instagram", "instagramUrl", "ig"),
-    whatsappUrl: whatsapp ? `https://wa.me/${whatsapp}` : ""
-  });
+  return ok(
+    {
+      siteName: data?.site_name || "Vasritha",
+      logoPath: customUpload(data?.logo_path) || GOLD_LOGO,
+      headerLogoPath: customUpload(data?.header_logo_path) || GOLD_LOGO,
+      supportPhone: data?.support_phone?.trim() || null,
+      supportEmail: data?.support_email?.trim() || null,
+      facebookUrl: socialUrl(links, "facebook", "facebookUrl", "fb"),
+      instagramUrl: socialUrl(links, "instagram", "instagramUrl", "ig"),
+      whatsappUrl: whatsapp ? `https://wa.me/${whatsapp}` : ""
+    },
+    200,
+    { "Cache-Control": "public, max-age=15, stale-while-revalidate=30" }
+  );
 }

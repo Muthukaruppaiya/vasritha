@@ -59,7 +59,7 @@ export function Footer({
         supportPhone?: string | null;
         supportEmail?: string | null;
       };
-    }>("/api/site-branding")
+    }>("/api/site-branding", 15_000)
       .then((payload) => {
         const data = payload?.data;
         setSocial({

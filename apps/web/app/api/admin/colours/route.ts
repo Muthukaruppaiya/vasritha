@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { fail, ok, requireAnyPermission, requirePermission, writeAuditLog } from "../../../../lib/auth/api";
+import { fail, ok, requireAnyPermission, writeAuditLog } from "../../../../lib/auth/api";
 import { query, queryOne } from "../../../../lib/db/pool";
 import {
   ensureColourName,
@@ -13,7 +13,8 @@ export async function GET(request: NextRequest) {
     "products:manage",
     "stock:operate",
     "purchases:operate",
-    "pos:create"
+    "pos:create",
+    "settings:business"
   ]);
   if (error) return error;
 
@@ -29,7 +30,8 @@ export async function POST(request: NextRequest) {
     "products:manage",
     "stock:operate",
     "purchases:operate",
-    "pos:create"
+    "pos:create",
+    "settings:business"
   ]);
   if (error || !ctx) return error;
 
@@ -56,7 +58,10 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const { error, ctx } = await requirePermission(request, "products:manage");
+  const { error, ctx } = await requireAnyPermission(request, [
+    "products:manage",
+    "settings:business"
+  ]);
   if (error || !ctx) return error;
 
   await ensureColoursSchema();

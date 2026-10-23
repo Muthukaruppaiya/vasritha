@@ -459,10 +459,11 @@ export function hasAnyPermission(roles: AppRole[], permissions: Permission[]) {
 }
 
 export function canAccessAdminPath(roles: AppRole[], href: string) {
+  const path = href.split("?")[0];
   if (isBillingOnlyStaff(roles)) {
-    return (BILLING_STAFF_PATHS as readonly string[]).includes(href);
+    return (BILLING_STAFF_PATHS as readonly string[]).includes(path);
   }
-  const required = ADMIN_NAV_PERMISSIONS[href];
+  const required = ADMIN_NAV_PERMISSIONS[href] || ADMIN_NAV_PERMISSIONS[path];
   if (required?.length) return hasAnyPermission(roles, required);
   if (href.startsWith("/admin/reports/")) {
     const type = href.slice("/admin/reports/".length);
