@@ -213,12 +213,13 @@ export async function saveUploadedMedia(input: {
   folder: string;
   file: File;
   allowedTypes: Set<string>;
+  maxBytes?: number;
 }) {
   if (!input.allowedTypes.has(input.file.type)) {
     return { error: `Unsupported file type: ${input.file.type || "unknown"}` } as const;
   }
   const isVideo = input.file.type.startsWith("video/");
-  const max = isVideo ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES;
+  const max = input.maxBytes ?? (isVideo ? MAX_VIDEO_BYTES : MAX_IMAGE_BYTES);
   if (input.file.size > max) {
     return {
       error: isVideo ? "Video must be 40MB or smaller" : "Image must be 4MB or smaller"

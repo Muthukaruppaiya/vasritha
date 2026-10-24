@@ -56,7 +56,11 @@ const ALLOWED_FIELDS = [
   "staff_login_allowed_ips",
   "staff_login_store_lat",
   "staff_login_store_lng",
-  "staff_login_store_radius_m"
+  "staff_login_store_radius_m",
+  "storefront_coming_soon",
+  "storefront_coming_soon_title",
+  "storefront_coming_soon_message",
+  "storefront_coming_soon_media_path"
 ] as const;
 
 export async function GET(request: NextRequest) {

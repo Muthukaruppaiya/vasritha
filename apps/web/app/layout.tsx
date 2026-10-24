@@ -5,6 +5,7 @@ import { StorefrontI18n } from "../components/storefront-i18n";
 import { GiftVoucherNotice } from "../components/gift-voucher-notice";
 import { LoyaltyPopup } from "../components/loyalty-popup";
 import { WhatsAppFloat } from "../components/whatsapp-float";
+import { StorefrontComingSoonGate } from "../components/storefront-coming-soon";
 import "./globals.css";
 
 /**
@@ -44,13 +45,15 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       </head>
       <body suppressHydrationWarning>
         <StorefrontI18n>
-          <SmoothScroll>
-            {children}
-            <WhatsAppFloat />
-            <GiftVoucherNotice />
-            <LoyaltyPopup />
-          </SmoothScroll>
-          <ScrollRevealInit />
+          <StorefrontComingSoonGate>
+            <SmoothScroll>
+              {children}
+              <WhatsAppFloat />
+              <GiftVoucherNotice />
+              <LoyaltyPopup />
+            </SmoothScroll>
+            <ScrollRevealInit />
+          </StorefrontComingSoonGate>
         </StorefrontI18n>
       </body>
     </html>

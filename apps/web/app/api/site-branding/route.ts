@@ -5,7 +5,11 @@ import { ensureCompanySettingsSchema } from "../../../lib/company-settings";
 const GOLD_LOGO = "/vasritha-logo.png";
 
 function customUpload(path: string | null | undefined) {
-  if (path && path.startsWith("/uploads/")) return path;
+  const raw = String(path || "").trim();
+  if (!raw) return null;
+  if (raw.startsWith("/uploads/") || raw.startsWith("/api/media/") || /^https?:\/\//i.test(raw)) {
+    return raw;
+  }
   return null;
 }
 
@@ -30,7 +34,7 @@ function socialUrl(
 
 export async function GET() {
   await ensureCompanySettingsSchema().catch(() => undefined);
-  const data = await queryOne<{
+  type BrandingRow = {
     site_name: string | null;
     logo_path: string | null;
     header_logo_path: string | null;
@@ -38,12 +42,27 @@ export async function GET() {
     support_email: string | null;
     whatsapp_number: string | null;
     social_links: Record<string, unknown> | null;
-  }>(
-    `select site_name, logo_path, header_logo_path, support_phone, support_email,
-            whatsapp_number, social_links
-     from site_settings
-     limit 1`
-  );
+    storefront_coming_soon?: boolean | null;
+    storefront_coming_soon_title?: string | null;
+    storefront_coming_soon_message?: string | null;
+    storefront_coming_soon_media_path?: string | null;
+  };
+  const data =
+    (await queryOne<BrandingRow>(
+      `select site_name, logo_path, header_logo_path, support_phone, support_email,
+              whatsapp_number, social_links, storefront_coming_soon,
+              storefront_coming_soon_title, storefront_coming_soon_message,
+              storefront_coming_soon_media_path
+       from site_settings
+       limit 1`
+    ).catch(() =>
+      queryOne<BrandingRow>(
+        `select site_name, logo_path, header_logo_path, support_phone, support_email,
+                whatsapp_number, social_links
+         from site_settings
+         limit 1`
+      )
+    ));
 
   const links = data?.social_links || {};
   const whatsapp = String(data?.whatsapp_number || "").replace(/\D/g, "");
@@ -57,9 +76,15 @@ export async function GET() {
       supportEmail: data?.support_email?.trim() || null,
       facebookUrl: socialUrl(links, "facebook", "facebookUrl", "fb"),
       instagramUrl: socialUrl(links, "instagram", "instagramUrl", "ig"),
-      whatsappUrl: whatsapp ? `https://wa.me/${whatsapp}` : ""
+      whatsappUrl: whatsapp ? `https://wa.me/${whatsapp}` : "",
+      comingSoon: Boolean(data?.storefront_coming_soon),
+      comingSoonTitle: data?.storefront_coming_soon_title?.trim() || "Stocking up",
+      comingSoonMessage:
+        data?.storefront_coming_soon_message?.trim() ||
+        "We're filling the racks. Vasritha will be ready soon.",
+      comingSoonMediaUrl: customUpload(data?.storefront_coming_soon_media_path)
     },
     200,
-    { "Cache-Control": "public, max-age=15, stale-while-revalidate=30" }
+    { "Cache-Control": "public, max-age=5, stale-while-revalidate=15" }
   );
 }

@@ -39,6 +39,7 @@ import {
   Wallet,
   ChartColumn,
   Palette,
+  Clock3,
   type LucideIcon
 } from "lucide-react";
 import {
@@ -198,6 +199,7 @@ const navModules: NavModule[] = [
     children: [
       { label: "Settings", href: "/admin/settings", icon: Settings },
       { label: "Colours", href: "/admin/settings?tab=colours", icon: Palette },
+      { label: "Coming soon", href: "/admin/settings?tab=coming-soon", icon: Clock3 },
       { label: "Brands", href: "/admin/brands", icon: Sparkles },
       { label: "Shops", href: "/admin/shops", icon: Store },
       { label: "Integrations", href: "/admin/integrations", icon: Plug }

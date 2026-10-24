@@ -19,7 +19,7 @@ import { ROLE_META, ROLE_ORDER, type AppRole } from "../../../lib/auth/rbac";
 import { previewDocumentNumber } from "../../../lib/document-numbers-format";
 import { SettingsColoursPanel } from "../../../components/admin/settings-colours-panel";
 
-type SettingsTab = "site" | "company" | "colours" | "roles" | "security";
+type SettingsTab = "site" | "company" | "colours" | "coming-soon" | "roles" | "security";
 
 type Settings = {
   site_name: string | null;
@@ -73,6 +73,10 @@ type Settings = {
   social_links?: Record<string, unknown> | null;
   facebook_url?: string | null;
   instagram_url?: string | null;
+  storefront_coming_soon?: boolean;
+  storefront_coming_soon_title?: string | null;
+  storefront_coming_soon_message?: string | null;
+  storefront_coming_soon_media_path?: string | null;
 };
 
 type LoginDevice = {
@@ -115,6 +119,7 @@ function AdminSettingsPageInner() {
   const [tab, setTab] = useState<SettingsTab>(
     initialTab === "company" ||
       initialTab === "colours" ||
+      initialTab === "coming-soon" ||
       initialTab === "roles" ||
       initialTab === "security"
       ? initialTab
@@ -172,7 +177,11 @@ function AdminSettingsPageInner() {
     staff_login_store_lng: "",
     staff_login_store_radius_m: 300,
     facebook_url: "",
-    instagram_url: ""
+    instagram_url: "",
+    storefront_coming_soon: false,
+    storefront_coming_soon_title: "Stocking up",
+    storefront_coming_soon_message: "We're filling the racks. Vasritha will be ready soon.",
+    storefront_coming_soon_media_path: ""
   });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -187,7 +196,7 @@ function AdminSettingsPageInner() {
   const [roleModalOpen, setRoleModalOpen] = useState(false);
   const [roleSaving, setRoleSaving] = useState(false);
   const [roleError, setRoleError] = useState("");
-  const [logoBusy, setLogoBusy] = useState<"header" | "logo" | null>(null);
+  const [logoBusy, setLogoBusy] = useState<"header" | "logo" | "coming-soon" | null>(null);
   const [logoMessage, setLogoMessage] = useState("");
   const [logoError, setLogoError] = useState("");
 
@@ -280,11 +289,20 @@ function AdminSettingsPageInner() {
           data.instagram_url ||
             (data.social_links as { instagram?: string } | null)?.instagram ||
             ""
-        )
+        ),
+      storefront_coming_soon: Boolean(data.storefront_coming_soon),
+      storefront_coming_soon_title: data.storefront_coming_soon_title || "Stocking up",
+      storefront_coming_soon_message:
+        data.storefront_coming_soon_message ||
+        "We're filling the racks. Vasritha will be ready soon.",
+      storefront_coming_soon_media_path: data.storefront_coming_soon_media_path || ""
     });
   }, [data]);
 
-  const onUploadLogo = async (kind: "header" | "logo", fileList: FileList | null) => {
+  const onUploadLogo = async (
+    kind: "header" | "logo" | "coming-soon",
+    fileList: FileList | null
+  ) => {
     const file = fileList?.[0];
     if (!file) return;
 
@@ -295,6 +313,16 @@ function AdminSettingsPageInner() {
     if (kind === "header" && file.type !== "image/svg+xml") {
       setLogoBusy(null);
       setLogoError("Header logo must be an SVG file.");
+      return;
+    }
+    if (
+      kind === "coming-soon" &&
+      !["image/gif", "image/webp", "image/png", "image/jpeg", "video/mp4", "video/webm"].includes(
+        file.type
+      )
+    ) {
+      setLogoBusy(null);
+      setLogoError("Upload a GIF, WebP, PNG, JPG, MP4, or WebM.");
       return;
     }
 
@@ -312,8 +340,26 @@ function AdminSettingsPageInner() {
     setLogoMessage(
       kind === "header"
         ? "Header logo updated (website header only)."
-        : "Company logo updated (admin and other surfaces)."
+        : kind === "coming-soon"
+          ? "Coming soon GIF / animation uploaded."
+          : "Company logo updated (admin and other surfaces)."
     );
+    await reload();
+  };
+
+  const onClearComingSoonMedia = async () => {
+    setLogoBusy("coming-soon");
+    setLogoError("");
+    const result = await adminFetch("/api/admin/settings", {
+      method: "PATCH",
+      json: { storefront_coming_soon_media_path: null }
+    });
+    setLogoBusy(null);
+    if (result.error) {
+      setLogoError(result.error);
+      return;
+    }
+    setLogoMessage("Coming soon animation removed.");
     await reload();
   };
 
@@ -369,7 +415,13 @@ function AdminSettingsPageInner() {
         social_links: {
           facebook: String(form.facebook_url || "").trim(),
           instagram: String(form.instagram_url || "").trim()
-        }
+        },
+        storefront_coming_soon: Boolean(form.storefront_coming_soon),
+        storefront_coming_soon_title:
+          String(form.storefront_coming_soon_title || "").trim() || "Stocking up",
+        storefront_coming_soon_message:
+          String(form.storefront_coming_soon_message || "").trim() ||
+          "We're filling the racks. Vasritha will be ready soon."
       }
     });
     setSaving(false);
@@ -380,7 +432,11 @@ function AdminSettingsPageInner() {
           ? "Company details saved."
           : tab === "security"
             ? "Login security saved."
-            : "Settings saved."
+            : tab === "coming-soon"
+              ? form.storefront_coming_soon
+                ? "Coming soon is ON. Vasritha.com will show the stocking-up page."
+                : "Coming soon is OFF. Vasritha.com is the live shop."
+              : "Settings saved."
       );
       await reload();
     }
@@ -459,6 +515,17 @@ function AdminSettingsPageInner() {
           }}
         >
           Colours
+        </button>
+        <button
+          type="button"
+          className={tab === "coming-soon" ? "is-active" : ""}
+          onClick={() => {
+            setMessage("");
+            setSaveError("");
+            setTab("coming-soon");
+          }}
+        >
+          Coming soon
         </button>
         <button
           type="button"
@@ -784,6 +851,117 @@ function AdminSettingsPageInner() {
       )}
 
       {tab === "colours" && <SettingsColoursPanel />}
+
+      {tab === "coming-soon" && (
+        <AdminPanel title="Vasritha coming soon">
+          {loading && <AdminLoading />}
+          {error && <AdminAlert>{error}</AdminAlert>}
+          {!loading && !error && (
+            <form className="admin-form-grid" onSubmit={onSave}>
+              <AdminAlert tone="ok">
+                Sukadhaa (ops / POS) stays live. This switch only covers the public shop
+                (vasritha.com). Tick it until the boutique website is ready.
+              </AdminAlert>
+              <label className="admin-check-row admin-span-2">
+                <input
+                  type="checkbox"
+                  checked={Boolean(form.storefront_coming_soon)}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, storefront_coming_soon: e.target.checked }))
+                  }
+                />
+                <span>
+                  <strong>Show stocking-up page on Vasritha.com</strong>
+                  <small className="admin-field-hint">
+                    When ticked, anyone opening Vasritha sees the animation instead of the shop.
+                    Untick to open the live website.
+                  </small>
+                </span>
+              </label>
+              <label>
+                <span>Headline</span>
+                <input
+                  value={form.storefront_coming_soon_title || ""}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, storefront_coming_soon_title: e.target.value }))
+                  }
+                  placeholder="Stocking up"
+                />
+              </label>
+              <label className="admin-span-2">
+                <span>Message</span>
+                <textarea
+                  rows={3}
+                  value={form.storefront_coming_soon_message || ""}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, storefront_coming_soon_message: e.target.value }))
+                  }
+                  placeholder="We're filling the racks. Vasritha will be ready soon."
+                />
+              </label>
+              <div className="admin-span-2 admin-logo-card">
+                <h3>GIF / animation</h3>
+                <p className="muted">
+                  This file is what visitors see on Vasritha.com. GIF, WebP, PNG, JPG, MP4 or WebM.
+                </p>
+                {form.storefront_coming_soon_media_path ? (
+                  /\.(mp4|webm)(\?|$)/i.test(form.storefront_coming_soon_media_path) ? (
+                    <video
+                      src={form.storefront_coming_soon_media_path}
+                      controls
+                      muted
+                      loop
+                      style={{ maxWidth: 320, maxHeight: 220, borderRadius: 12 }}
+                    />
+                  ) : (
+                    <img
+                      src={form.storefront_coming_soon_media_path}
+                      alt="Coming soon animation"
+                      style={{ maxWidth: 320, maxHeight: 220, borderRadius: 12, objectFit: "contain" }}
+                    />
+                  )
+                ) : (
+                  <p className="muted">No file uploaded yet — a default stack animation is used.</p>
+                )}
+                <label className="admin-file-btn">
+                  <span>{logoBusy === "coming-soon" ? "Uploading…" : "Upload GIF / video"}</span>
+                  <input
+                    type="file"
+                    accept="image/gif,image/webp,image/png,image/jpeg,video/mp4,video/webm"
+                    disabled={logoBusy !== null}
+                    onChange={(e) => {
+                      void onUploadLogo("coming-soon", e.target.files);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+                {form.storefront_coming_soon_media_path ? (
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={logoBusy !== null}
+                    onClick={() => void onClearComingSoonMedia()}
+                    style={{ marginLeft: 8 }}
+                  >
+                    Remove file
+                  </button>
+                ) : null}
+              </div>
+              {logoError && tab === "coming-soon" ? <AdminAlert>{logoError}</AdminAlert> : null}
+              {logoMessage && tab === "coming-soon" ? (
+                <AdminAlert tone="ok">{logoMessage}</AdminAlert>
+              ) : null}
+              {saveError && <AdminAlert>{saveError}</AdminAlert>}
+              {message && <AdminAlert tone="ok">{message}</AdminAlert>}
+              <div className="admin-span-2">
+                <button className="btn" type="submit" disabled={saving}>
+                  {saving ? "Saving…" : "Save coming soon"}
+                </button>
+              </div>
+            </form>
+          )}
+        </AdminPanel>
+      )}
 
       {tab === "company" && (
         <AdminPanel title="Company details">
