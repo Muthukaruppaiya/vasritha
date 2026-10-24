@@ -175,8 +175,6 @@ export async function ensureProductUnitsSchema() {
       alter table public.product_items
         add column if not exists color text not null default ''
     `);
-    // Import used to create pieces with shop_id null — Inventory/POS read shop stock only.
-    await alignOrphanPiecesToDefaultShop().catch(() => undefined);
     return;
   }
   if (!productUnitsSchemaReady) {

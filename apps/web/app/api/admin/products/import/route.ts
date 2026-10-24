@@ -19,6 +19,7 @@ import {
 } from "../../../../../lib/product-import";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 function fileError(message: string, status = 400) {
   return fail(message, status, {
@@ -31,11 +32,13 @@ export async function POST(request: NextRequest) {
   if (error || !ctx) return error;
 
   try {
-    await ensureProductUnitsSchema();
-    await ensureGstSchema();
-    await ensureBrandsSchema();
-    await ensureProductStatusEnum();
-    await ensureProductRestockSchema();
+    await Promise.all([
+      ensureProductUnitsSchema(),
+      ensureGstSchema(),
+      ensureBrandsSchema(),
+      ensureProductStatusEnum(),
+      ensureProductRestockSchema()
+    ]);
 
     const form = await request.formData().catch(() => null);
     if (!form) return fileError("Upload a CSV or Excel (.xlsx / .xls) file");
@@ -83,7 +86,8 @@ export async function POST(request: NextRequest) {
     const result = await runProductImport({
       rows,
       actorUserId: ctx.userId,
-      roles: (ctx.roles || []) as AppRole[]
+      roles: (ctx.roles || []) as AppRole[],
+      skipPrecheck: true
     });
 
     if (result.rolledBack || (result.failed.length > 0 && result.created === 0 && result.updated === 0)) {

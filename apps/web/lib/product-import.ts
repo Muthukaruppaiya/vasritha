@@ -1,7 +1,6 @@
 import ExcelJS from "exceljs";
 import type { QueryResultRow } from "pg";
 import { query, queryOne, withTransaction } from "./db/pool";
-import { subcategoryBelongsToCategory } from "./db/taxonomy";
 import { ensureColourName, ensureColoursSchema, listProductColours } from "./colours";
 import { ALLOWED_GST_RATES, normalizeHsn, normalizeGstRate, resolveSaleGstRate } from "./gst";
 import { ensureBrandsSchema, listBrands, resolveBrandId } from "./brands";
@@ -1083,6 +1082,7 @@ export async function runProductImport(input: {
   rows: ProductImportRow[];
   actorUserId: string;
   roles: AppRole[];
+  skipPrecheck?: boolean;
 }): Promise<ImportRunResult> {
   await ensureProductUnitsSchema();
   const canApprove = canApproveProducts(input.roles || []);
@@ -1099,16 +1099,40 @@ export async function runProductImport(input: {
     rolledBack: true
   });
 
-  const precheck = await validateProductImportRows(input.rows);
-  if (!precheck.ok) {
-    return emptyResult(
-      precheck.errors.map((item) => ({
-        name: item.name,
-        row: item.row,
-        error: item.error
-      }))
-    );
+  if (!input.skipPrecheck) {
+    const precheck = await validateProductImportRows(input.rows);
+    if (!precheck.ok) {
+      return emptyResult(
+        precheck.errors.map((item) => ({
+          name: item.name,
+          row: item.row,
+          error: item.error
+        }))
+      );
+    }
   }
+
+  const colourNames = new Set<string>();
+  for (const row of input.rows) {
+    if (row.colour.trim()) colourNames.add(row.colour.trim());
+    for (const batch of row.colour_batches) {
+      if (batch.color.trim()) colourNames.add(batch.color.trim());
+    }
+  }
+  await Promise.all([...colourNames].map((name) => ensureColourName(name)));
+
+  const shopId =
+    (
+      await queryOne<{ id: string }>(
+        `select id from shops where is_default = true and is_active = true limit 1`
+      )
+    )?.id ||
+    (
+      await queryOne<{ id: string }>(
+        `select id from shops where is_active = true order by created_at asc limit 1`
+      )
+    )?.id ||
+    null;
 
   let currentRow: ProductImportRow | null = null;
   try {
@@ -1138,10 +1162,6 @@ export async function runProductImport(input: {
             abortImportRow(row, `Unknown subcategory for ${category.name}: ${plain}`);
           }
         }
-        if (!(await subcategoryBelongsToCategory(category.id, subcategoryId))) {
-          abortImportRow(row, "Subcategory must belong to the selected category");
-        }
-
         const isMulticolour = row.is_multicolour || row.colour_batches.length > 0;
         const productColor = isMulticolour ? "" : row.colour.trim();
         if (!isMulticolour && !productColor) {
@@ -1152,10 +1172,6 @@ export async function runProductImport(input: {
         }
         if (row.colour_stock_raw.startsWith("__ERROR__:")) {
           abortImportRow(row, row.colour_stock_raw.replace(/^__ERROR__:/, ""));
-        }
-        if (productColor) await ensureColourName(productColor);
-        for (const batch of row.colour_batches) {
-          await ensureColourName(batch.color);
         }
 
         const status = normalizeProductStatus(row.status, {
@@ -1264,6 +1280,7 @@ export async function runProductImport(input: {
             count: colourBatches.length ? 0 : openingStock,
             color: colourBatches.length ? null : productColor || null,
             colorBatches: colourBatches.length ? colourBatches : undefined,
+            shopId,
             db
           });
         };

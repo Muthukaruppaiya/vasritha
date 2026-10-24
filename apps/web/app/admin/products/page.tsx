@@ -524,26 +524,29 @@ function AdminProductsPageInner() {
       const lineErrors = importLineErrorsFromPayload(payload);
       if (!res.ok) {
         const rolledBack = Boolean(asRecord(payload)?.rolledBack);
-        const serverMessage = importPayloadMessage(
-          payload,
-          res.status >= 500
-            ? `Server error while saving (HTTP ${res.status})`
-            : "Import blocked by validation errors"
-        );
+        const timedOut = res.status === 504 || res.status === 503;
+        const serverMessage = timedOut
+          ? "The server ran out of time while saving. Your Excel file is fine — this is not a row error. Wait a few seconds and import the same file again."
+          : importPayloadMessage(
+              payload,
+              res.status >= 500
+                ? `Server error while saving (HTTP ${res.status})`
+                : "Import blocked by validation errors"
+            );
         setImportDialog({
           kind: "errors",
-          summary: rolledBack
-            ? `${serverMessage} Nothing was saved.`
-            : serverMessage,
-          errors: lineErrors.length
-            ? lineErrors
-            : [
-                {
-                  row: 0,
-                  name: file.name,
-                  error: `${serverMessage}. Open the Excel file and check each product row, then upload again.`
-                }
-              ]
+          summary: rolledBack ? `${serverMessage} Nothing was saved.` : serverMessage,
+          errors: timedOut
+            ? []
+            : lineErrors.length
+              ? lineErrors
+              : [
+                  {
+                    row: 0,
+                    name: file.name,
+                    error: serverMessage
+                  }
+                ]
         });
         return;
       }
@@ -946,8 +949,8 @@ function AdminProductsPageInner() {
                   ) : (
                     <div className="admin-import-errors">
                       <p className="admin-import-errors__msg">
-                        No row details were returned. Re-download the template, check every
-                        product row, and upload again.
+                        No spreadsheet row failed. If saving timed out, import the same file
+                        again after a few seconds.
                       </p>
                     </div>
                   )}
@@ -974,19 +977,7 @@ function AdminProductsPageInner() {
                     ? "Importing…"
                     : `Import ${importDialog.rowCount} rows`}
                 </button>
-              ) : (
-                <button
-                  type="button"
-                  className="btn admin-modal-primary"
-                  disabled={importBusy}
-                  onClick={() => {
-                    closeImportDialog();
-                    window.setTimeout(() => importInputRef.current?.click(), 0);
-                  }}
-                >
-                  Fix &amp; upload again
-                </button>
-              )}
+              ) : null}
             </div>
           </div>
         </div>
