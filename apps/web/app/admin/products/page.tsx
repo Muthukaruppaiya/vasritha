@@ -110,6 +110,38 @@ function colorSwatchStyle(color?: string | null) {
   return { background: hit || "#e5ded4" };
 }
 
+type ImportLineError = { row: number; name: string; error: string };
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function importLineErrorsFromPayload(payload: unknown): ImportLineError[] {
+  const root = asRecord(payload);
+  const data = asRecord(root?.data);
+  const lists = [root?.errors, root?.failed, data?.errors, data?.failed];
+  const raw = lists.find((item) => Array.isArray(item) && item.length) as unknown[] | undefined;
+  if (!raw?.length) return [];
+  return raw
+    .map((item) => {
+      const row = asRecord(item);
+      const error = String(row?.error || row?.message || "").trim();
+      if (!error) return null;
+      return {
+        row: Number(row?.row || row?.rowNumber || 0),
+        name: String(row?.name || "").trim(),
+        error
+      };
+    })
+    .filter((item): item is ImportLineError => Boolean(item));
+}
+
+function importPayloadMessage(payload: unknown, fallback: string) {
+  const root = asRecord(payload);
+  const data = asRecord(root?.data);
+  return String(root?.error || root?.message || data?.error || "").trim() || fallback;
+}
+
 export default function AdminProductsPage() {
   return (
     <Suspense fallback={<AdminLoading />}>
@@ -489,24 +521,29 @@ function AdminProductsPageInner() {
         body: importBody
       });
       const payload = await res.json().catch(() => ({}));
+      const lineErrors = importLineErrorsFromPayload(payload);
       if (!res.ok) {
-        const blocked = payload as {
-          error?: string;
-          rolledBack?: boolean;
-          errors?: Array<{ row: number; name: string; error: string }>;
-          failed?: Array<{ row?: number; name: string; error: string }>;
-        };
-        const lineErrors = (blocked.errors || blocked.failed || []).map((item) => ({
-          row: item.row || 0,
-          name: item.name,
-          error: item.error
-        }));
+        const rolledBack = Boolean(asRecord(payload)?.rolledBack);
+        const serverMessage = importPayloadMessage(
+          payload,
+          res.status >= 500
+            ? `Server error while saving (HTTP ${res.status})`
+            : "Import blocked by validation errors"
+        );
         setImportDialog({
           kind: "errors",
-          summary: blocked.rolledBack
-            ? `${blocked.error || "Import failed"}. Nothing was saved.`
-            : blocked.error || "Import blocked by validation errors",
-          errors: lineErrors
+          summary: rolledBack
+            ? `${serverMessage} Nothing was saved.`
+            : serverMessage,
+          errors: lineErrors.length
+            ? lineErrors
+            : [
+                {
+                  row: 0,
+                  name: file.name,
+                  error: `${serverMessage}. Open the Excel file and check each product row, then upload again.`
+                }
+              ]
         });
         return;
       }
@@ -525,7 +562,7 @@ function AdminProductsPageInner() {
       if (failedCount && data?.failed?.length) {
         setImportDialog({
           kind: "errors",
-          summary: `Imported with ${failedCount} failure(s).`,
+          summary: `Imported with ${failedCount} failure(s). Fix these Excel rows and upload again.`,
           errors: data.failed.map((item) => ({
             row: item.row || 0,
             name: item.name,
@@ -543,10 +580,11 @@ function AdminProductsPageInner() {
       if (importInputRef.current) importInputRef.current.value = "";
       await reload();
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Import failed";
       setImportDialog({
         kind: "errors",
-        summary: err instanceof Error ? err.message : "Import failed",
-        errors: []
+        summary: message,
+        errors: [{ row: 0, name: file.name, error: message }]
       });
     } finally {
       setImportBusy(false);
@@ -580,8 +618,22 @@ function AdminProductsPageInner() {
         body: checkBody
       });
       const checkPayload = await checkRes.json().catch(() => ({}));
+      const lineErrors = importLineErrorsFromPayload(checkPayload);
       if (!checkRes.ok) {
-        throw new Error((checkPayload as { error?: string }).error || "Could not check file");
+        const message = importPayloadMessage(
+          checkPayload,
+          checkRes.status >= 500
+            ? `Could not check file (server error ${checkRes.status})`
+            : "Could not check file"
+        );
+        setImportDialog({
+          kind: "errors",
+          summary: message,
+          errors: lineErrors.length
+            ? lineErrors
+            : [{ row: 1, name: fileCopy.name, error: message }]
+        });
+        return;
       }
 
       const checkData = (
@@ -595,12 +647,11 @@ function AdminProductsPageInner() {
         }
       ).data;
 
-      const lineErrors = checkData?.errors || [];
       const rowCount = Number(checkData?.checked || 0);
       if (!checkData?.ok || lineErrors.length) {
         setImportDialog({
           kind: "errors",
-          summary: `File check failed — ${lineErrors.length} error(s) in ${rowCount} row(s). Fix the lines below and upload again. Nothing was imported.`,
+          summary: `File check failed — ${lineErrors.length} error(s) in ${rowCount} row(s). Fix the Excel rows below and upload again. Nothing was imported.`,
           errors: lineErrors
         });
         return;
@@ -615,10 +666,11 @@ function AdminProductsPageInner() {
         file: fileCopy
       });
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Import failed";
       setImportDialog({
         kind: "errors",
-        summary: err instanceof Error ? err.message : "Import failed",
-        errors: []
+        summary: message,
+        errors: [{ row: 0, name: file.name, error: message }]
       });
     } finally {
       setImportBusy(false);
@@ -820,7 +872,7 @@ function AdminProductsPageInner() {
             <div className="admin-modal-head">
               <div>
                 <h2 id="import-errors-title">
-                  {importDialog.kind === "confirm" ? "Confirm import" : "Import file check"}
+                  {importDialog.kind === "confirm" ? "Confirm import" : "Import errors"}
                 </h2>
               </div>
               <button
@@ -849,9 +901,8 @@ function AdminProductsPageInner() {
                   {importDialog.blankSkuCount > 0 ? (
                     <p className="muted">
                       {importDialog.blankSkuCount} row
-                      {importDialog.blankSkuCount === 1 ? " has" : "s have"} a blank SKU.
-                      Product names must be unique. If a name already exists, the whole file
-                      is blocked and nothing is saved.
+                      {importDialog.blankSkuCount === 1 ? " has" : "s have"} no SKU — a unique
+                      code will be created automatically.
                     </p>
                   ) : null}
                 </div>
@@ -860,23 +911,46 @@ function AdminProductsPageInner() {
                   <AdminAlert>{importDialog.summary}</AdminAlert>
                   {importDialog.errors.length > 0 ? (
                     <div className="admin-import-errors">
-                      <strong>Line errors ({importDialog.errors.length})</strong>
-                      <ul>
-                        {importDialog.errors.slice(0, 100).map((item, idx) => (
-                          <li key={`${item.row}-${idx}`}>
-                            <span className="admin-import-errors__line">
-                              Line {item.row || "?"}
-                            </span>
-                            <span className="admin-import-errors__name">{item.name}</span>
-                            <span className="admin-import-errors__msg">{item.error}</span>
-                          </li>
-                        ))}
-                      </ul>
+                      <strong>
+                        {importDialog.errors.length} problem
+                        {importDialog.errors.length === 1 ? "" : "s"} — Excel row and reason
+                      </strong>
+                      <div className="admin-import-errors__table-wrap">
+                        <table className="admin-import-errors__table">
+                          <thead>
+                            <tr>
+                              <th>Excel row</th>
+                              <th>Product</th>
+                              <th>What&apos;s wrong</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {importDialog.errors.slice(0, 100).map((item, idx) => (
+                              <tr key={`${item.row}-${idx}`}>
+                                <td className="admin-import-errors__row-no">
+                                  {item.row > 1 ? item.row : item.row === 1 ? "1 (header)" : "—"}
+                                </td>
+                                <td className="admin-import-errors__name">
+                                  {item.name || "—"}
+                                </td>
+                                <td className="admin-import-errors__msg">{item.error}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                       {importDialog.errors.length > 100 ? (
                         <p className="muted">…and {importDialog.errors.length - 100} more</p>
                       ) : null}
                     </div>
-                  ) : null}
+                  ) : (
+                    <div className="admin-import-errors">
+                      <p className="admin-import-errors__msg">
+                        No row details were returned. Re-download the template, check every
+                        product row, and upload again.
+                      </p>
+                    </div>
+                  )}
                 </>
               )}
             </div>

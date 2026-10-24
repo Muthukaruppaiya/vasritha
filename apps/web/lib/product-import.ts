@@ -39,15 +39,25 @@ class ProductImportAbort extends Error {
   }
 }
 
-function formatImportDbError(raw: string) {
+export function formatImportDbError(raw: string) {
   if (/products_gst_rate_chk/i.test(raw)) {
-    return `Invalid gst_rate — must be one of ${ALLOWED_GST_RATES.join(", ")}`;
+    return `Invalid GST rate — must be one of ${ALLOWED_GST_RATES.join(", ")}`;
+  }
+  if (/products_sku|sku_unique/i.test(raw)) {
+    return "SKU already exists on another product";
+  }
+  if (/barcode/i.test(raw) && /unique|duplicate/i.test(raw)) {
+    return "Barcode already exists on another product";
+  }
+  if (/slug/i.test(raw) && /unique|duplicate/i.test(raw)) {
+    return "URL slug already exists — change the name or slug column";
   }
   if (/violates check constraint/i.test(raw)) {
-    return `Database rejected this row (${raw.replace(/^.*constraint "/, "").replace(/".*$/, "") || "check constraint"})`;
+    const name = raw.match(/constraint "([^"]+)"/)?.[1] || "check constraint";
+    return `This row failed a database rule (${name})`;
   }
   if (/duplicate key|unique constraint/i.test(raw)) {
-    return "Duplicate product code / slug / barcode already exists";
+    return "A product with the same SKU, barcode, or slug already exists";
   }
   if (/data.?validat/i.test(raw)) {
     return "Spreadsheet dropdown / data-validation cells could not be read. Save the file as .xlsx or copy values into a fresh template.";
@@ -803,20 +813,43 @@ export async function validateProductImportRows(
       rows.filter((row) => !row.sku_auto && row.sku.trim()).map((row) => row.sku.trim())
     )
   ];
-  const [existingByNameRows, existingBySkuRows] = await Promise.all([
-    names.length
-      ? query<{ id: string; name: string; sku: string | null }>(
-          `select id, name, sku from products where lower(btrim(name)) = any($1::text[])`,
-          [names]
-        )
-      : Promise.resolve([]),
-    skus.length
-      ? query<{ id: string; name: string; sku: string | null }>(
-          `select id, name, sku from products where sku = any($1::text[])`,
-          [skus]
-        )
-      : Promise.resolve([])
-  ]);
+  const barcodes = [
+    ...new Set(
+      rows
+        .filter((row) => !row.sku_auto && row.barcode.trim() && !row.barcode.startsWith("AUTO"))
+        .map((row) => row.barcode.trim())
+    )
+  ];
+  const parentSkus = [
+    ...new Set(rows.map((row) => row.parent_sku.trim()).filter(Boolean))
+  ];
+  const [existingByNameRows, existingBySkuRows, existingByBarcodeRows, parentRows] =
+    await Promise.all([
+      names.length
+        ? query<{ id: string; name: string; sku: string | null }>(
+            `select id, name, sku from products where lower(btrim(name)) = any($1::text[])`,
+            [names]
+          )
+        : Promise.resolve([]),
+      skus.length
+        ? query<{ id: string; name: string; sku: string | null }>(
+            `select id, name, sku from products where sku = any($1::text[])`,
+            [skus]
+          )
+        : Promise.resolve([]),
+      barcodes.length
+        ? query<{ id: string; name: string; barcode: string | null }>(
+            `select id, name, barcode from products where barcode = any($1::text[])`,
+            [barcodes]
+          )
+        : Promise.resolve([]),
+      parentSkus.length
+        ? query<{ sku: string; parent_product_id: string | null }>(
+            `select sku, parent_product_id from products where upper(sku) = any($1::text[])`,
+            [parentSkus]
+          )
+        : Promise.resolve([])
+    ]);
   const existingByName = new Map<string, Array<{ id: string; sku: string }>>();
   for (const product of existingByNameRows) {
     const key = productNameKey(product.name);
@@ -827,6 +860,13 @@ export async function validateProductImportRows(
   const existingBySku = new Map(
     existingBySkuRows.map((product) => [String(product.sku || "").trim(), product])
   );
+  const existingByBarcode = new Map(
+    existingByBarcodeRows.map((product) => [String(product.barcode || "").trim(), product])
+  );
+  const parentBySku = new Map(
+    parentRows.map((product) => [String(product.sku || "").trim().toUpperCase(), product])
+  );
+  const seenBarcode = new Map<string, number>();
 
   for (const row of rows) {
     const label = row.name.trim() || "(blank name)";
@@ -840,7 +880,7 @@ export async function validateProductImportRows(
       errors.push({
         row: row.rowNumber,
         name: label,
-        error: `Duplicate product name in file (also line ${prevName})`
+        error: `Duplicate product name in this file (also Excel row ${prevName})`
       });
     } else {
       seenName.set(nameKey, row.rowNumber);
@@ -941,10 +981,51 @@ export async function validateProductImportRows(
         errors.push({
           row: row.rowNumber,
           name: label,
-          error: `Duplicate sku in file (also line ${prev}): ${row.sku}`
+          error: `Duplicate SKU in this file (also Excel row ${prev}): ${row.sku}`
         });
       } else {
         seenSku.set(row.sku, row.rowNumber);
+      }
+    }
+    const explicitBarcode =
+      !row.sku_auto && row.barcode.trim() && !row.barcode.startsWith("AUTO")
+        ? row.barcode.trim()
+        : "";
+    if (explicitBarcode) {
+      const prevBarcode = seenBarcode.get(explicitBarcode);
+      if (prevBarcode) {
+        errors.push({
+          row: row.rowNumber,
+          name: label,
+          error: `Duplicate barcode in this file (also Excel row ${prevBarcode}): ${explicitBarcode}`
+        });
+      } else {
+        seenBarcode.set(explicitBarcode, row.rowNumber);
+      }
+      const barcodeOwner = existingByBarcode.get(explicitBarcode);
+      const skuOwner = !row.sku_auto ? existingBySku.get(row.sku.trim()) : undefined;
+      if (barcodeOwner && (!skuOwner || barcodeOwner.id !== skuOwner.id)) {
+        errors.push({
+          row: row.rowNumber,
+          name: label,
+          error: `Barcode already exists on "${barcodeOwner.name}"`
+        });
+      }
+    }
+    if (row.parent_sku.trim()) {
+      const parent = parentBySku.get(row.parent_sku.trim());
+      if (!parent) {
+        errors.push({
+          row: row.rowNumber,
+          name: label,
+          error: `Parent product not found: ${row.parent_sku}`
+        });
+      } else if (parent.parent_product_id) {
+        errors.push({
+          row: row.rowNumber,
+          name: label,
+          error: "Parent must be a top-level product (not a child style)"
+        });
       }
     }
     // Slugs may repeat in the sheet — mapImportRows already auto-suffixes them.
@@ -1029,12 +1110,14 @@ export async function runProductImport(input: {
     );
   }
 
+  let currentRow: ProductImportRow | null = null;
   try {
     return await withTransaction(async (db) => {
       const created: string[] = [];
       const updated: string[] = [];
 
       for (const row of input.rows) {
+        currentRow = row;
         if (!row.name.trim()) abortImportRow(row, "name * is required");
         if (!Number.isFinite(row.price) || row.price < 0) {
           abortImportRow(row, "Valid selling_price * is required");
@@ -1314,6 +1397,12 @@ export async function runProductImport(input: {
   } catch (err) {
     if (err instanceof ProductImportAbort) return emptyResult(err.failed);
     const raw = err instanceof Error ? err.message : "Import failed";
-    return emptyResult([{ name: "(import)", error: formatImportDbError(raw) }]);
+    return emptyResult([
+      {
+        name: currentRow?.name || "(import)",
+        row: currentRow?.rowNumber,
+        error: formatImportDbError(raw)
+      }
+    ]);
   }
 }
