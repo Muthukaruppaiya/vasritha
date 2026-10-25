@@ -12,12 +12,23 @@ export type FinancePeriodKey =
   | "this_fy"
   | "custom";
 
+/** Calendar date in India — do not use toISOString(), that shifts IST midnight to the previous UTC day. */
 function iso(d: Date) {
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
-function startOfDay(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+function indiaToday() {
+  const label = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(new Date());
+  const [y, m, d] = label.split("-").map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
 }
 
 /** FY start month: 4 = April (India). */
@@ -35,7 +46,7 @@ export function resolveFinancePeriod(
   opts?: { from?: string; to?: string; fyStartMonth?: number }
 ): { from: string; to: string; key: string } {
   const fyStart = opts?.fyStartMonth ?? 4;
-  const now = startOfDay(new Date());
+  const now = indiaToday();
 
   if (key === "custom" || (!key && (opts?.from || opts?.to))) {
     const fy = financialYearBounds(now, fyStart);

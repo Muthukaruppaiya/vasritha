@@ -7,8 +7,17 @@ function round2(n: number) {
   return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
+/** Business day in India. timestamptz ::date follows the DB clock and drops today's POS bills. */
+function istDate(column: string) {
+  return `(${column} AT TIME ZONE 'Asia/Kolkata')::date`;
+}
+
 function dateClause(column: string, fromParam: number, toParam: number) {
-  return `${column}::date between $${fromParam}::date and $${toParam}::date`;
+  return `${istDate(column)} between $${fromParam}::date and $${toParam}::date`;
+}
+
+function plainDateClause(column: string, fromParam: number, toParam: number) {
+  return `${column} between $${fromParam}::date and $${toParam}::date`;
 }
 
 export async function GET(request: NextRequest) {
@@ -70,13 +79,13 @@ export async function GET(request: NextRequest) {
         period_order_count: string;
       }>(
         `select
-           coalesce(sum(total_amount) filter (where payment_status = 'paid' and created_at::date = $1::date),0)::text as today,
-           coalesce(sum(total_amount) filter (where payment_status = 'paid' and created_at::date between $2::date and $3::date),0)::text as week,
-           coalesce(sum(total_amount) filter (where payment_status = 'paid' and created_at::date between $4::date and $5::date),0)::text as month,
-           coalesce(sum(total_amount) filter (where payment_status = 'paid' and created_at::date between $6::date and $7::date),0)::text as period,
+           coalesce(sum(total_amount) filter (where payment_status = 'paid' and ${istDate("created_at")} = $1::date),0)::text as today,
+           coalesce(sum(total_amount) filter (where payment_status = 'paid' and ${istDate("created_at")} between $2::date and $3::date),0)::text as week,
+           coalesce(sum(total_amount) filter (where payment_status = 'paid' and ${istDate("created_at")} between $4::date and $5::date),0)::text as month,
+           coalesce(sum(total_amount) filter (where payment_status = 'paid' and ${istDate("created_at")} between $6::date and $7::date),0)::text as period,
            coalesce(sum(total_amount) filter (where payment_status = 'paid'),0)::text as all_time,
-           coalesce(sum(discount_amount) filter (where payment_status = 'paid' and created_at::date between $6::date and $7::date),0)::text as period_discount,
-           count(*) filter (where created_at::date between $6::date and $7::date)::text as period_order_count
+           coalesce(sum(discount_amount) filter (where payment_status = 'paid' and ${istDate("created_at")} between $6::date and $7::date),0)::text as period_discount,
+           count(*) filter (where ${istDate("created_at")} between $6::date and $7::date)::text as period_order_count
          from orders`,
         [today.from, week.from, week.to, month.from, month.to, from, to]
       ),
@@ -134,7 +143,7 @@ export async function GET(request: NextRequest) {
         pending: string;
       }>(
         `select
-           coalesce(sum(amount) filter (where category = 'purchase' and status <> 'cancelled' and ${dateClause("entry_date", 1, 2)}),0)::text as period,
+           coalesce(sum(amount) filter (where category = 'purchase' and status <> 'cancelled' and ${plainDateClause("entry_date", 1, 2)}),0)::text as period,
            coalesce(sum(amount) filter (where category = 'purchase' and status <> 'cancelled' and entry_date = $3::date),0)::text as today,
            coalesce(sum(amount) filter (where category = 'purchase' and status <> 'cancelled' and entry_date between $4::date and $5::date),0)::text as month,
            coalesce(sum(amount) filter (where category = 'purchase' and status = 'pending'),0)::text as pending
@@ -151,7 +160,7 @@ export async function GET(request: NextRequest) {
         `select
            coalesce(sum(amount) filter (where direction = 'out' and status = 'cleared' and category in ('expense','salary','rent','utilities','logistics','packaging','marketing','maintenance','tax','other') and entry_date = $1::date),0)::text as today,
            coalesce(sum(amount) filter (where direction = 'out' and status = 'cleared' and category in ('expense','salary','rent','utilities','logistics','packaging','marketing','maintenance','tax','other') and entry_date between $2::date and $3::date),0)::text as month,
-           coalesce(sum(amount) filter (where direction = 'out' and status = 'cleared' and category in ('expense','salary','rent','utilities','logistics','packaging','marketing','maintenance','tax','other') and ${dateClause("entry_date", 4, 5)}),0)::text as period,
+           coalesce(sum(amount) filter (where direction = 'out' and status = 'cleared' and category in ('expense','salary','rent','utilities','logistics','packaging','marketing','maintenance','tax','other') and ${plainDateClause("entry_date", 4, 5)}),0)::text as period,
            coalesce(sum(amount) filter (where direction = 'out' and status = 'cleared' and category in ('expense','salary','rent','utilities','logistics','packaging','marketing','maintenance','tax','other')),0)::text as total
          from finance_payment_entries`,
         [today.from, month.from, month.to, from, to]
@@ -162,7 +171,7 @@ export async function GET(request: NextRequest) {
          from finance_payment_entries
          where direction = 'out' and status = 'cleared'
            and category in ('expense','salary','rent','utilities','logistics','packaging','marketing','maintenance','tax','other')
-           and ${dateClause("entry_date", 1, 2)}
+           and ${plainDateClause("entry_date", 1, 2)}
          group by category
          order by sum(amount) desc
          limit 10`,
@@ -212,12 +221,12 @@ export async function GET(request: NextRequest) {
       ).catch(() => ({ total: "0", active: "0" })),
 
       query<{ day: string; total: string }>(
-        `select to_char(date_trunc('day', created_at), 'YYYY-MM-DD') as day,
+        `select to_char(${istDate("created_at")}, 'YYYY-MM-DD') as day,
                 coalesce(sum(total_amount),0)::text as total
          from orders
          where payment_status = 'paid' and ${dateClause("created_at", 1, 2)}
-         group by date_trunc('day', created_at)
-         order by date_trunc('day', created_at)`,
+         group by ${istDate("created_at")}
+         order by ${istDate("created_at")}`,
         [from, to]
       ),
 
@@ -316,10 +325,10 @@ export async function GET(request: NextRequest) {
          select
            coalesce(sum(o.total_amount) filter (
              where o.payment_status = 'paid'
-               and o.created_at::date between (b.from_d - b.span - 1) and (b.from_d - 1)
+               and ${istDate("o.created_at")} between (b.from_d - b.span - 1) and (b.from_d - 1)
            ),0)::text as sales_prev,
            count(*) filter (
-             where o.created_at::date between (b.from_d - b.span - 1) and (b.from_d - 1)
+             where ${istDate("o.created_at")} between (b.from_d - b.span - 1) and (b.from_d - 1)
            )::text as orders_prev
          from bounds b
          left join orders o on true`,
@@ -346,16 +355,22 @@ export async function GET(request: NextRequest) {
       (salesTrendRows || []).map((r) => [String(r.day).slice(0, 10), Number(r.total)])
     );
     const salesTrend: Array<{ date: string; label: string; total: number }> = [];
-    const start = new Date(from);
-    const end = new Date(to);
+    const cursor = (() => {
+      const [y, m, d] = from.split("-").map(Number);
+      return new Date(y, (m || 1) - 1, d || 1);
+    })();
+    const end = (() => {
+      const [y, m, d] = to.split("-").map(Number);
+      return new Date(y, (m || 1) - 1, d || 1);
+    })();
     const days = Math.min(
       31,
-      Math.max(1, Math.floor((end.getTime() - start.getTime()) / 86400000) + 1)
+      Math.max(1, Math.round((end.getTime() - cursor.getTime()) / 86400000) + 1)
     );
     for (let i = 0; i < days; i++) {
-      const d = new Date(start);
-      d.setDate(start.getDate() + i);
-      const key = d.toISOString().slice(0, 10);
+      const d = new Date(cursor);
+      d.setDate(cursor.getDate() + i);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       salesTrend.push({
         date: key,
         label: d.toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
