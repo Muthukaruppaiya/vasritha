@@ -73,6 +73,7 @@ export function InvoiceDirectory({
   const path = useMemo(() => {
     const params = new URLSearchParams();
     params.set("channel", channel);
+    params.set("sort", "asc");
     if (isStore && paymentFilter) params.set("paymentStatus", paymentFilter);
     if (isStore && statusFilter) params.set("status", statusFilter);
     if (isStore && fromDate) params.set("from", fromDate);

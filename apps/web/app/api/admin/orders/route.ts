@@ -40,6 +40,7 @@ export async function GET(request: NextRequest) {
   const offsetRaw = Number(searchParams.get("offset") || "0");
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 100) : 10;
   const offset = Number.isFinite(offsetRaw) ? Math.max(offsetRaw, 0) : 0;
+  const sortAsc = searchParams.get("sort") === "asc";
   const scope = await resolveShopScope(ctx, preferredShop);
   const shopId = scope.mode === "one" ? scope.shopId : preferredShop || null;
   const filters = [status, channel, paymentStatus, shopId, q, from, to];
@@ -96,7 +97,7 @@ export async function GET(request: NextRequest) {
        )
        and ($6::date is null or (o.created_at at time zone 'Asia/Kolkata')::date >= $6::date)
        and ($7::date is null or (o.created_at at time zone 'Asia/Kolkata')::date <= $7::date)
-     order by o.created_at desc
+     order by o.created_at ${sortAsc ? "asc" : "desc"}
      limit $8 offset $9`,
     [...filters, limit, offset]
   );
