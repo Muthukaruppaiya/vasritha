@@ -35,10 +35,14 @@ export function getAdminUser(): AdminSessionUser | null {
   }
 }
 
-export function setAdminSession(token: string, user: AdminSessionUser) {
+export function setAdminSession(
+  token: string,
+  user: AdminSessionUser,
+  options?: { touchActivity?: boolean }
+) {
   window.localStorage.setItem(TOKEN_KEY, token);
   window.localStorage.setItem(USER_KEY, JSON.stringify(user));
-  touchAdminActivity();
+  if (options?.touchActivity !== false) touchAdminActivity();
 }
 
 export function clearAdminSession() {
@@ -68,7 +72,31 @@ export function isAdminSessionIdleExpired(now = Date.now()) {
   return now - last >= ADMIN_IDLE_TIMEOUT_MS;
 }
 
-export async function refreshAdminSession(): Promise<boolean> {
+/** Renew the access token this long before it expires, while staff are still active. */
+const ADMIN_REFRESH_SKEW_MS = 2 * 60 * 1000;
+
+function adminTokenExpiresAt(token: string | null) {
+  if (!token) return null;
+  const part = token.split(".")[1];
+  if (!part) return null;
+  try {
+    const padded = part.replace(/-/g, "+").replace(/_/g, "/");
+    const json = JSON.parse(atob(padded)) as { exp?: number };
+    return typeof json.exp === "number" ? json.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+export function adminTokenNeedsRefresh(now = Date.now()) {
+  const exp = adminTokenExpiresAt(getAdminToken());
+  if (!exp) return true;
+  return exp - now <= ADMIN_REFRESH_SKEW_MS;
+}
+
+let refreshInFlight: Promise<boolean> | null = null;
+
+export async function refreshAdminSession(options?: { touchActivity?: boolean }): Promise<boolean> {
   const token = getAdminToken();
   if (!token) return false;
   try {
@@ -84,34 +112,44 @@ export async function refreshAdminSession(): Promise<boolean> {
       error?: string;
     } | null;
     if (!res.ok || !payload?.data?.session?.access_token) return false;
-    setAdminSession(payload.data.session.access_token, {
-      ...payload.data.user,
-      permissions: payload.data.user.permissions
-    });
+    setAdminSession(
+      payload.data.session.access_token,
+      {
+        ...payload.data.user,
+        permissions: payload.data.user.permissions
+      },
+      { touchActivity: options?.touchActivity !== false }
+    );
     return true;
   } catch {
     return false;
   }
 }
 
-export async function adminFetch<T = unknown>(
-  path: string,
-  options: RequestInit & { json?: unknown } = {}
-): Promise<{ data?: T; error?: string; status: number }> {
-  touchAdminActivity();
-  const token = getAdminToken();
-  const headers = new Headers(options.headers || {});
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-  if (options.json !== undefined) {
-    headers.set("Content-Type", "application/json");
+/** Renew the login while the person is still using the admin page. */
+export function ensureAdminSession(options?: { touchActivity?: boolean }) {
+  if (!getAdminToken() || isAdminSessionIdleExpired() || !adminTokenNeedsRefresh()) {
+    return refreshInFlight ?? Promise.resolve(Boolean(getAdminToken()));
   }
+  if (!refreshInFlight) {
+    refreshInFlight = refreshAdminSession({
+      touchActivity: options?.touchActivity !== false
+    }).finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
+}
 
-  const res = await fetch(path, {
-    ...options,
-    headers,
-    body: options.json !== undefined ? JSON.stringify(options.json) : options.body
-  });
-
+async function sendAdminRequest<T>(path: string, init: RequestInit): Promise<{
+  data?: T;
+  error?: string;
+  status: number;
+}> {
+  const headers = new Headers(init.headers || {});
+  const token = getAdminToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(path, { ...init, headers });
   const payload = await res.json().catch(() => ({}));
   if (!res.ok) {
     return {
@@ -119,37 +157,49 @@ export async function adminFetch<T = unknown>(
       error: (payload as { error?: string }).error || res.statusText || "Request failed"
     };
   }
-
   return {
     status: res.status,
     data: (payload as { data: T }).data
   };
 }
 
-export async function adminUpload<T = unknown>(path: string, formData: FormData) {
+async function withLiveAdminSession<T>(
+  run: () => Promise<{ data?: T; error?: string; status: number }>
+) {
   touchAdminActivity();
-  const token = getAdminToken();
-  const headers = new Headers();
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-
-  const res = await fetch(path, {
-    method: "POST",
-    headers,
-    body: formData
-  });
-
-  const payload = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    return {
-      status: res.status,
-      error: (payload as { error?: string }).error || res.statusText || "Upload failed"
-    };
+  if (getAdminToken() && !isAdminSessionIdleExpired()) {
+    await ensureAdminSession();
   }
+  let result = await run();
+  if (result.status === 401 && getAdminToken() && !isAdminSessionIdleExpired()) {
+    const renewed = await refreshAdminSession();
+    if (renewed) result = await run();
+  }
+  return result;
+}
 
-  return {
-    status: res.status,
-    data: (payload as { data: T }).data
-  };
+export async function adminFetch<T = unknown>(
+  path: string,
+  options: RequestInit & { json?: unknown } = {}
+): Promise<{ data?: T; error?: string; status: number }> {
+  const headers = new Headers(options.headers || {});
+  if (options.json !== undefined) headers.set("Content-Type", "application/json");
+  return withLiveAdminSession(() =>
+    sendAdminRequest<T>(path, {
+      ...options,
+      headers,
+      body: options.json !== undefined ? JSON.stringify(options.json) : options.body
+    })
+  );
+}
+
+export async function adminUpload<T = unknown>(path: string, formData: FormData) {
+  return withLiveAdminSession(() =>
+    sendAdminRequest<T>(path, {
+      method: "POST",
+      body: formData
+    })
+  );
 }
 
 export function formatMoney(value: number | string | null | undefined) {

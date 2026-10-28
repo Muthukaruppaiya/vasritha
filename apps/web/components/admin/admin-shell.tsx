@@ -43,15 +43,14 @@ import {
   type LucideIcon
 } from "lucide-react";
 import {
-  ADMIN_IDLE_TIMEOUT_MS,
   adminFetch,
   clearAdminSession,
   formatDate,
   formatMoney,
   getAdminToken,
   getAdminUser,
+  ensureAdminSession,
   isAdminSessionIdleExpired,
-  refreshAdminSession,
   touchAdminActivity,
   type AdminSessionUser
 } from "@/lib/admin-api";
@@ -62,6 +61,7 @@ import {
 } from "@/lib/auth/rbac";
 import { OPS_PLATFORM_NAME } from "@/lib/platform";
 import { BrandSplash } from "../brand-splash";
+import { AdminHoverTip } from "./admin-hover-tip";
 
 type NavLeaf = {
   label: string;
@@ -413,35 +413,38 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
     const onActivity = () => {
       touchAdminActivity();
+      void ensureAdminSession();
     };
 
     const events: Array<keyof WindowEventMap> = [
+      "pointermove",
       "mousemove",
       "mousedown",
       "keydown",
+      "input",
       "touchstart",
+      "wheel",
       "scroll",
       "click"
     ];
     for (const event of events) {
-      window.addEventListener(event, onActivity, { passive: true });
+      window.addEventListener(event, onActivity, { passive: true, capture: true });
     }
 
     const idleTimer = window.setInterval(() => {
       if (isAdminSessionIdleExpired()) forceLogout();
     }, 5000);
 
-    // Keep JWT alive while staff stay active (sliding 5-minute window).
+    // Renew the login while staff are active. Do not treat this timer as activity,
+    // so 5 minutes with no mouse or typing still logs out.
     const refreshTimer = window.setInterval(() => {
       if (isAdminSessionIdleExpired()) return;
-      void refreshAdminSession().then((ok) => {
-        if (!ok && isAdminSessionIdleExpired()) forceLogout();
-      });
-    }, Math.max(60_000, Math.floor(ADMIN_IDLE_TIMEOUT_MS / 2)));
+      void ensureAdminSession({ touchActivity: false });
+    }, 60_000);
 
     return () => {
       for (const event of events) {
-        window.removeEventListener(event, onActivity);
+        window.removeEventListener(event, onActivity, true);
       }
       window.clearInterval(idleTimer);
       window.clearInterval(refreshTimer);
@@ -541,6 +544,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
 
   return (
     <div className={`admin ${expanded ? "is-nav-open" : "is-nav-collapsed"} ${pinned ? "is-nav-pinned" : ""}`}>
+      <AdminHoverTip />
       <button
         type="button"
         className="admin-nav-fab"

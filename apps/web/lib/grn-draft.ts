@@ -3,6 +3,18 @@ export type GrnColorSplit = {
   quantity: string;
 };
 
+/** Saved with the draft so the line still shows after leaving the GRN page. */
+export type GrnLineProduct = {
+  variant_id: string;
+  product_id?: string;
+  product_name: string;
+  sku: string | null;
+  variant_name?: string | null;
+  product_color?: string | null;
+  is_multicolour?: boolean;
+  stock_quantity: number;
+};
+
 export type GrnDraftLine = {
   productVariantId: string;
   quantity: string;
@@ -11,6 +23,8 @@ export type GrnDraftLine = {
   colorSplits?: GrnColorSplit[];
   /** Free-text search hint when SKU was missing */
   searchHint?: string;
+  /** Product label captured when the line was picked. */
+  product?: GrnLineProduct;
 };
 
 export type GrnDraft = {
@@ -116,7 +130,19 @@ export function loadGrnDraft(): GrnDraft | null {
               quantity: String(s.quantity || "1")
             }))
           : undefined,
-        searchHint: line.searchHint ? String(line.searchHint) : undefined
+        searchHint: line.searchHint ? String(line.searchHint) : undefined,
+        product: line.product?.variant_id
+          ? {
+              variant_id: String(line.product.variant_id),
+              product_id: line.product.product_id ? String(line.product.product_id) : undefined,
+              product_name: String(line.product.product_name || "Product"),
+              sku: line.product.sku ? String(line.product.sku) : null,
+              variant_name: line.product.variant_name ? String(line.product.variant_name) : null,
+              product_color: line.product.product_color ? String(line.product.product_color) : null,
+              is_multicolour: Boolean(line.product.is_multicolour),
+              stock_quantity: Number(line.product.stock_quantity) || 0
+            }
+          : undefined
       }))
     };
   } catch {

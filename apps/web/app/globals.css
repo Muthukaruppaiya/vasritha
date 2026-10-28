@@ -8059,13 +8059,11 @@ body:has(.admin-login) .whatsapp-float {
   opacity: 0.45;
   cursor: not-allowed;
 }
-.admin-action-btn[data-tooltip]::after,
-.admin-icon-tip[data-tooltip]::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 8px);
-  transform: translateX(-50%) translateY(4px);
+.admin-hover-tip {
+  position: fixed;
+  z-index: 10000;
+  transform: translate(-50%, -100%);
+  max-width: min(280px, calc(100vw - 24px));
   padding: 6px 8px;
   border-radius: 6px;
   background: #1f2937;
@@ -8073,38 +8071,16 @@ body:has(.admin-login) .whatsapp-float {
   font: 600 0.68rem var(--font-body), sans-serif;
   letter-spacing: 0.02em;
   white-space: nowrap;
-  opacity: 0;
   pointer-events: none;
-  transition: opacity .15s ease, transform .15s ease;
-  z-index: 40;
   box-shadow: 0 8px 18px rgb(15 23 42 / 22%);
 }
-.admin-action-btn[data-tooltip]::before,
-.admin-icon-tip[data-tooltip]::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 2px);
-  transform: translateX(-50%);
-  border: 5px solid transparent;
-  border-top-color: #1f2937;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity .15s ease;
-  z-index: 40;
+.admin-hover-tip.is-below {
+  transform: translate(-50%, 0);
 }
-.admin-action-btn[data-tooltip]:hover::after,
-.admin-action-btn[data-tooltip]:focus-visible::after,
-.admin-icon-tip[data-tooltip]:hover::after,
-.admin-icon-tip[data-tooltip]:focus-visible::after {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-}
-.admin-action-btn[data-tooltip]:hover::before,
-.admin-action-btn[data-tooltip]:focus-visible::before,
-.admin-icon-tip[data-tooltip]:hover::before,
-.admin-icon-tip[data-tooltip]:focus-visible::before {
-  opacity: 1;
+.pos-screen-head,
+.pos-screen-actions {
+  position: relative;
+  z-index: 6;
 }
 .inv-empty-actions {
   margin-top: 12px;

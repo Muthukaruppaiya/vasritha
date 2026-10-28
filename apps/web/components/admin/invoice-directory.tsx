@@ -30,6 +30,24 @@ type InvoiceRow = {
 
 type InvoiceChannel = "online" | "pos";
 
+const STORE_PAYMENT_FILTERS = [
+  { value: "paid", label: "Paid" },
+  { value: "", label: "All payments" },
+  { value: "pending", label: "Pending" },
+  { value: "failed", label: "Failed" },
+  { value: "refunded", label: "Refunded" }
+] as const;
+
+const STORE_STATUS_FILTERS = [
+  { value: "", label: "All statuses" },
+  { value: "confirmed", label: "Confirmed" },
+  { value: "pending", label: "Pending" },
+  { value: "processing", label: "Packing" },
+  { value: "shipped", label: "Shipped" },
+  { value: "delivered", label: "Delivered" },
+  { value: "cancelled", label: "Cancelled" }
+] as const;
+
 export function InvoiceDirectory({
   channel,
   title
@@ -39,6 +57,10 @@ export function InvoiceDirectory({
 }) {
   const [q, setQ] = useState("");
   const [submitted, setSubmitted] = useState("");
+  const [paymentFilter, setPaymentFilter] = useState(channel === "pos" ? "paid" : "");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [selected, setSelected] = useState<InvoiceBillData | null>(null);
   const [loadingInvoice, setLoadingInvoice] = useState(false);
   const [actionError, setActionError] = useState("");
@@ -46,16 +68,22 @@ export function InvoiceDirectory({
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useAdminPageSize();
 
+  const isStore = channel === "pos";
+
   const path = useMemo(() => {
     const params = new URLSearchParams();
     params.set("channel", channel);
-    if (channel === "pos") params.set("paymentStatus", "paid");
+    if (isStore && paymentFilter) params.set("paymentStatus", paymentFilter);
+    if (isStore && statusFilter) params.set("status", statusFilter);
+    if (isStore && fromDate) params.set("from", fromDate);
+    if (isStore && toDate) params.set("to", toDate);
+    if (submitted) params.set("q", submitted);
     const boundShopId = getAdminUser()?.shopId;
     if (boundShopId) params.set("shopId", boundShopId);
     params.set("limit", String(pageSize));
     params.set("offset", String(page * pageSize));
     return `/api/admin/orders?${params.toString()}`;
-  }, [channel, page, pageSize]);
+  }, [channel, fromDate, isStore, page, pageSize, paymentFilter, statusFilter, submitted, toDate]);
 
   const { data, error, loading } = useAdminQuery<{
     items: InvoiceRow[];
@@ -64,27 +92,10 @@ export function InvoiceDirectory({
 
   useEffect(() => {
     setPage(0);
-  }, [channel, submitted, pageSize]);
+  }, [channel, submitted, pageSize, paymentFilter, statusFilter, fromDate, toDate]);
 
-  const rows = useMemo(() => {
-    const list = data?.items || [];
-    const term = submitted.trim().toLowerCase();
-    if (!term) return list;
-    return list.filter((row) => {
-      const haystack = [
-        row.order_number,
-        row.customer_name,
-        row.customer_email,
-        row.customer_phone,
-        row.payment_status,
-        row.status
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return haystack.includes(term);
-    });
-  }, [data, submitted]);
+  const rows = data?.items || [];
+  const filtersActive = Boolean(submitted || statusFilter || fromDate || toDate || (isStore && paymentFilter !== "paid"));
 
   const openInvoice = async (orderId: string) => {
     setLoadingInvoice(true);
@@ -97,8 +108,6 @@ export function InvoiceDirectory({
     }
     setSelected(result.data);
   };
-
-  const isStore = channel === "pos";
 
   return (
     <>
@@ -127,6 +136,41 @@ export function InvoiceDirectory({
             onChange={(e) => setQ(e.target.value)}
           />
         </label>
+        {isStore ? (
+          <>
+            <label>
+              <span>Payment</span>
+              <select
+                value={paymentFilter}
+                onChange={(e) => setPaymentFilter(e.target.value)}
+              >
+                {STORE_PAYMENT_FILTERS.map((option) => (
+                  <option key={option.label} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Status</span>
+              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                {STORE_STATUS_FILTERS.map((option) => (
+                  <option key={option.label} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>From</span>
+              <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+            </label>
+            <label>
+              <span>To</span>
+              <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+            </label>
+          </>
+        ) : null}
         <button
           type="submit"
           className="admin-icon-tip admin-action-btn--primary"
@@ -144,11 +188,13 @@ export function InvoiceDirectory({
         {actionError && <AdminAlert>{actionError}</AdminAlert>}
         {!loading && !rows.length && (
           <AdminEmpty
-            title={isStore ? "No store invoices yet" : "No online invoices yet"}
+            title={filtersActive ? "No matching invoices" : isStore ? "No store invoices yet" : "No online invoices yet"}
             body={
-              isStore
-                ? "Paid in-store POS sales appear here."
-                : "Online storefront orders appear here."
+              filtersActive
+                ? "Try another invoice number, customer, date, or status."
+                : isStore
+                  ? "Paid in-store POS sales appear here."
+                  : "Online storefront orders appear here."
             }
           />
         )}

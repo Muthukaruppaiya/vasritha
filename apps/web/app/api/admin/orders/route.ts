@@ -28,21 +28,43 @@ export async function GET(request: NextRequest) {
   const channel = searchParams.get("channel");
   const paymentStatus = searchParams.get("paymentStatus");
   const preferredShop = searchParams.get("shopId");
+  const qRaw = (searchParams.get("q") || "").trim().replace(/^inv[-\s]*/i, "");
+  const q = qRaw.replace(/[%_]/g, "").trim() || null;
+  const from = /^\d{4}-\d{2}-\d{2}$/.test(searchParams.get("from") || "")
+    ? searchParams.get("from")
+    : null;
+  const to = /^\d{4}-\d{2}-\d{2}$/.test(searchParams.get("to") || "")
+    ? searchParams.get("to")
+    : null;
   const limitRaw = Number(searchParams.get("limit") || "10");
   const offsetRaw = Number(searchParams.get("offset") || "0");
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 100) : 10;
   const offset = Number.isFinite(offsetRaw) ? Math.max(offsetRaw, 0) : 0;
   const scope = await resolveShopScope(ctx, preferredShop);
   const shopId = scope.mode === "one" ? scope.shopId : preferredShop || null;
+  const filters = [status, channel, paymentStatus, shopId, q, from, to];
 
   const totalRow = await queryOne<{ c: number }>(
     `select count(*)::int as c
      from orders o
+     left join customers c on c.id = o.customer_id
      where ($1::text is null or o.status::text = $1)
        and ($2::text is null or coalesce(o.channel, 'online') = $2)
        and ($3::text is null or o.payment_status::text = $3)
-       and ($4::uuid is null or o.shop_id = $4)`,
-    [status, channel, paymentStatus, shopId]
+       and ($4::uuid is null or o.shop_id = $4)
+       and (
+         $5::text is null
+         or o.order_number ilike '%' || $5 || '%'
+         or coalesce(o.pos_customer_name, '') ilike '%' || $5 || '%'
+         or coalesce(c.full_name, '') ilike '%' || $5 || '%'
+         or coalesce(o.pos_customer_phone, '') ilike '%' || $5 || '%'
+         or coalesce(c.phone, '') ilike '%' || $5 || '%'
+         or coalesce(o.pos_customer_email, '') ilike '%' || $5 || '%'
+         or coalesce(c.email, '') ilike '%' || $5 || '%'
+       )
+       and ($6::date is null or (o.created_at at time zone 'Asia/Kolkata')::date >= $6::date)
+       and ($7::date is null or (o.created_at at time zone 'Asia/Kolkata')::date <= $7::date)`,
+    filters
   );
 
   const data = await query(
@@ -62,9 +84,21 @@ export async function GET(request: NextRequest) {
        and ($2::text is null or coalesce(o.channel, 'online') = $2)
        and ($3::text is null or o.payment_status::text = $3)
        and ($4::uuid is null or o.shop_id = $4)
+       and (
+         $5::text is null
+         or o.order_number ilike '%' || $5 || '%'
+         or coalesce(o.pos_customer_name, '') ilike '%' || $5 || '%'
+         or coalesce(c.full_name, '') ilike '%' || $5 || '%'
+         or coalesce(o.pos_customer_phone, '') ilike '%' || $5 || '%'
+         or coalesce(c.phone, '') ilike '%' || $5 || '%'
+         or coalesce(o.pos_customer_email, '') ilike '%' || $5 || '%'
+         or coalesce(c.email, '') ilike '%' || $5 || '%'
+       )
+       and ($6::date is null or (o.created_at at time zone 'Asia/Kolkata')::date >= $6::date)
+       and ($7::date is null or (o.created_at at time zone 'Asia/Kolkata')::date <= $7::date)
      order by o.created_at desc
-     limit $5 offset $6`,
-    [status, channel, paymentStatus, shopId, limit, offset]
+     limit $8 offset $9`,
+    [...filters, limit, offset]
   );
   return ok({
     items: data,

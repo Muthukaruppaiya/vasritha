@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
   }
 
   const profile = await queryOne<{ email: string; full_name: string | null }>(
-    `select email, full_name from customers where id = $1`,
+    `select email, full_name from users where id = $1`,
     [ctx.userId]
   );
   const email = profile?.email || ctx.email || "";

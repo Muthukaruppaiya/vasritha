@@ -45,11 +45,33 @@ import {
   loadGrnDraft,
   saveGrnDraft,
   type GrnDraft,
-  type GrnDraftLine
+  type GrnDraftLine,
+  type GrnLineProduct
 } from "../../../../lib/grn-draft";
 import { useAdminQuery } from "../../../../hooks/use-admin-query";
 
 type StockRow = ProductPickRow;
+
+function toLineProduct(row: StockRow): GrnLineProduct {
+  return {
+    variant_id: row.variant_id,
+    product_id: row.product_id,
+    product_name: row.product_name,
+    sku: row.sku,
+    variant_name: row.variant_name,
+    product_color: row.product_color,
+    is_multicolour: row.is_multicolour,
+    stock_quantity: row.stock_quantity
+  };
+}
+
+function snapshotsFromLines(lines: GrnDraftLine[]) {
+  const next: Record<string, StockRow> = {};
+  for (const line of lines) {
+    if (line.product?.variant_id) next[line.product.variant_id] = line.product;
+  }
+  return next;
+}
 
 type Supplier = {
   id: string;
@@ -108,12 +130,18 @@ function GrnEntryPageInner() {
         if (resumeVariant) {
           const idx = Math.min(Math.max(next.focusLineIndex, 0), next.lines.length - 1);
           const lines = [...next.lines];
-          lines[idx] = { ...lines[idx], productVariantId: resumeVariant, searchHint: undefined };
+          lines[idx] = {
+            ...lines[idx],
+            productVariantId: resumeVariant,
+            product: undefined,
+            searchHint: undefined
+          };
           next.lines = lines;
           next.focusLineIndex = idx;
           saveGrnDraft(next);
         }
         setInward(next);
+        setPickedByVariant(snapshotsFromLines(next.lines));
         setDraftNotice("Resumed GRN draft after creating a product.");
         setHydrated(true);
         return;
@@ -144,6 +172,7 @@ function GrnEntryPageInner() {
         ));
     if (hasWork && draft) {
       setInward(draft);
+      setPickedByVariant(snapshotsFromLines(draft.lines));
       setDraftNotice(
         `Continuing saved GRN draft${draft.savedAt ? ` · ${new Date(draft.savedAt).toLocaleString()}` : ""}.`
       );
@@ -153,6 +182,29 @@ function GrnEntryPageInner() {
     }
     setHydrated(true);
   }, [resumeGrn, resumeVariant, prefillVariant]);
+
+  const lineVariantKey = inward.lines.map((line) => line.productVariantId).filter(Boolean).join(",");
+
+  useEffect(() => {
+    if (!hydrated || !lineVariantKey) return;
+    let cancelled = false;
+    const params = new URLSearchParams();
+    params.set("variantIds", lineVariantKey);
+    if (sessionShopId) params.set("shopId", sessionShopId);
+    void adminFetch<{ stock: StockRow[] }>(`/api/admin/inventory?${params.toString()}`).then(
+      (result) => {
+        if (cancelled || !result.data?.stock?.length) return;
+        setPickedByVariant((prev) => {
+          const next = { ...prev };
+          for (const row of result.data!.stock) next[row.variant_id] = row;
+          return next;
+        });
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated, lineVariantKey, sessionShopId]);
 
   useEffect(() => {
     if (!data?.stock?.length) return;
@@ -170,6 +222,7 @@ function GrnEntryPageInner() {
   const startNewGrn = () => {
     clearGrnDraft();
     setInward(blankGrnDraft());
+    setPickedByVariant({});
     setFormError("");
     setDraftNotice("");
     setPickerOpen(null);
@@ -184,7 +237,15 @@ function GrnEntryPageInner() {
   const resolveStock = (variantId: string) =>
     pickedByVariant[variantId] ||
     (data?.stock || []).find((s) => s.variant_id === variantId) ||
+    inward.lines.find((line) => line.productVariantId === variantId)?.product ||
     null;
+
+  const stampLines = (lines: GrnDraftLine[]) =>
+    lines.map((line) => {
+      if (!line.productVariantId) return { ...line, product: undefined };
+      const row = resolveStock(line.productVariantId);
+      return row ? { ...line, product: toLineProduct(row) } : line;
+    });
 
   const chooseSku = (row: ProductPickRow) => {
     if (pickerOpen == null) return;
@@ -203,7 +264,7 @@ function GrnEntryPageInner() {
       const splitSum = colorSplitsQty(next.colorSplits);
       if (splitSum > 0) next.quantity = String(splitSum);
     }
-    lines[pickerOpen] = next;
+    lines[pickerOpen] = { ...next, product: toLineProduct(row) };
     setPickedByVariant((prev) => ({ ...prev, [row.variant_id]: row }));
     persistDraft({ ...inward, lines });
     closeSkuPicker();
@@ -224,8 +285,9 @@ function GrnEntryPageInner() {
   );
 
   const persistDraft = (next: GrnDraft) => {
-    setInward(next);
-    saveGrnDraft(next);
+    const stamped = { ...next, lines: stampLines(next.lines) };
+    setInward(stamped);
+    saveGrnDraft(stamped);
   };
 
   const updateLine = (index: number, patch: Partial<GrnDraftLine>) => {
@@ -287,9 +349,14 @@ function GrnEntryPageInner() {
   };
 
   const goCreateMissingProduct = () => {
-    const emptyIdx = inward.lines.findIndex((line) => !line.productVariantId);
-    const idx = emptyIdx >= 0 ? emptyIdx : Math.max(0, inward.lines.length - 1);
-    const next: GrnDraft = { ...inward, focusLineIndex: idx };
+    const lines = stampLines(inward.lines);
+    let idx = lines.findIndex((line) => !line.productVariantId);
+    let nextLines = lines;
+    if (idx < 0) {
+      nextLines = [...lines, { productVariantId: "", quantity: "1", purchasePrice: "" }];
+      idx = nextLines.length - 1;
+    }
+    const next: GrnDraft = { ...inward, lines: nextLines, focusLineIndex: idx };
     saveGrnDraft(next);
     window.location.href = "/admin/products/new?fromGrn=1";
   };

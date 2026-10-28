@@ -33,6 +33,52 @@ export async function GET(request: NextRequest) {
     return fail(err instanceof Error ? err.message : "No active shop");
   }
 
+  const variantIds = (searchParams.get("variantIds") || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter((id) =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+    )
+    .slice(0, 40);
+
+  if (variantIds.length) {
+    const picked = await query(
+      `select
+         pv.id as variant_id,
+         pv.sku,
+         pv.name as variant_name,
+         pv.attributes,
+         coalesce(svs.stock_quantity, 0) as stock_quantity,
+         p.id as product_id,
+         p.name as product_name,
+         p.status as product_status,
+         p.color as product_color,
+         coalesce(p.is_multicolour, false) as is_multicolour,
+         p.hsn_code,
+         p.gst_rate,
+         p.category_id,
+         p.subcategory_id,
+         c.name as category_name,
+         sc.name as subcategory_name
+       from product_variants pv
+       join products p on p.id = pv.product_id
+       left join shop_variant_stock svs
+         on svs.variant_id = pv.id and svs.shop_id = $1
+       left join categories c on c.id = p.category_id
+       left join subcategories sc on sc.id = p.subcategory_id
+       where pv.id = any($2::uuid[])
+       order by p.name asc, pv.sku asc`,
+      [shopId, variantIds]
+    );
+    return ok({
+      stock: picked,
+      total: picked.length,
+      limit: variantIds.length,
+      offset: 0,
+      shopId
+    });
+  }
+
   const scopeWhere = `
     where (
       $1::text = ''
