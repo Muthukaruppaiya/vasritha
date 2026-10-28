@@ -17,12 +17,14 @@ function tipHost(target: EventTarget | null) {
 }
 
 function tipText(host: HTMLElement) {
-  return (
+  const explicit = (
     host.getAttribute("data-tooltip") ||
     host.getAttribute("aria-label") ||
     host.getAttribute("title") ||
     ""
   ).trim();
+  if (explicit) return explicit;
+  return (host.textContent || "").replace(/\s+/g, " ").trim();
 }
 
 /** Fixed tooltip so button labels stay visible when a panel clips overflow. */
