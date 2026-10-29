@@ -38,6 +38,20 @@ const STORE_PAYMENT_FILTERS = [
   { value: "refunded", label: "Refunded" }
 ] as const;
 
+function indiaToday() {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+}
+
+function formatIsoDay(iso: string) {
+  const [y, m, d] = iso.split("-").map(Number);
+  if (!y || !m || !d) return iso;
+  return new Date(y, m - 1, d).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric"
+  });
+}
+
 const STORE_STATUS_FILTERS = [
   { value: "", label: "All statuses" },
   { value: "confirmed", label: "Confirmed" },
@@ -59,8 +73,8 @@ export function InvoiceDirectory({
   const [submitted, setSubmitted] = useState("");
   const [paymentFilter, setPaymentFilter] = useState(channel === "pos" ? "paid" : "");
   const [statusFilter, setStatusFilter] = useState("");
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
+  const [fromDate, setFromDate] = useState(() => (channel === "pos" ? indiaToday() : ""));
+  const [toDate, setToDate] = useState(() => (channel === "pos" ? indiaToday() : ""));
   const [selected, setSelected] = useState<InvoiceBillData | null>(null);
   const [loadingInvoice, setLoadingInvoice] = useState(false);
   const [actionError, setActionError] = useState("");
@@ -89,6 +103,7 @@ export function InvoiceDirectory({
   const { data, error, loading } = useAdminQuery<{
     items: InvoiceRow[];
     total: number;
+    sales_total?: number;
   }>(path);
 
   useEffect(() => {
@@ -117,7 +132,7 @@ export function InvoiceDirectory({
         title={title}
         description={
           isStore
-            ? "Look up paid in-store POS bills and reprint for a normal printer."
+            ? "Today’s bills open first. Change From or To to see another day."
             : "Look up online storefront bills and reprint for a normal printer."
         }
       />
@@ -192,7 +207,9 @@ export function InvoiceDirectory({
             title={filtersActive ? "No matching invoices" : isStore ? "No store invoices yet" : "No online invoices yet"}
             body={
               filtersActive
-                ? "Try another invoice number, customer, date, or status."
+                ? isStore && fromDate
+                  ? "No bills in this date range. Change From or To, or clear Search."
+                  : "Try another invoice number, customer, date, or status."
                 : isStore
                   ? "Paid in-store POS sales appear here."
                   : "Online storefront orders appear here."
@@ -255,6 +272,19 @@ export function InvoiceDirectory({
             </table>
           </div>
         )}
+        {isStore && data ? (
+          <div className="store-sales-total">
+            <span>
+              Total sales
+              {fromDate && toDate
+                ? fromDate === toDate
+                  ? ` · ${formatIsoDay(fromDate)}`
+                  : ` · ${formatIsoDay(fromDate)} – ${formatIsoDay(toDate)}`
+                : ""}
+            </span>
+            <strong>{formatMoney(data.sales_total || 0)}</strong>
+          </div>
+        ) : null}
         <AdminPagination
           total={data?.total || 0}
           page={page}

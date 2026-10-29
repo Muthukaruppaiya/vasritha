@@ -550,6 +550,103 @@ export async function createPendingGrn(input: {
   });
 }
 
+/** Replace a GRN that is still waiting for approval. Approved receipts stay locked. */
+export async function updatePendingGrn(input: {
+  grnId: string;
+  payload: ParsedGrnPayload;
+}): Promise<{ id: string; grn_number: string; status: string }> {
+  await ensureInventoryGrnSchema();
+  const existing = await queryOne<{ id: string; grn_number: string; status: string }>(
+    `select id, grn_number, status from inventory_grns where id = $1`,
+    [input.grnId]
+  );
+  if (!existing) throw new Error("GRN not found");
+  if (existing.status !== "pending_approval") {
+    throw new Error("Only a GRN waiting for approval can be edited");
+  }
+
+  if (input.payload.billNo) {
+    const clash = await queryOne<{ grn_number: string }>(
+      `select grn_number from inventory_grns
+       where id <> $1
+         and supplier_id = $2
+         and lower(btrim(bill_no)) = lower(btrim($3))
+         and status in ('pending_approval', 'approved')
+       limit 1`,
+      [input.grnId, input.payload.supplierId, input.payload.billNo]
+    );
+    if (clash) {
+      throw new Error(`A GRN already exists for this supplier bill (${clash.grn_number}).`);
+    }
+  }
+
+  return withTransaction(async (db) => {
+    const variantIds = [...new Set(input.payload.lines.map((l) => l.productVariantId))];
+    const found = await db.query<{ id: string }>(
+      `select id from product_variants where id = any($1::uuid[])`,
+      [variantIds]
+    );
+    if (found.length !== variantIds.length) {
+      throw new Error("One of the products on this GRN was not found");
+    }
+
+    const updated = await db.queryOne<{ id: string; grn_number: string; status: string }>(
+      `update inventory_grns
+       set supplier_id = $2,
+           bill_no = $3,
+           invoice_amount = $4,
+           invoice_date = $5,
+           document_path = $6,
+           discount_amount = $7,
+           tax_amount = $8,
+           lines_total = $9,
+           note = $10
+       where id = $1 and status = 'pending_approval'
+       returning id, grn_number, status`,
+      [
+        input.grnId,
+        input.payload.supplierId,
+        input.payload.billNo || null,
+        input.payload.invoiceAmount,
+        input.payload.invoiceDate,
+        input.payload.documentPath,
+        input.payload.discountAmount,
+        input.payload.taxAmount,
+        input.payload.linesTotal,
+        input.payload.note
+      ]
+    );
+    if (!updated) throw new Error("Only a GRN waiting for approval can be edited");
+
+    await db.query(`delete from inventory_grn_lines where grn_id = $1`, [input.grnId]);
+
+    const valueSql: string[] = [];
+    const params: unknown[] = [];
+    let p = 1;
+    input.payload.lines.forEach((line, sort) => {
+      const lineTotal = computeGrnLineTotal(line.quantity, line.purchasePrice);
+      valueSql.push(`($${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++})`);
+      params.push(
+        input.grnId,
+        line.productVariantId,
+        line.quantity,
+        line.purchasePrice,
+        lineTotal,
+        sort,
+        line.colorBreakdown?.length ? JSON.stringify(line.colorBreakdown) : null
+      );
+    });
+    await db.query(
+      `insert into inventory_grn_lines (
+         grn_id, product_variant_id, quantity, purchase_price, line_total, sort_order, color_breakdown
+       ) values ${valueSql.join(", ")}`,
+      params
+    );
+
+    return updated;
+  });
+}
+
 export async function loadGrnPayload(
   grnId: string
 ): Promise<{
@@ -839,6 +936,7 @@ export async function getGrnPrintDetail(grnId: string): Promise<GrnPrintDetail |
   if (!grn) return null;
 
   const lines = await query<{
+    product_variant_id: string;
     product_name: string;
     sku: string | null;
     variant_name: string | null;
@@ -847,7 +945,7 @@ export async function getGrnPrintDetail(grnId: string): Promise<GrnPrintDetail |
     line_total: string | number;
     color_breakdown: GrnColorBatch[] | string | null;
   }>(
-    `select p.name as product_name, coalesce(p.sku, v.sku) as sku, v.name as variant_name,
+    `select l.product_variant_id, p.name as product_name, coalesce(p.sku, v.sku) as sku, v.name as variant_name,
             l.quantity, l.purchase_price, l.line_total, l.color_breakdown
      from inventory_grn_lines l
      join product_variants v on v.id = l.product_variant_id
@@ -927,6 +1025,7 @@ export async function getGrnPrintDetail(grnId: string): Promise<GrnPrintDetail |
         }
       }
       return {
+        product_variant_id: l.product_variant_id,
         product_name: l.product_name,
         sku: l.sku,
         variant_name: l.variant_name,

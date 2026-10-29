@@ -10,6 +10,7 @@ import {
   ClipboardCheck,
   Eye,
   History,
+  Pencil,
   Printer,
   Truck,
   X
@@ -66,6 +67,7 @@ type BulkApproveResult = {
 function AdminGrnApprovalsInner() {
   const searchParams = useSearchParams();
   const justSubmitted = searchParams.get("submitted") === "1";
+  const justUpdated = searchParams.get("updated") === "1";
   const sessionShopId = getAdminUser()?.shopId || null;
   const canApprove = Boolean(
     getAdminUser()?.permissions?.includes("stock:approve") ||
@@ -276,6 +278,11 @@ function AdminGrnApprovalsInner() {
           GRN submitted for approval. Open Details or Approve from the row actions when ready.
         </AdminAlert>
       )}
+      {justUpdated && (
+        <AdminAlert tone="ok">
+          GRN updated. Stock stays unchanged until you approve it.
+        </AdminAlert>
+      )}
       {bulkSummary && (
         <AdminAlert tone={bulkSummary.toLowerCase().includes("failed") ? "error" : "ok"}>
           {bulkSummary}
@@ -476,6 +483,17 @@ function AdminGrnApprovalsInner() {
                             <Eye size={15} strokeWidth={2} />
                             <span>Details</span>
                           </button>
+                          {isPending ? (
+                            <Link
+                              className="admin-icon-tip"
+                              href={`/admin/inventory/grn?editGrn=${row.id}`}
+                              data-tooltip="Edit"
+                              aria-label={`Edit ${row.grn_number}`}
+                            >
+                              <Pencil size={15} strokeWidth={2} />
+                              <span>Edit</span>
+                            </Link>
+                          ) : null}
                           {canApprove && isPending ? (
                             <button
                               type="button"
@@ -689,6 +707,17 @@ function AdminGrnApprovalsInner() {
                   <Printer size={16} strokeWidth={2} />
                   <span>{printingId === detail.id ? "Printing…" : "Print"}</span>
                 </button>
+                {detail.status === "pending_approval" ? (
+                  <Link
+                    className="admin-icon-tip"
+                    href={`/admin/inventory/grn?editGrn=${detail.id}`}
+                    data-tooltip="Edit"
+                    aria-label={`Edit ${detail.grn_number}`}
+                  >
+                    <Pencil size={16} strokeWidth={2} />
+                    <span>Edit</span>
+                  </Link>
+                ) : null}
                 {canApprove && detail.status === "pending_approval" ? (
                   <button
                     type="button"

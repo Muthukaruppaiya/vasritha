@@ -49,6 +49,7 @@ import {
   type GrnLineProduct
 } from "../../../../lib/grn-draft";
 import { useAdminQuery } from "../../../../hooks/use-admin-query";
+import type { GrnPrintDetail } from "../../../../lib/print-grn";
 
 type StockRow = ProductPickRow;
 
@@ -62,6 +63,59 @@ function toLineProduct(row: StockRow): GrnLineProduct {
     product_color: row.product_color,
     is_multicolour: row.is_multicolour,
     stock_quantity: row.stock_quantity
+  };
+}
+
+function dateInputValue(value: string | null | undefined) {
+  if (!value) return "";
+  const raw = String(value);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(parsed);
+}
+
+function draftFromGrn(detail: GrnPrintDetail): GrnDraft {
+  const lines = detail.lines.length
+    ? detail.lines.map((line) => {
+        const variantId = line.product_variant_id || "";
+        const splits = (line.color_breakdown || []).filter((split) => split.color && split.quantity > 0);
+        return {
+          productVariantId: variantId,
+          quantity: String(line.quantity),
+          purchasePrice: String(line.purchase_price),
+          colorSplits: splits.length
+            ? splits.map((split) => ({ color: split.color, quantity: String(split.quantity) }))
+            : undefined,
+          product: variantId
+            ? {
+                variant_id: variantId,
+                product_name: line.product_name,
+                sku: line.sku,
+                variant_name: line.variant_name,
+                is_multicolour: splits.length > 0,
+                stock_quantity: 0
+              }
+            : undefined
+        };
+      })
+    : blankGrnDraft().lines;
+
+  const path = detail.document_path || "";
+  return {
+    supplierId: detail.supplier.id || "",
+    supplier: detail.supplier.name || "",
+    billNo: detail.bill_no || "",
+    invoiceAmount: String(detail.invoice_amount ?? ""),
+    invoiceDate: dateInputValue(detail.invoice_date),
+    discountAmount: String(detail.discount_amount ?? 0),
+    taxAmount: String(detail.tax_amount ?? 0),
+    documentPath: path,
+    documentName: path ? path.split("/").pop() || "Bill" : "",
+    note: "",
+    lines,
+    focusLineIndex: 0,
+    savedAt: new Date().toISOString()
   };
 }
 
@@ -91,6 +145,7 @@ function GrnEntryPageInner() {
   const resumeGrn = searchParams.get("resumeGrn") === "1";
   const resumeVariant = searchParams.get("newVariant") || "";
   const prefillVariant = searchParams.get("variant") || "";
+  const editGrnId = searchParams.get("editGrn") || "";
 
   const sessionShopId = getAdminUser()?.shopId || null;
 
@@ -120,9 +175,10 @@ function GrnEntryPageInner() {
   const [pickedByVariant, setPickedByVariant] = useState<Record<string, ProductPickRow>>({});
 
   const [draftNotice, setDraftNotice] = useState("");
+  const [editingId, setEditingId] = useState("");
+  const [editingNumber, setEditingNumber] = useState("");
 
   useEffect(() => {
-    // Resume when returning from Product Master with a new variant.
     if (resumeGrn) {
       const draft = loadGrnDraft();
       if (draft) {
@@ -142,11 +198,48 @@ function GrnEntryPageInner() {
         }
         setInward(next);
         setPickedByVariant(snapshotsFromLines(next.lines));
-        setDraftNotice("Resumed GRN draft after creating a product.");
+        if (editGrnId) {
+          setEditingId(editGrnId);
+          setDraftNotice("Resumed this GRN after creating a product. Stock updates only after approval.");
+        } else {
+          setEditingId("");
+          setEditingNumber("");
+          setDraftNotice("Resumed GRN draft after creating a product.");
+        }
         setHydrated(true);
         return;
       }
     }
+
+    if (editGrnId) {
+      let cancelled = false;
+      void adminFetch<GrnPrintDetail>(`/api/admin/inventory/grn/${editGrnId}`).then((result) => {
+        if (cancelled) return;
+        if (result.error || !result.data) {
+          setFormError(result.error || "Could not open this GRN");
+          setHydrated(true);
+          return;
+        }
+        if (result.data.status !== "pending_approval") {
+          setFormError("This GRN is already approved and cannot be edited.");
+          setHydrated(true);
+          return;
+        }
+        const draft = draftFromGrn(result.data);
+        setInward(draft);
+        setPickedByVariant(snapshotsFromLines(draft.lines));
+        setEditingId(result.data.id);
+        setEditingNumber(result.data.grn_number);
+        setDraftNotice(`Editing ${result.data.grn_number}. Stock updates only after approval.`);
+        setHydrated(true);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setEditingId("");
+    setEditingNumber("");
 
     if (prefillVariant) {
       clearGrnDraft();
@@ -181,7 +274,7 @@ function GrnEntryPageInner() {
       setDraftNotice("");
     }
     setHydrated(true);
-  }, [resumeGrn, resumeVariant, prefillVariant]);
+  }, [editGrnId, resumeGrn, resumeVariant, prefillVariant]);
 
   const lineVariantKey = inward.lines.map((line) => line.productVariantId).filter(Boolean).join(",");
 
@@ -225,8 +318,10 @@ function GrnEntryPageInner() {
     setPickedByVariant({});
     setFormError("");
     setDraftNotice("");
+    setEditingId("");
+    setEditingNumber("");
     setPickerOpen(null);
-    if (resumeGrn || resumeVariant || prefillVariant) {
+    if (editGrnId || resumeGrn || resumeVariant || prefillVariant) {
       router.replace("/admin/inventory/grn");
     }
   };
@@ -287,7 +382,7 @@ function GrnEntryPageInner() {
   const persistDraft = (next: GrnDraft) => {
     const stamped = { ...next, lines: stampLines(next.lines) };
     setInward(stamped);
-    saveGrnDraft(stamped);
+    if (!editingId) saveGrnDraft(stamped);
   };
 
   const updateLine = (index: number, patch: Partial<GrnDraftLine>) => {
@@ -358,7 +453,8 @@ function GrnEntryPageInner() {
     }
     const next: GrnDraft = { ...inward, lines: nextLines, focusLineIndex: idx };
     saveGrnDraft(next);
-    window.location.href = "/admin/products/new?fromGrn=1";
+    const edit = editGrnId ? `&editGrn=${encodeURIComponent(editGrnId)}` : "";
+    window.location.href = `/admin/products/new?fromGrn=1${edit}`;
   };
 
   const submitGrn = async (approveNow = false) => {
@@ -440,18 +536,7 @@ function GrnEntryPageInner() {
       }
     }
 
-    const result = await adminFetch<{
-      id?: string;
-      grn_number?: string;
-      status?: string;
-      pending?: boolean;
-      count?: number;
-      units?: number;
-      message?: string;
-      approveError?: string;
-    }>("/api/admin/inventory/inward", {
-      method: "POST",
-      json: {
+    const payload = {
         supplierId: inward.supplierId,
         billNo: inward.billNo || undefined,
         note: inward.note || undefined,
@@ -480,7 +565,20 @@ function GrnEntryPageInner() {
             colorBreakdown
           };
         })
-      }
+    };
+
+    const result = await adminFetch<{
+      id?: string;
+      grn_number?: string;
+      status?: string;
+      pending?: boolean;
+      count?: number;
+      units?: number;
+      message?: string;
+      approveError?: string;
+    }>(editingId ? `/api/admin/inventory/grn/${editingId}` : "/api/admin/inventory/inward", {
+      method: editingId ? "PATCH" : "POST",
+      json: editingId ? { ...payload, approveNow: undefined } : payload
     });
     setSaving(false);
     if (result.error) {
@@ -492,6 +590,11 @@ function GrnEntryPageInner() {
     setInward(blankGrnDraft());
     // Don't await inventory reload — it was adding seconds after a successful save.
     void reload();
+
+    if (editingId) {
+      router.push("/admin/inventory/approvals?updated=1");
+      return;
+    }
 
     if (result.data?.pending) {
       router.push("/admin/inventory/approvals?submitted=1");
@@ -514,8 +617,12 @@ function GrnEntryPageInner() {
     <>
       <AdminPageHeader
         eyebrow="Inventory"
-        title="New GRN"
-        description="Receive supplier stock. Multi-colour products need colour-wise quantities before submit."
+        title={editingId ? (editingNumber ? `Edit ${editingNumber}` : "Edit GRN") : "New GRN"}
+        description={
+          editingId
+            ? "Change this receipt before approval. Stock is updated only when the GRN is approved."
+            : "Receive supplier stock. Multi-colour products need colour-wise quantities before submit."
+        }
         actions={
           <>
             <button
@@ -965,17 +1072,24 @@ function GrnEntryPageInner() {
               <FilePlus2 size={16} strokeWidth={2} />
               <span>New GRN</span>
             </button>
-            <Link className="btn admin-ghost-btn" href="/admin/inventory">
+            <Link
+              className="btn admin-ghost-btn"
+              href={editingId ? "/admin/inventory/approvals" : "/admin/inventory"}
+            >
               Cancel
             </Link>
-            <button type="submit" className="btn" disabled={saving || loading}>
-              {saving ? "Submitting…" : "Submit for approval"}
+            <button
+              type="submit"
+              className="btn"
+              disabled={saving || loading || (Boolean(editGrnId) && !editingId)}
+            >
+              {saving ? "Saving…" : editingId ? "Save changes" : "Submit for approval"}
             </button>
-            {canApprove ? (
+            {canApprove && !editingId ? (
               <button
                 type="button"
                 className="btn"
-                disabled={saving || loading}
+                disabled={saving || loading || Boolean(editGrnId)}
                 onClick={() => void submitGrn(true)}
               >
                 {saving ? "Working…" : "Submit & approve"}

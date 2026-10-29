@@ -34,6 +34,7 @@ export type GrnPrintDetail = {
     phone: string | null;
   };
   lines: Array<{
+    product_variant_id?: string;
     product_name: string;
     sku: string | null;
     variant_name: string | null;

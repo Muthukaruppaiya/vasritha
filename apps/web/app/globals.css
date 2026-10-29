@@ -15985,3 +15985,26 @@ body:has(.admin) {
 .product-gallery-viewport {
   border-radius: 16px;
 }
+
+.store-sales-total {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  gap: 14px;
+  width: fit-content;
+  margin: 8px 4px 4px auto;
+  padding: 10px 14px;
+  border: 1px solid #e7d7c4;
+  border-radius: 10px;
+  background: #fffaf4;
+}
+
+.store-sales-total span {
+  color: #6b5344;
+  font-size: 0.82rem;
+}
+
+.store-sales-total strong {
+  font-size: 1.15rem;
+  color: #2b2118;
+}

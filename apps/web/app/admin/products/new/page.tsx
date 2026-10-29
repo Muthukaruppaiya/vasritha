@@ -38,6 +38,7 @@ function AdminNewProductPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const fromGrn = searchParams.get("fromGrn") === "1";
+  const editGrnId = searchParams.get("editGrn") || "";
   const parentId = searchParams.get("parent") || "";
 
   const { data: categories, loading: categoriesLoading } = useAdminQuery<Category[]>(
@@ -88,7 +89,8 @@ function AdminNewProductPageInner() {
 
   const goBack = () => {
     if (fromGrn) {
-      window.location.href = "/admin/inventory/grn?resumeGrn=1";
+      const edit = editGrnId ? `&editGrn=${encodeURIComponent(editGrnId)}` : "";
+      window.location.href = `/admin/inventory/grn?resumeGrn=1${edit}`;
       return;
     }
     router.push("/admin/products");
@@ -110,7 +112,8 @@ function AdminNewProductPageInner() {
           const variant = created?.defaultVariantId
             ? `&newVariant=${encodeURIComponent(created.defaultVariantId)}`
             : "";
-          window.location.href = `/admin/inventory/grn?resumeGrn=1${variant}`;
+          const edit = editGrnId ? `&editGrn=${encodeURIComponent(editGrnId)}` : "";
+          window.location.href = `/admin/inventory/grn?resumeGrn=1${variant}${edit}`;
           return;
         }
         if (created?.id) {

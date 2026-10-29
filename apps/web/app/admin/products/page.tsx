@@ -393,8 +393,10 @@ function AdminProductsPageInner() {
 
   useEffect(() => {
     if (!fromGrn) return;
-    router.replace("/admin/products/new?fromGrn=1");
-  }, [fromGrn, router]);
+    const editGrn = searchParams.get("editGrn");
+    const edit = editGrn ? `&editGrn=${encodeURIComponent(editGrn)}` : "";
+    router.replace(`/admin/products/new?fromGrn=1${edit}`);
+  }, [fromGrn, router, searchParams]);
 
   useEffect(() => {
     if (!menuOpenId) return;

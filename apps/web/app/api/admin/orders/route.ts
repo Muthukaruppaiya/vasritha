@@ -45,8 +45,8 @@ export async function GET(request: NextRequest) {
   const shopId = scope.mode === "one" ? scope.shopId : preferredShop || null;
   const filters = [status, channel, paymentStatus, shopId, q, from, to];
 
-  const totalRow = await queryOne<{ c: number }>(
-    `select count(*)::int as c
+  const totalRow = await queryOne<{ c: number; sales_total: string }>(
+    `select count(*)::int as c, coalesce(sum(o.total_amount), 0)::text as sales_total
      from orders o
      left join customers c on c.id = o.customer_id
      where ($1::text is null or o.status::text = $1)
@@ -104,6 +104,7 @@ export async function GET(request: NextRequest) {
   return ok({
     items: data,
     total: Number(totalRow?.c || 0),
+    sales_total: Number(totalRow?.sales_total || 0),
     limit,
     offset
   });
