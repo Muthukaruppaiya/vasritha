@@ -9,7 +9,13 @@ import {
 import { query, queryOne } from "../../../../../lib/db/pool";
 import { emptyToNull, subcategoryBelongsToCategory } from "../../../../../lib/db/taxonomy";
 import { listProductItems, ensureProductUnitsSchema, recordPriceHistory, syncSellableStock } from "../../../../../lib/product-units";
-import { ensureGstSchema, normalizeHsn, resolveSaleGstRate } from "../../../../../lib/gst";
+import {
+  ensureGstSchema,
+  isReadymadeGarmentHsn,
+  normalizeGstRate,
+  normalizeHsn,
+  resolveSaleGstRate
+} from "../../../../../lib/gst";
 import { ensureBrandsSchema, resolveBrandId } from "../../../../../lib/brands";
 import { resolveMediaUrl } from "../../../../../lib/product-image-storage";
 import {
@@ -190,11 +196,15 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (!before) return fail("Product not found", 404);
 
   if ("gst_rate" in body || "hsn_code" in body || "price" in body) {
-    body.gst_rate = resolveSaleGstRate({
-      hsnCode: "hsn_code" in body ? (body.hsn_code as string | null) : before.hsn_code,
-      saleValuePerPiece: "price" in body ? body.price : before.price,
-      fallbackRate: "gst_rate" in body ? body.gst_rate : before.gst_rate
-    });
+    const hsnCode = "hsn_code" in body ? (body.hsn_code as string | null) : before.hsn_code;
+    const explicitRate = "gst_rate" in body ? body.gst_rate : before.gst_rate;
+    body.gst_rate = isReadymadeGarmentHsn(hsnCode)
+      ? resolveSaleGstRate({
+          hsnCode,
+          saleValuePerPiece: "price" in body ? body.price : before.price,
+          fallbackRate: explicitRate
+        })
+      : normalizeGstRate(explicitRate, 5);
   }
 
   const updates: string[] = [];

@@ -12,6 +12,7 @@ import {
   ALLOWED_GST_RATES,
   COMMON_GARMENT_HSN,
   isReadymadeGarmentHsn,
+  normalizeGstRate,
   resolveSaleGstRate
 } from "../../lib/gst-math";
 import { buildProductUploadPageUrl } from "../../lib/product-upload-url";
@@ -135,7 +136,10 @@ export function ProductForm({
   );
 
   useEffect(() => {
-    setForm(initial);
+    setForm({
+      ...initial,
+      gst_rate: String(normalizeGstRate(initial.gst_rate, 5))
+    });
     setWebsiteImages(initialImages);
     setInternalImages(initialInternalImages);
     setError("");
@@ -530,11 +534,18 @@ export function ProductForm({
         });
         return;
       } else if (form.id) {
-        const updated = await adminFetch(`/api/admin/products/${form.id}`, {
-          method: "PATCH",
-          json: payload
-        });
+        const updated = await adminFetch<{ gst_rate?: string | number | null }>(
+          `/api/admin/products/${form.id}`,
+          {
+            method: "PATCH",
+            json: payload
+          }
+        );
         if (updated.error) throw new Error(updated.error);
+        if (updated.data && "gst_rate" in updated.data) {
+          const savedRate = String(normalizeGstRate(updated.data.gst_rate, Number(form.gst_rate) || 5));
+          setForm((f) => ({ ...f, gst_rate: savedRate }));
+        }
         await uploadPendingImages(form.id);
         setJustCreated(false);
         setError("");
@@ -684,7 +695,7 @@ export function ProductForm({
               <span>GST rate %</span>
               <AdminSelectPopup
                 title="GST rate %"
-                value={form.gst_rate}
+                value={String(normalizeGstRate(form.gst_rate, 5))}
                 disabled={isReadymadeGarmentHsn(form.hsn_code)}
                 options={[
                   { value: "0", label: "0%" },

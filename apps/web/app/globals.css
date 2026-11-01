@@ -16008,3 +16008,15 @@ body:has(.admin) {
   font-size: 1.15rem;
   color: #2b2118;
 }
+
+.grn-add-line-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.grn-add-line-row .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}

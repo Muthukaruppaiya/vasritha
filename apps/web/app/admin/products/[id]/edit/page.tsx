@@ -11,6 +11,7 @@ import {
   type ProductParentOption
 } from "../../../../../components/admin/product-form";
 import { adminFetch } from "../../../../../lib/admin-api";
+import { normalizeGstRate } from "../../../../../lib/gst-math";
 import { useAdminQuery } from "../../../../../hooks/use-admin-query";
 
 type Category = ProductFormCategory;
@@ -121,7 +122,7 @@ function AdminEditProductPageInner() {
         purchase_price: product.purchase_price != null ? String(product.purchase_price) : "",
         compare_at_price: product.compare_at_price ? String(product.compare_at_price) : "",
         hsn_code: product.hsn_code || "",
-        gst_rate: String(product.gst_rate ?? 5),
+        gst_rate: String(normalizeGstRate(product.gst_rate, 5)),
         stock_quantity: String(product.stock_quantity ?? 0),
         status: product.status,
         short_name: product.short_name || "",

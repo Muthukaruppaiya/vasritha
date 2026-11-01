@@ -32,6 +32,13 @@ function clip(value: string, max: number) {
 }
 
 /** Line-item amounts: no ₹, no comma (e.g. 4190) for tight thermal columns. */
+function formatDiscountPercent(amount: number, subtotal: number) {
+  if (amount <= 0.009 || subtotal <= 0.009) return "";
+  const pct = Math.round((amount / subtotal) * 10000) / 100;
+  const text = Number.isInteger(pct) ? String(pct) : pct.toFixed(2).replace(/\.?0+$/, "");
+  return ` (${text}%)`;
+}
+
 function formatAmount(value: number | string | null | undefined) {
   const n = Number(value ?? 0);
   if (!Number.isFinite(n)) return "0";
@@ -166,7 +173,10 @@ export function InvoiceBill({ data, id = "vasritha-invoice-bill" }: Props) {
         </div>
         {cashierDiscount > 0.009 ? (
           <div>
-            <span>Discount</span>
+            <span>
+              Discount
+              {formatDiscountPercent(cashierDiscount, Number(data.subtotal || 0))}
+            </span>
             <b>-{formatMoney(cashierDiscount)}</b>
           </div>
         ) : null}

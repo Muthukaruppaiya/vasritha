@@ -385,6 +385,13 @@ function GrnEntryPageInner() {
     if (!editingId) saveGrnDraft(stamped);
   };
 
+  const addLine = () => {
+    persistDraft({
+      ...inward,
+      lines: [...inward.lines, { productVariantId: "", quantity: "1", purchasePrice: "" }]
+    });
+  };
+
   const updateLine = (index: number, patch: Partial<GrnDraftLine>) => {
     const lines = [...inward.lines];
     let next = { ...lines[index], ...patch };
@@ -844,15 +851,7 @@ function GrnEntryPageInner() {
               <button
                 type="button"
                 className="admin-icon-tip admin-action-btn--primary"
-                onClick={() =>
-                  persistDraft({
-                    ...inward,
-                    lines: [
-                      ...inward.lines,
-                      { productVariantId: "", quantity: "1", purchasePrice: "" }
-                    ]
-                  })
-                }
+                onClick={addLine}
                 data-tooltip="Add line"
                 aria-label="Add line"
               >
@@ -1043,6 +1042,12 @@ function GrnEntryPageInner() {
                 </div>
               );
             })}
+            <div className="grn-add-line-row">
+              <button type="button" className="btn admin-ghost-btn" onClick={addLine}>
+                <Plus size={16} strokeWidth={2} />
+                Add line
+              </button>
+            </div>
           </div>
         </AdminPanel>
 
