@@ -120,7 +120,8 @@ export async function buildSalesReport(filters: ReportFilters = {}): Promise<Rep
   if (filters.q?.trim()) {
     params.push(`%${filters.q.trim()}%`);
     where.push(
-      `(o.order_number ilike $${params.length} or coalesce(o.pos_customer_name,'') ilike $${params.length} or coalesce(c.full_name,'') ilike $${params.length})`
+      `(o.order_number ilike $${params.length} or coalesce(o.pos_customer_name,'') ilike $${params.length} or coalesce(c.full_name,'') ilike $${params.length}
+        or exists (select 1 from product_items pi where pi.bill_id = o.id and (pi.unit_code ilike $${params.length} or pi.barcode ilike $${params.length})))`
     );
   }
   if (filters.customer?.trim()) {
@@ -146,12 +147,15 @@ export async function buildSalesReport(filters: ReportFilters = {}): Promise<Rep
   if (filters.product?.trim()) {
     params.push(`%${filters.product.trim()}%`);
     where.push(
-      `exists (
+      `(exists (
         select 1 from order_items oi
         left join products pr on pr.id = oi.product_id
         where oi.order_id = o.id
           and (oi.product_name ilike $${params.length} or coalesce(pr.name,'') ilike $${params.length} or coalesce(oi.sku,'') ilike $${params.length})
-      )`
+      ) or exists (
+        select 1 from product_items pi
+        where pi.bill_id = o.id and pi.unit_code ilike $${params.length}
+      ))`
     );
   }
   if (filters.category?.trim()) {
@@ -185,6 +189,7 @@ export async function buildSalesReport(filters: ReportFilters = {}): Promise<Rep
     paid_sum: string;
     provider: string | null;
     products: string | null;
+    skus: string | null;
     quantity: string;
   }>(
     `select o.id as order_id, o.order_number, o.created_at, o.subtotal, o.discount_amount, o.tax_amount,
@@ -196,6 +201,12 @@ export async function buildSalesReport(filters: ReportFilters = {}): Promise<Rep
             (select string_agg(distinct coalesce(pr.name, oi.product_name), ', ')
                from order_items oi left join products pr on pr.id = oi.product_id
               where oi.order_id = o.id) as products,
+            coalesce(
+              (select string_agg(pi.unit_code, ', ' order by pi.unit_code)
+                 from product_items pi where pi.bill_id = o.id),
+              (select string_agg(distinct oi.sku, ', ')
+                 from order_items oi where oi.order_id = o.id and nullif(oi.sku, '') is not null)
+            ) as skus,
             coalesce((select sum(oi.quantity) from order_items oi where oi.order_id = o.id),0)::text as quantity
      from orders o
      left join customers c on c.id = o.customer_id
@@ -218,6 +229,7 @@ export async function buildSalesReport(filters: ReportFilters = {}): Promise<Rep
       customer: r.customer_name,
       salesman: r.salesman || "—",
       products: r.products || "—",
+      skus: r.skus || "—",
       quantity: Number(r.quantity),
       gross_amount: gross,
       discount,
@@ -246,17 +258,18 @@ export async function buildSalesReport(filters: ReportFilters = {}): Promise<Rep
     range,
     [
       { key: "date", label: "Date", format: "date" },
-      { key: "invoice", label: "Invoice / Order" },
-      { key: "customer", label: "Customer" },
-      { key: "salesman", label: "Salesman" },
+      { key: "invoice", label: "Inv. no." },
+      { key: "customer", label: "Cust. name" },
+      { key: "skus", label: "SKU no." },
+      { key: "gross_amount", label: "Total", format: "money" },
+      { key: "discount", label: "Disc. amt", format: "money" },
+      { key: "payment_method", label: "Cash / UPI" },
+      { key: "paid_amount", label: "Amt collected", format: "money" },
       { key: "products", label: "Products" },
       { key: "quantity", label: "Qty", format: "number" },
-      { key: "gross_amount", label: "Gross", format: "money" },
-      { key: "discount", label: "Discount", format: "money" },
       { key: "tax", label: "Tax", format: "money" },
       { key: "net_amount", label: "Net", format: "money" },
-      { key: "paid_amount", label: "Paid", format: "money" },
-      { key: "payment_method", label: "Payment method" },
+      { key: "salesman", label: "Salesman" },
       { key: "order_status", label: "Order status" }
     ],
     mapped,

@@ -317,14 +317,15 @@ export async function POST(request: NextRequest) {
       }
 
       if (itemId && variantId) {
-        const unit = await queryOne<{ id: string }>(
-          `select id from product_items
+        const unit = await queryOne<{ id: string; unit_code: string | null }>(
+          `select id, unit_code from product_items
            where id = $1 and variant_id = $2 and shop_id = $3 and status = 'to_sell'`,
           [itemId, variantId, shopId]
         );
         if (!unit) {
           return fail(`Scanned piece is not available for ${product.name} at this store`, 400);
         }
+        if (unit.unit_code) sku = unit.unit_code;
       }
 
       if (stock < quantity) {
@@ -592,11 +593,16 @@ export async function POST(request: NextRequest) {
               [line.variantId, shopId]
             );
             if (Number(tracked?.c || 0) > 0) {
+              const family = await db.queryOne<{ sku: string | null; tag: string | null }>(
+                `select sku, tag from products where id = $1`,
+                [line.productId]
+              );
+              const familySku = family?.sku || line.sku || "EXC";
               await createProductUnits(db, {
                 productId: line.productId,
                 variantId: line.variantId,
-                tag: line.sku || "EXC",
-                sku: line.sku || "EXC",
+                tag: family?.tag || familySku,
+                sku: familySku,
                 count: line.quantity,
                 shopId
               });

@@ -11,6 +11,7 @@ import { ensureGstSchema, normalizeHsn, resolveSaleGstRate } from "../../../../l
 import { ensureBrandsSchema, resolveBrandId } from "../../../../lib/brands";
 import { resolveMediaUrl } from "../../../../lib/product-image-storage";
 import {
+  autoApproveIfUnique,
   canApproveProducts,
   ensureProductStatusEnum,
   normalizeProductStatus
@@ -268,6 +269,7 @@ export async function POST(request: NextRequest) {
     }
 
     await recordPriceHistory(data.id, Number(body.price));
+    await autoApproveIfUnique(data.id);
 
     const created = await queryOne(`select * from products where id = $1`, [data.id]);
 

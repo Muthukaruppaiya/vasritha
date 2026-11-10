@@ -440,11 +440,41 @@ export default function AdminBillingPage() {
     setColourPick({ product: item, colours, loading: false, error: "" });
   };
 
+  const addProductPiece = async (item: PosItem) => {
+    const params = new URLSearchParams();
+    params.set("productId", item.productId);
+    if (item.variantId) params.set("variantId", item.variantId);
+    if (shopId) params.set("shopId", shopId);
+    const inCart = cart.map((line) => line.itemId).filter((id): id is string => Boolean(id));
+    if (inCart.length) params.set("exclude", inCart.join(","));
+    const result = await adminFetch<{ piece: PosItem | null }>(
+      `/api/admin/pos/next-piece?${params.toString()}`
+    );
+    const piece = result.data?.piece;
+    if (piece?.itemId) {
+      pushCartItem({ ...piece, imageSrc: piece.imageSrc || item.imageSrc });
+      return;
+    }
+    const samePiecesInCart = cart.some(
+      (line) => line.productId === item.productId && Boolean(line.itemId)
+    );
+    if (!result.error && samePiecesInCart) {
+      setLookupError(`No more pieces of ${item.name} available at this store.`);
+      return;
+    }
+    // Products without piece barcodes keep the old quantity line.
+    pushCartItem(item);
+  };
+
   const addItem = (item: PosItem) => {
     // Piece barcode already carries colour — skip colour prompt.
     // Name / SKU search on multi-colour products must choose a colour first.
     if (item.isMulticolour && !item.itemId) {
       void openColourPicker(item);
+      return;
+    }
+    if (!item.itemId) {
+      void addProductPiece(item);
       return;
     }
     pushCartItem(item);

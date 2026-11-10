@@ -522,6 +522,32 @@ export async function lookupUnitByCode(code: string, shopId?: string | null) {
   );
 }
 
+/** Next sellable piece of a product at a shop, skipping pieces already in the cart. */
+export async function lookupNextSellableUnit(input: {
+  productId: string;
+  variantId?: string | null;
+  shopId?: string | null;
+  excludeItemIds?: string[];
+}) {
+  return queryOne<UnitLookupRow>(
+    `select ${UNIT_LOOKUP_SELECT}
+     where i.status = 'to_sell'
+       and p.status = 'active'
+       and i.product_id = $1
+       and ($2::uuid is null or i.variant_id = $2::uuid)
+       and ($3::uuid is null or i.shop_id = $3::uuid)
+       and not (i.id = any($4::uuid[]))
+     order by i.seq asc
+     limit 1`,
+    [
+      input.productId,
+      input.variantId || null,
+      input.shopId || null,
+      input.excludeItemIds || []
+    ]
+  );
+}
+
 /**
  * Partial piece search: code fragment (e.g. 0001 in VASRUKMIN140001),
  * serial (001 / 0001 → seq 1), piece colour.

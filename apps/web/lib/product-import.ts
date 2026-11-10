@@ -11,6 +11,7 @@ import {
 } from "./product-units";
 import {
   PRODUCT_STATUSES,
+  autoApproveIfUnique,
   canApproveProducts,
   normalizeProductStatus,
   type ProductStatus
@@ -1332,6 +1333,7 @@ export async function runProductImport(input: {
             price: row.price
           });
           if (variant?.id) await applyStockIfEmpty(existing.id, variant.id);
+          await autoApproveIfUnique(existing.id, db);
           await writeAuditLog({
             actorUserId: input.actorUserId,
             action: "import_update",
@@ -1386,6 +1388,7 @@ export async function runProductImport(input: {
           });
           if (variant?.id) await applyStockIfEmpty(data.id, variant.id);
           await recordPriceHistory(data.id, row.price, db);
+          await autoApproveIfUnique(data.id, db);
           await writeAuditLog({
             actorUserId: input.actorUserId,
             action: "import_create",
@@ -1414,10 +1417,11 @@ export async function runProductImport(input: {
   } catch (err) {
     if (err instanceof ProductImportAbort) return emptyResult(err.failed);
     const raw = err instanceof Error ? err.message : "Import failed";
+    const failedRow = currentRow as ProductImportRow | null;
     return emptyResult([
       {
-        name: currentRow?.name || "(import)",
-        row: currentRow?.rowNumber,
+        name: failedRow?.name || "(import)",
+        row: failedRow?.rowNumber,
         error: formatImportDbError(raw)
       }
     ]);

@@ -11,6 +11,7 @@ import { ensureCompanySettingsSchema } from "./company-settings";
 import { ensureSuppliersSchema, getSupplierById, supplierLabel } from "./suppliers";
 import { ensureColourName } from "./colours";
 import { nextDocumentNumber } from "./document-numbers";
+import { autoApproveIfUnique } from "./product-status";
 
 export type { GrnPrintDetail };
 
@@ -405,6 +406,7 @@ export async function applyApprovedGrnStock(
       colorBatches
     });
     createdItems.push(...(items as unknown as Record<string, unknown>[]));
+    if (items.length) await autoApproveIfUnique(variant.product_id, db);
 
     await syncSellableStock(db, variant.id, input.shopId);
 

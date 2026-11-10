@@ -44,6 +44,7 @@ import {
   lineTotal,
   loadGrnDraft,
   saveGrnDraft,
+  type GrnColorSplit,
   type GrnDraft,
   type GrnDraftLine,
   type GrnLineProduct
@@ -172,6 +173,12 @@ function GrnEntryPageInner() {
   const [hydrated, setHydrated] = useState(false);
   const [docUploading, setDocUploading] = useState(false);
   const [pickerOpen, setPickerOpen] = useState<number | null>(null);
+  const [colourPopup, setColourPopup] = useState<{
+    lineIndex: number;
+    productName: string;
+    splits: GrnColorSplit[];
+    error: string;
+  } | null>(null);
   const [pickedByVariant, setPickedByVariant] = useState<Record<string, ProductPickRow>>({});
 
   const [draftNotice, setDraftNotice] = useState("");
@@ -362,7 +369,16 @@ function GrnEntryPageInner() {
     lines[pickerOpen] = { ...next, product: toLineProduct(row) };
     setPickedByVariant((prev) => ({ ...prev, [row.variant_id]: row }));
     persistDraft({ ...inward, lines });
+    const lineIndex = pickerOpen;
     closeSkuPicker();
+    if (row.is_multicolour) {
+      setColourPopup({
+        lineIndex,
+        productName: row.product_name,
+        splits: (next.colorSplits || [blankColorSplit()]).map((s) => ({ ...s })),
+        error: ""
+      });
+    }
   };
 
   const clearSku = (index: number) => {
@@ -417,15 +433,57 @@ function GrnEntryPageInner() {
     persistDraft({ ...inward, lines });
   };
 
-  const updateColorSplit = (
-    lineIndex: number,
-    splitIndex: number,
-    patch: Partial<{ color: string; quantity: string }>
-  ) => {
+  const openColourPopup = (lineIndex: number, productName: string) => {
     const line = inward.lines[lineIndex];
-    if (!line?.colorSplits) return;
-    const splits = line.colorSplits.map((s, i) => (i === splitIndex ? { ...s, ...patch } : s));
-    updateLine(lineIndex, { colorSplits: splits });
+    const splits = line?.colorSplits?.length ? line.colorSplits : [blankColorSplit()];
+    setColourPopup({
+      lineIndex,
+      productName,
+      splits: splits.map((s) => ({ ...s })),
+      error: ""
+    });
+  };
+
+  const editPopupSplit = (splitIndex: number, patch: Partial<GrnColorSplit>) => {
+    setColourPopup((prev) =>
+      prev
+        ? {
+            ...prev,
+            error: "",
+            splits: prev.splits.map((s, i) => (i === splitIndex ? { ...s, ...patch } : s))
+          }
+        : prev
+    );
+  };
+
+  const saveColourPopup = () => {
+    if (!colourPopup) return;
+    const splits = colourPopup.splits.map((s) => ({
+      color: s.color.trim(),
+      quantity: String(Math.trunc(Number(s.quantity) || 0))
+    }));
+    const bad = splits.findIndex((s) => !s.color || Number(s.quantity) < 1);
+    if (bad >= 0) {
+      setColourPopup({
+        ...colourPopup,
+        error: `Row ${bad + 1}: choose a colour and enter a quantity of at least 1.`
+      });
+      return;
+    }
+    const seen = new Set<string>();
+    for (const split of splits) {
+      const key = split.color.toLowerCase();
+      if (seen.has(key)) {
+        setColourPopup({
+          ...colourPopup,
+          error: `${split.color} is entered twice. Put its full quantity in one row.`
+        });
+        return;
+      }
+      seen.add(key);
+    }
+    updateLine(colourPopup.lineIndex, { colorSplits: splits });
+    setColourPopup(null);
   };
 
   const onInvoiceDocument = async (file: File | null) => {
@@ -878,7 +936,11 @@ function GrnEntryPageInner() {
               const splits = line.colorSplits || [];
               const splitSum = colorSplitsQty(splits);
               const lineQty = Math.trunc(Number(line.quantity) || 0);
-              const splitOk = !isMulti || (splitSum > 0 && splitSum === lineQty);
+              const splitOk =
+                !isMulti ||
+                (splitSum > 0 &&
+                  splitSum === lineQty &&
+                  splits.every((s) => s.color.trim() && Number(s.quantity) > 0));
               return (
                 <div
                   className={`grn-line${isMulti ? " grn-line--multicolour" : ""}`}
@@ -945,7 +1007,7 @@ function GrnEntryPageInner() {
                       value={line.quantity}
                       readOnly={isMulti}
                       onChange={(e) => updateLine(index, { quantity: e.target.value })}
-                      title={isMulti ? "Qty is the sum of colour counts below" : undefined}
+                      title={isMulti ? "Qty is the total of the colour-wise quantities" : undefined}
                     />
                   </label>
                   <label>
@@ -981,61 +1043,21 @@ function GrnEntryPageInner() {
                   </button>
 
                   {isMulti ? (
-                    <div className={`grn-color-splits${splitOk ? "" : " is-mismatch"}`}>
-                      <div className="grn-color-splits-head">
-                        <strong>Colour-wise qty</strong>
-                        <span className={splitOk ? "muted" : "grn-split-warn"}>
-                          Sum {splitSum} / line {lineQty}
-                          {!splitOk ? " — must match" : ""}
-                        </span>
-                      </div>
-                      {splits.map((split, splitIndex) => (
-                        <div className="grn-color-split" key={`split-${index}-${splitIndex}`}>
-                          <ColorField
-                            id={`grn-colour-${index}-${splitIndex}`}
-                            value={split.color}
-                            onChange={(color) => updateColorSplit(index, splitIndex, { color })}
-                            required
-                          />
-                          <input
-                            type="number"
-                            min={1}
-                            step={1}
-                            value={split.quantity}
-                            onChange={(e) =>
-                              updateColorSplit(index, splitIndex, { quantity: e.target.value })
-                            }
-                            placeholder="Qty"
-                            required
-                          />
-                          <button
-                            type="button"
-                            className="admin-action-btn"
-                            disabled={splits.length <= 1}
-                            onClick={() =>
-                              updateLine(index, {
-                                colorSplits: splits.filter((_, i) => i !== splitIndex)
-                              })
-                            }
-                            aria-label="Remove colour"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-                      ))}
+                    <div className={`grn-color-summary${splitOk ? "" : " is-mismatch"}`}>
+                      <span>
+                        {splitOk
+                          ? splits
+                              .filter((s) => s.color.trim() && Number(s.quantity) > 0)
+                              .map((s) => `${s.color} ${Math.trunc(Number(s.quantity))}`)
+                              .join(" · ")
+                          : "Colour-wise qty not entered yet"}
+                      </span>
                       <button
                         type="button"
-                        className="admin-icon-tip"
-                        onClick={() =>
-                          updateLine(index, {
-                            colorSplits: [...splits, blankColorSplit()]
-                          })
-                        }
-                        data-tooltip="Add colour"
-                        aria-label="Add colour"
+                        className="btn admin-ghost-btn"
+                        onClick={() => openColourPopup(index, stockRow?.product_name || "Product")}
                       >
-                        <Plus size={16} strokeWidth={2} />
-                        <span>Add colour</span>
+                        {splitOk ? "Edit colours" : "Enter colours"}
                       </button>
                     </div>
                   ) : null}
@@ -1113,6 +1135,104 @@ function GrnEntryPageInner() {
           goCreateMissingProduct();
         }}
       />
+
+      {colourPopup ? (
+        <div
+          className="admin-modal-backdrop"
+          role="presentation"
+          onClick={() => setColourPopup(null)}
+        >
+          <div
+            className="admin-modal grn-colour-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="grn-colour-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="admin-modal-head">
+              <div>
+                <h2 id="grn-colour-title">Colour-wise qty</h2>
+                <p className="muted">{colourPopup.productName}</p>
+              </div>
+              <button
+                type="button"
+                className="admin-modal-close"
+                aria-label="Close"
+                onClick={() => setColourPopup(null)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="admin-modal-body">
+              {colourPopup.error ? <AdminAlert>{colourPopup.error}</AdminAlert> : null}
+              <div className="grn-colour-modal-rows">
+                {colourPopup.splits.map((split, splitIndex) => (
+                  <div className="grn-color-split" key={`popup-split-${splitIndex}`}>
+                    <ColorField
+                      id={`grn-popup-colour-${splitIndex}`}
+                      value={split.color}
+                      onChange={(color) => editPopupSplit(splitIndex, { color })}
+                    />
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={split.quantity}
+                      onChange={(e) => editPopupSplit(splitIndex, { quantity: e.target.value })}
+                      placeholder="Qty"
+                      aria-label={`Quantity for row ${splitIndex + 1}`}
+                    />
+                    <button
+                      type="button"
+                      className="admin-action-btn"
+                      disabled={colourPopup.splits.length <= 1}
+                      onClick={() =>
+                        setColourPopup({
+                          ...colourPopup,
+                          error: "",
+                          splits: colourPopup.splits.filter((_, i) => i !== splitIndex)
+                        })
+                      }
+                      aria-label="Remove colour"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                className="btn admin-ghost-btn grn-colour-modal-add"
+                onClick={() =>
+                  setColourPopup({
+                    ...colourPopup,
+                    error: "",
+                    splits: [...colourPopup.splits, blankColorSplit()]
+                  })
+                }
+              >
+                <Plus size={16} strokeWidth={2} />
+                Add colour
+              </button>
+              <p className="muted">
+                Total qty: <strong>{colorSplitsQty(colourPopup.splits)}</strong>
+              </p>
+              <div className="admin-modal-actions">
+                <button type="button" className="btn" onClick={() => setColourPopup(null)}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn admin-modal-primary"
+                  onClick={saveColourPopup}
+                >
+                  Save colours
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

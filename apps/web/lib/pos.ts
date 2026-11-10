@@ -3,6 +3,7 @@ import { resolveMediaUrl } from "./product-image-storage";
 import {
   ensureProductUnitsSchema,
   listSellableColourOptions,
+  lookupNextSellableUnit,
   lookupUnitByCode,
   lookupUnitsPartial
 } from "./product-units";
@@ -179,6 +180,17 @@ function mapUnitSellable(unit: {
     // Piece already identifies colour — never prompt.
     isMulticolour: false
   };
+}
+
+export async function nextSellablePiece(input: {
+  productId: string;
+  variantId?: string | null;
+  shopId?: string | null;
+  excludeItemIds?: string[];
+}): Promise<PosSellable | null> {
+  await ensureProductUnitsSchema();
+  const unit = await lookupNextSellableUnit(input);
+  return unit ? mapUnitSellable(unit) : null;
 }
 
 export async function lookupSellable(

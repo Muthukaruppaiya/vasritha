@@ -8494,6 +8494,40 @@ body:has(.admin-login) .whatsapp-float {
   align-items: center;
   gap: 6px;
 }
+.grn-color-summary {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px dashed #cbb89f;
+  background: #fffdf8;
+  font-size: 0.84rem;
+}
+.grn-color-summary.is-mismatch {
+  border-color: #c47a5a;
+  background: #fff8f4;
+  color: #9a3412;
+  font-weight: 600;
+}
+.grn-colour-modal {
+  width: min(520px, 100%);
+}
+.grn-colour-modal-rows {
+  display: grid;
+  gap: 8px;
+  max-height: min(50vh, 420px);
+  overflow-y: auto;
+}
+.grn-colour-modal-add {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 .grn-line--head {
   background: transparent;
   border: 0;
@@ -11978,6 +12012,17 @@ body:has(.pos-screen) .admin-topbar-title {
   word-break: break-word;
   line-height: 1.28;
 }
+.invoice-bill-shop-count {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  border-top: 1px dashed #000;
+  padding: 4px 0 2px;
+  margin-top: 2px;
+  font-size: 13.5px;
+  line-height: 1.28;
+  color: #000;
+}
 .invoice-bill-shop-totals {
   margin-left: auto;
   width: 100%;
@@ -13561,7 +13606,8 @@ body:has(.pos-screen) .admin-topbar-title {
   }
 
   .invoice-bill-shop-totals > div,
-  .invoice-bill-shop-totals b {
+  .invoice-bill-shop-totals b,
+  .invoice-bill-shop-count {
     font-size: 14.5px !important;
     font-weight: 400 !important;
   }

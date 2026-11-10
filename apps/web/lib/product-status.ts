@@ -1,3 +1,4 @@
+import type { QueryResultRow } from "pg";
 import { query } from "./db/pool";
 import type { AppRole, Permission } from "./auth/rbac";
 import { hasPermission } from "./auth/rbac";
@@ -58,4 +59,37 @@ export function normalizeProductStatus(
 
 export function isSellableProductStatus(status: string | null | undefined) {
   return status === "active";
+}
+
+type StatusDb = {
+  query: <R extends QueryResultRow = QueryResultRow>(
+    text: string,
+    params?: unknown[]
+  ) => Promise<R[]>;
+};
+
+/**
+ * Pending products with no other product sharing their name, SKU or family barcode
+ * go straight to Active. Duplicates stay pending for a manager to resolve.
+ */
+export async function autoApproveIfUnique(productId: string, db?: StatusDb) {
+  const runner: StatusDb = db || { query };
+  const rows = await runner.query<{ id: string }>(
+    `update products p
+     set status = 'active', updated_at = now()
+     where p.id = $1
+       and p.status::text = 'pending_approval'
+       and not exists (
+         select 1 from products o
+         where o.id <> p.id
+           and (
+             lower(btrim(o.name)) = lower(btrim(p.name))
+             or o.sku = p.sku
+             or o.barcode = p.barcode
+           )
+       )
+     returning p.id`,
+    [productId]
+  );
+  return rows.length > 0;
 }

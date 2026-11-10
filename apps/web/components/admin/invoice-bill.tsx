@@ -63,6 +63,7 @@ export function InvoiceBill({ data, id = "vasritha-invoice-bill" }: Props) {
   }
   const shipping = Number(data.shipping_amount || 0);
   const lines = Array.isArray(data.items) ? data.items : [];
+  const totalQty = lines.reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
   const seller = data.seller;
   const hasGstin = Boolean(seller?.gstin);
   const gst = data.gst;
@@ -165,6 +166,13 @@ export function InvoiceBill({ data, id = "vasritha-invoice-bill" }: Props) {
           )}
         </tbody>
       </table>
+
+      {lines.length ? (
+        <div className="invoice-bill-shop-count">
+          <span>Total items : {lines.length}</span>
+          <span>Total qty : {totalQty}</span>
+        </div>
+      ) : null}
 
       <div className="invoice-bill-shop-totals">
         <div>
