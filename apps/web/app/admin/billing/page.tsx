@@ -23,6 +23,7 @@ import { InvoiceBill } from "../../../components/admin/invoice-bill";
 import { adminFetch, formatDate, formatMoney, getAdminUser } from "../../../lib/admin-api";
 import { isValidEmail, isValidPhone10, normalizePhone10 } from "../../../lib/validation";
 import { OPS_PLATFORM_NAME } from "../../../lib/platform";
+import { exchangeCreditPerUnit, paidShareOfBill } from "../../../lib/exchange-credit-math";
 import Link from "next/link";
 
 type PosItem = {
@@ -133,7 +134,10 @@ type ExchangeReturnLine = {
   productName: string;
   variantName: string | null;
   sku: string | null;
+  /** Credit per piece: price less its share of the original bill's discount. */
   unitPrice: number;
+  /** Price printed on the original bill line (before bill discount). */
+  listPrice: number;
   maxQty: number;
   quantity: number;
 };
@@ -690,6 +694,7 @@ export default function AdminBillingPage() {
       return;
     }
     const order = result.data;
+    const paidShare = paidShareOfBill(order.subtotal, order.cashier_discount_amount);
     const lines: ExchangeReturnLine[] = (order.items || [])
       .map((item) => {
         const remaining =
@@ -702,7 +707,8 @@ export default function AdminBillingPage() {
           productName: item.product_name,
           variantName: item.variant_name,
           sku: item.sku,
-          unitPrice: Number(item.unit_price),
+          unitPrice: exchangeCreditPerUnit(item.unit_price, paidShare),
+          listPrice: Number(item.unit_price),
           maxQty: remaining,
           quantity: remaining
         } as ExchangeReturnLine;
@@ -1311,6 +1317,9 @@ export default function AdminBillingPage() {
                         {line.productName}
                         {line.variantName ? ` · ${line.variantName}` : ""} × {line.quantity} —{" "}
                         {formatMoney(line.unitPrice * line.quantity)}
+                        {line.listPrice - line.unitPrice > 0.009
+                          ? ` (bill price ${formatMoney(line.listPrice * line.quantity)} less bill discount)`
+                          : ""}
                       </li>
                     ))}
                   </ul>
@@ -1604,7 +1613,10 @@ export default function AdminBillingPage() {
                     <strong>{line.productName}</strong>
                     <p className="muted">
                       {line.variantName ? `${line.variantName} · ` : ""}
-                      {formatMoney(line.unitPrice)} each
+                      Credit {formatMoney(line.unitPrice)} each
+                      {line.listPrice - line.unitPrice > 0.009
+                        ? ` (bill price ${formatMoney(line.listPrice)} less bill discount)`
+                        : ""}
                     </p>
                   </div>
                   <input

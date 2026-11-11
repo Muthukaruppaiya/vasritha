@@ -30,6 +30,8 @@ import {
 } from "../../../../../lib/loyalty";
 import { requireScopedShopId } from "../../../../../lib/shop-scope";
 import { ensureExchangePolicySchema } from "../../../../../lib/exchange-policy";
+import { resolveBillDiscountSplit } from "../../../../../lib/exchange-credit";
+import { exchangeCreditPerUnit, paidShareOfBill } from "../../../../../lib/exchange-credit-math";
 import { nextDocumentNumber } from "../../../../../lib/document-numbers";
 
 type CheckoutLine = {
@@ -387,12 +389,21 @@ export async function POST(request: NextRequest) {
         channel: string | null;
         shop_id: string | null;
         status: string;
+        subtotal: string;
+        discount_amount: string;
+        cashier_discount_amount: string;
+        exchange_credit_amount: string;
       }>(
-        `select id, order_number, payment_status, channel, shop_id, status::text as status
+        `select id, order_number, payment_status, channel, shop_id, status::text as status,
+                subtotal, discount_amount,
+                coalesce(cashier_discount_amount, 0) as cashier_discount_amount,
+                coalesce(exchange_credit_amount, 0) as exchange_credit_amount
          from orders where id = $1`,
         [exchangeReq.orderId]
       );
       if (!source) return fail("Original invoice not found", 404);
+      const sourceSplit = await resolveBillDiscountSplit(source);
+      const sourcePaidShare = paidShareOfBill(source.subtotal, sourceSplit.cashierDiscount);
       if (source.payment_status !== "paid") return fail("Original invoice is not paid", 400);
       if (source.channel !== "pos") return fail("Only store (POS) invoices can be exchanged here", 400);
       if (source.shop_id && source.shop_id !== shopId) {
@@ -434,7 +445,7 @@ export async function POST(request: NextRequest) {
             400
           );
         }
-        const unitPrice = Number(line.unit_price);
+        const unitPrice = exchangeCreditPerUnit(line.unit_price, sourcePaidShare);
         exchangeCredit += unitPrice * qty;
         exchangeLines.push({
           orderItemId,
