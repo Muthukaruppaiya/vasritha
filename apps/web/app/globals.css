@@ -11011,6 +11011,45 @@ body:has(.pos-screen) .admin-topbar-title {
   font: 600 0.95rem var(--font-heading), serif;
   color: var(--brown-800);
 }
+.pos-cart-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pos-custom-item-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+}
+.pos-custom-sheet {
+  max-width: 520px;
+}
+.pos-custom-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.pos-custom-grid label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: var(--brown-800);
+}
+.pos-custom-grid .pos-custom-name {
+  grid-column: 1 / -1;
+}
+.pos-custom-grid input,
+.pos-custom-grid select {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid #dbe3ee;
+  border-radius: 10px;
+  background: #fff;
+  font: inherit;
+}
 .pos-hint {
   font-size: .75rem;
   letter-spacing: 0;

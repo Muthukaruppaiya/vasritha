@@ -16,6 +16,7 @@ import {
 import type { QueryResultRow } from "pg";
 import { query, queryOne } from "../../../../../lib/db/pool";
 import {
+  ALLOWED_GST_RATES,
   ensureGstSchema,
   getSellerGstProfile,
   resolveSaleGstRate,
@@ -35,11 +36,18 @@ import { exchangeCreditPerUnit, paidShareOfBill } from "../../../../../lib/excha
 import { nextDocumentNumber } from "../../../../../lib/document-numbers";
 
 type CheckoutLine = {
-  productId: string;
+  productId?: string;
   variantId?: string | null;
   itemId?: string | null;
   quantity: number;
+  /** Admin-typed item not in the catalogue — billed by name and price, no stock. */
+  custom?: boolean;
+  name?: string;
+  unitPrice?: number;
+  gstRate?: number;
 };
+
+const CUSTOM_ITEM_ROLES = ["super_admin", "business_owner"];
 
 type ExchangeLine = {
   orderItemId: string;
@@ -235,7 +243,7 @@ export async function POST(request: NextRequest) {
     }
 
     const orderItems: Array<{
-      product_id: string;
+      product_id: string | null;
       variant_id: string | null;
       item_id: string | null;
       product_name: string;
@@ -251,8 +259,47 @@ export async function POST(request: NextRequest) {
 
     let subtotal = 0;
 
+    const canBillCustom = (ctx.roles || []).some((role) => CUSTOM_ITEM_ROLES.includes(role));
+
     for (const line of items) {
       const quantity = Math.max(1, Math.floor(Number(line.quantity) || 1));
+
+      if (line.custom) {
+        if (!canBillCustom) {
+          return fail("Only an admin can add custom items to a bill", 403);
+        }
+        const name = String(line.name || "").trim();
+        const unitPrice = Math.round(Number(line.unitPrice) * 100) / 100;
+        const gstRate = Number(line.gstRate ?? 5);
+        if (!name || name.length > 80) {
+          return fail("Custom item needs a name (up to 80 characters)", 400);
+        }
+        if (!Number.isFinite(unitPrice) || unitPrice <= 0) {
+          return fail(`Custom item "${name}" needs a price above ₹0`, 400);
+        }
+        if (quantity > 999) return fail(`Custom item "${name}" quantity is too high`, 400);
+        if (!(ALLOWED_GST_RATES as readonly number[]).includes(gstRate)) {
+          return fail(`Custom item "${name}" has an invalid GST rate`, 400);
+        }
+        const lineTotal = Math.round(unitPrice * quantity * 100) / 100;
+        subtotal += lineTotal;
+        orderItems.push({
+          product_id: null,
+          variant_id: null,
+          item_id: null,
+          product_name: name,
+          variant_name: "Custom item",
+          sku: null,
+          category_name: null,
+          hsn_code: null,
+          gst_rate: gstRate,
+          unit_price: unitPrice,
+          quantity,
+          line_total: lineTotal
+        });
+        continue;
+      }
+
       const itemId = line.itemId ? String(line.itemId) : null;
       const product = await queryOne<{
         id: string;
@@ -662,12 +709,14 @@ export async function POST(request: NextRequest) {
       if (settleNow) {
         await deductStock(
           db,
-          orderItems.map((item) => ({
-            variant_id: item.variant_id,
-            product_id: item.product_id,
-            quantity: item.quantity,
-            item_id: item.item_id
-          })),
+          orderItems
+            .filter((item): item is typeof item & { product_id: string } => Boolean(item.product_id))
+            .map((item) => ({
+              variant_id: item.variant_id,
+              product_id: item.product_id,
+              quantity: item.quantity,
+              item_id: item.item_id
+            })),
           ctx.userId,
           order.id,
           shopId

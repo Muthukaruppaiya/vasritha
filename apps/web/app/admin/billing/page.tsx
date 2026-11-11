@@ -39,7 +39,13 @@ type PosItem = {
   imageSrc: string | null;
   color?: string | null;
   isMulticolour?: boolean;
+  /** Admin-typed item that is not in the catalogue (no stock). */
+  custom?: boolean;
+  gstRate?: number;
 };
+
+const CUSTOM_ITEM_ROLES = ["super_admin", "business_owner"];
+const CUSTOM_GST_RATES = [0, 3, 5, 12, 18];
 
 type PosColourOption = {
   color: string;
@@ -258,6 +264,16 @@ export default function AdminBillingPage() {
     customerPhone: string | null;
   } | null>(null);
 
+  const [canAddCustom, setCanAddCustom] = useState(false);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customForm, setCustomForm] = useState({ name: "", price: "", quantity: "1", gstRate: "5" });
+  const [customError, setCustomError] = useState("");
+
+  useEffect(() => {
+    const roles = getAdminUser()?.roles || [];
+    setCanAddCustom(roles.some((role) => CUSTOM_ITEM_ROLES.includes(role)));
+  }, []);
+
   const itemCount = cart.reduce((sum, line) => sum + line.quantity, 0);
   const subtotal = cart.reduce((sum, line) => sum + line.price * line.quantity, 0);
   const discountRaw = Math.max(0, Number(discountValue) || 0);
@@ -442,6 +458,45 @@ export default function AdminBillingPage() {
       return;
     }
     setColourPick({ product: item, colours, loading: false, error: "" });
+  };
+
+  const openCustomItem = () => {
+    setCustomForm({ name: "", price: "", quantity: "1", gstRate: "5" });
+    setCustomError("");
+    setCustomOpen(true);
+  };
+
+  const addCustomItem = (event: FormEvent) => {
+    event.preventDefault();
+    const name = customForm.name.trim();
+    const price = Math.round(Number(customForm.price) * 100) / 100;
+    const quantity = Math.floor(Number(customForm.quantity) || 0);
+    const gstRate = Number(customForm.gstRate);
+    if (!name) return setCustomError("Type the item name.");
+    if (name.length > 80) return setCustomError("Item name must be 80 characters or less.");
+    if (!Number.isFinite(price) || price <= 0) return setCustomError("Enter a price above ₹0.");
+    if (quantity < 1 || quantity > 999) return setCustomError("Quantity must be between 1 and 999.");
+    if (!CUSTOM_GST_RATES.includes(gstRate)) return setCustomError("Choose a GST rate.");
+
+    const customId = `custom-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+    const line: PosItem = {
+      productId: customId,
+      variantId: null,
+      itemId: null,
+      name,
+      sku: null,
+      barcode: null,
+      variantName: "Custom item",
+      price,
+      stock: 999,
+      imageSrc: null,
+      custom: true,
+      gstRate
+    };
+    const key = lineKey(line);
+    setCart((prev) => [...prev, { ...line, quantity, key }]);
+    setCustomOpen(false);
+    window.setTimeout(() => scanRef.current?.focus(), 0);
   };
 
   const addProductPiece = async (item: PosItem) => {
@@ -788,12 +843,22 @@ export default function AdminBillingPage() {
     const checkout = await adminFetch<CheckoutResult>("/api/admin/pos/checkout", {
       method: "POST",
       json: {
-        items: cart.map((line) => ({
-          productId: line.productId,
-          variantId: line.variantId,
-          itemId: line.itemId || null,
-          quantity: line.itemId ? 1 : line.quantity
-        })),
+        items: cart.map((line) =>
+          line.custom
+            ? {
+                custom: true,
+                name: line.name,
+                unitPrice: line.price,
+                gstRate: line.gstRate ?? 5,
+                quantity: line.quantity
+              }
+            : {
+                productId: line.productId,
+                variantId: line.variantId,
+                itemId: line.itemId || null,
+                quantity: line.itemId ? 1 : line.quantity
+              }
+        ),
         discountType,
         discountValue: discountRaw,
         paymentMethod,
@@ -1112,11 +1177,24 @@ export default function AdminBillingPage() {
             <div className="pos-workspace-cart">
               <div className="pos-workspace-cart-head">
                 <strong>Cart</strong>
-                {cart.length ? (
-                  <AdminBadge tone="info">
-                    {itemCount} item{itemCount === 1 ? "" : "s"}
-                  </AdminBadge>
-                ) : null}
+                <div className="pos-cart-head-actions">
+                  {canAddCustom ? (
+                    <button
+                      type="button"
+                      className="btn admin-ghost-btn pos-custom-item-btn"
+                      onClick={openCustomItem}
+                      disabled={busy}
+                    >
+                      <Plus size={14} strokeWidth={2} />
+                      Custom item
+                    </button>
+                  ) : null}
+                  {cart.length ? (
+                    <AdminBadge tone="info">
+                      {itemCount} item{itemCount === 1 ? "" : "s"}
+                    </AdminBadge>
+                  ) : null}
+                </div>
               </div>
               {!cart.length ? (
                 <AdminEmpty
@@ -1652,6 +1730,86 @@ export default function AdminBillingPage() {
               </button>
             </div>
           </div>
+        </div>
+      ) : null}
+
+      {customOpen ? (
+        <div className="pos-invoice-overlay" role="dialog" aria-modal="true" aria-labelledby="pos-custom-title">
+          <form className="pos-invoice-sheet pos-custom-sheet" onSubmit={addCustomItem}>
+            <div className="admin-panel-head" style={{ marginBottom: 12 }}>
+              <h3 id="pos-custom-title">Custom item</h3>
+              <button
+                type="button"
+                className="btn admin-ghost-btn"
+                onClick={() => setCustomOpen(false)}
+              >
+                <X size={14} />
+                Close
+              </button>
+            </div>
+            <p className="muted" style={{ margin: "0 0 12px", fontSize: "0.8rem" }}>
+              For small items that are not in the system. Typed name and price go on the bill;
+              no stock is changed.
+            </p>
+            {customError ? <AdminAlert>{customError}</AdminAlert> : null}
+            <div className="pos-custom-grid">
+              <label className="pos-custom-name">
+                <span>Item name</span>
+                <input
+                  value={customForm.name}
+                  onChange={(e) => setCustomForm((f) => ({ ...f, name: e.target.value }))}
+                  placeholder="e.g. Hair clip"
+                  maxLength={80}
+                  autoFocus
+                  required
+                />
+              </label>
+              <label>
+                <span>Price (₹, incl. GST)</span>
+                <input
+                  type="number"
+                  min={0.01}
+                  step="0.01"
+                  value={customForm.price}
+                  onChange={(e) => setCustomForm((f) => ({ ...f, price: e.target.value }))}
+                  required
+                />
+              </label>
+              <label>
+                <span>Qty</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={999}
+                  step={1}
+                  value={customForm.quantity}
+                  onChange={(e) => setCustomForm((f) => ({ ...f, quantity: e.target.value }))}
+                  required
+                />
+              </label>
+              <label>
+                <span>GST %</span>
+                <select
+                  value={customForm.gstRate}
+                  onChange={(e) => setCustomForm((f) => ({ ...f, gstRate: e.target.value }))}
+                >
+                  {CUSTOM_GST_RATES.map((rate) => (
+                    <option key={rate} value={String(rate)}>
+                      {rate}%
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="admin-modal-actions" style={{ marginTop: 14 }}>
+              <button type="button" className="btn" onClick={() => setCustomOpen(false)}>
+                Cancel
+              </button>
+              <button type="submit" className="btn admin-modal-primary">
+                Add to bill
+              </button>
+            </div>
+          </form>
         </div>
       ) : null}
 
