@@ -152,7 +152,8 @@ async function runEnsureProductUnitsSchema() {
   `);
   await query(`
     alter table public.product_items
-      add column if not exists color text not null default ''
+      add column if not exists color text not null default '',
+      add column if not exists source_return_id uuid
   `);
   await query(`
     create table if not exists public.product_price_history (
@@ -173,7 +174,8 @@ export async function ensureProductUnitsSchema() {
     `);
     await query(`
       alter table public.product_items
-        add column if not exists color text not null default ''
+        add column if not exists color text not null default '',
+        add column if not exists source_return_id uuid
     `);
     return;
   }
@@ -260,6 +262,9 @@ export async function createProductUnits(
     color?: string | null;
     /** Colour-wise batches (multi-colour GRN). Takes priority over count+color. */
     colorBatches?: Array<{ color: string; count: number }>;
+    /** Defaults to to_sell. Exchange QC holds pieces as returned until approved. */
+    status?: UnitStatus;
+    sourceReturnId?: string | null;
   }
 ) {
   const batches =
@@ -306,7 +311,7 @@ export async function createProductUnits(
       seq += 1;
       const padded = String(seq).padStart(4, "0");
       valueSql.push(
-        `($${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++}, 'to_sell')`
+        `($${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++}, $${p++})`
       );
       params.push(
         input.productId,
@@ -316,12 +321,14 @@ export async function createProductUnits(
         seq,
         `${input.sku}-${padded}`.toUpperCase(),
         `${compact}${padded}`,
-        color
+        color,
+        input.status || "to_sell",
+        input.sourceReturnId || null
       );
     }
     const rows = await db.query<ProductItem>(
       `insert into product_items
-         (product_id, variant_id, shop_id, tag, seq, unit_code, barcode, color, status)
+         (product_id, variant_id, shop_id, tag, seq, unit_code, barcode, color, status, source_return_id)
        values ${valueSql.join(", ")}
        returning *`,
       params

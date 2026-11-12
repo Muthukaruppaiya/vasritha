@@ -13,51 +13,38 @@ import {
   getExchangePolicySettings,
   isAllowedExchangeTransition
 } from "../../../../lib/exchange-policy";
+import { decideExchangeQc, queueReturnForQc } from "../../../../lib/exchange-qc";
 
-async function restockReturnItems(returnId: string, actorUserId: string) {
-  const lines = await query<{
-    quantity: number;
-    variant_id: string | null;
-    product_name: string;
-  }>(
-    `select ri.quantity, oi.variant_id, oi.product_name
-     from return_items ri
-     join order_items oi on oi.id = ri.order_item_id
-     where ri.return_id = $1`,
-    [returnId]
-  );
+type ReturnItemDetail = {
+  id: string;
+  return_id: string;
+  order_item_id: string | null;
+  quantity: number;
+  reason: string | null;
+  product_name: string | null;
+  variant_name: string | null;
+  sku: string | null;
+  unit_price: string | null;
+};
 
-  for (const line of lines) {
-    if (!line.variant_id) continue;
-    const qty = Math.max(1, Number(line.quantity) || 1);
-    await query(
-      `update product_variants
-       set stock_quantity = stock_quantity + $2
-       where id = $1`,
-      [line.variant_id, qty]
-    );
-    await query(
-      `update products p
-       set stock_quantity = coalesce((
-         select sum(pv.stock_quantity)::int from product_variants pv where pv.product_id = p.id
-       ), 0),
-       updated_at = now()
-       where id = (select product_id from product_variants where id = $1)`,
-      [line.variant_id]
-    );
-    await query(
-      `insert into inventory_movements
-         (product_variant_id, type, quantity, reference_type, reference_id, note, created_by)
-       values ($1, 'return', $2, 'exchange', $3, $4, $5)`,
-      [
-        line.variant_id,
-        qty,
-        returnId,
-        `Exchange receive · ${line.product_name}`,
-        actorUserId
-      ]
-    ).catch(() => undefined);
-  }
+type ReplacementItemDetail = {
+  order_number: string;
+  product_name: string | null;
+  variant_name: string | null;
+  sku: string | null;
+  quantity: number;
+  unit_price: string | null;
+  line_total: string | null;
+};
+
+/** New bill number stored on POS exchanges: "POS exchange → VAS20260016". */
+function replacementOrderNumber(row: { reason?: string | null; admin_notes?: string | null }) {
+  const reason = String(row.reason || "");
+  const fromReason = reason.split("→")[1]?.trim();
+  if (fromReason) return fromReason;
+  const notes = String(row.admin_notes || "");
+  const match = notes.match(/New bill\s+(\S+)/);
+  return match?.[1] || null;
 }
 
 export async function GET(request: NextRequest) {
@@ -71,7 +58,12 @@ export async function GET(request: NextRequest) {
   await ensureExchangePolicySchema();
   const isCustomerOnly = ctx.roles.length === 1 && ctx.roles[0] === "customer";
 
-  const returns = await query<{ id: string; order_id: string }>(
+  const returns = await query<{
+    id: string;
+    order_id: string;
+    reason: string | null;
+    admin_notes: string | null;
+  }>(
     `select r.*
      from order_returns r
      ${isCustomerOnly ? "join orders o on o.id = r.order_id" : ""}
@@ -82,24 +74,56 @@ export async function GET(request: NextRequest) {
 
   const returnIds = returns.map((r) => r.id);
   const orderIds = returns.map((r) => r.order_id);
+  const replacementNumbers = [
+    ...new Set(
+      returns
+        .map((row) => replacementOrderNumber(row))
+        .filter((value): value is string => Boolean(value))
+    )
+  ];
 
-  const [items, orders] = await Promise.all([
+  const [items, orders, replacements] = await Promise.all([
     returnIds.length
-      ? query(`select * from return_items where return_id = any($1::uuid[])`, [returnIds])
-      : Promise.resolve([]),
+      ? query<ReturnItemDetail>(
+          `select ri.id, ri.return_id, ri.order_item_id, ri.quantity, ri.reason,
+                  oi.product_name, oi.variant_name, oi.sku, oi.unit_price
+           from return_items ri
+           left join order_items oi on oi.id = ri.order_item_id
+           where ri.return_id = any($1::uuid[])`,
+          [returnIds]
+        )
+      : Promise.resolve([] as ReturnItemDetail[]),
     orderIds.length
       ? query<{ id: string; order_number: string; customer_id: string; total_amount: string }>(
           `select id, order_number, customer_id, total_amount from orders where id = any($1::uuid[])`,
           [orderIds]
         )
-      : Promise.resolve([])
+      : Promise.resolve([]),
+    replacementNumbers.length
+      ? query<ReplacementItemDetail>(
+          `select o.order_number, oi.product_name, oi.variant_name, oi.sku,
+                  oi.quantity, oi.unit_price, oi.line_total
+           from orders o
+           join order_items oi on oi.order_id = o.id
+           where o.order_number = any($1::text[])
+           order by o.order_number, oi.product_name`,
+          [replacementNumbers]
+        )
+      : Promise.resolve([] as ReplacementItemDetail[])
   ]);
 
-  const data = returns.map((ret) => ({
-    ...ret,
-    return_items: items.filter((item) => (item as { return_id: string }).return_id === ret.id),
-    orders: orders.find((o) => o.id === ret.order_id) ?? null
-  }));
+  const data = returns.map((ret) => {
+    const replacementNo = replacementOrderNumber(ret);
+    return {
+      ...ret,
+      return_items: items.filter((item) => item.return_id === ret.id),
+      replacement_order_number: replacementNo,
+      replacement_items: replacementNo
+        ? replacements.filter((item) => item.order_number === replacementNo)
+        : [],
+      orders: orders.find((o) => o.id === ret.order_id) ?? null
+    };
+  });
 
   return ok(data);
 }
@@ -217,7 +241,28 @@ export async function PATCH(request: NextRequest) {
     status?: string;
     refundAmount?: number;
     adminNotes?: string;
+    qc?: "approve" | "damage";
   } | null;
+
+  if (body?.returnId && (body.qc === "approve" || body.qc === "damage")) {
+    try {
+      const result = await decideExchangeQc({
+        returnId: body.returnId,
+        decision: body.qc,
+        userId: ctx.userId
+      });
+      await writeAuditLog({
+        actorUserId: ctx.userId,
+        action: body.qc === "approve" ? "exchange_qc_approved" : "exchange_qc_damaged",
+        entityType: "order_returns",
+        entityId: body.returnId,
+        after: result
+      });
+      return ok(result);
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : "Could not finish the QC check", 400);
+    }
+  }
 
   if (!body?.returnId || !body?.status) return fail("returnId and status are required");
 
@@ -267,9 +312,9 @@ export async function PATCH(request: NextRequest) {
     [body.returnId, body.status, body.adminNotes ?? null]
   );
 
-  // Restock once when goods are received for exchange
+  // Goods are in hand, but they stay off the POS list until QC on this page.
   if (before.status !== "received" && body.status === "received") {
-    await restockReturnItems(body.returnId, ctx.userId);
+    await queueReturnForQc(body.returnId);
   }
 
   await writeAuditLog({

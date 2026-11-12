@@ -8,7 +8,7 @@ import {
 } from "../../../../../lib/pos-shifts";
 import {
   allocateSellableItems,
-  createProductUnits,
+  ensureProductUnitsSchema,
   getShopVariantStock,
   markItemsSold,
   syncSellableStock
@@ -31,6 +31,7 @@ import {
 } from "../../../../../lib/loyalty";
 import { requireScopedShopId } from "../../../../../lib/shop-scope";
 import { ensureExchangePolicySchema } from "../../../../../lib/exchange-policy";
+import { holdExchangeStock } from "../../../../../lib/exchange-qc";
 import { resolveBillDiscountSplit } from "../../../../../lib/exchange-credit";
 import { exchangeCreditPerUnit, paidShareOfBill } from "../../../../../lib/exchange-credit-math";
 import { nextDocumentNumber } from "../../../../../lib/document-numbers";
@@ -198,7 +199,10 @@ export async function POST(request: NextRequest) {
 
   const exchangeReq =
     body?.exchange?.orderId && body.exchange.items?.length ? body.exchange : null;
-  if (exchangeReq) await ensureExchangePolicySchema();
+  if (exchangeReq) {
+    await ensureExchangePolicySchema();
+    await ensureProductUnitsSchema();
+  }
 
   let shopId: string;
   try {
@@ -625,8 +629,8 @@ export async function POST(request: NextRequest) {
         const returnNumber = `EXC-${Date.now().toString().slice(-8)}`;
         const ret = await db.queryOne<{ id: string }>(
           `insert into order_returns (
-             order_id, return_number, status, reason, request_type, refund_amount, admin_notes
-           ) values ($1, $2, 'exchanged', $3, 'exchange', 0, $4)
+             order_id, return_number, status, reason, request_type, refund_amount, admin_notes, qc_status
+           ) values ($1, $2, 'exchanged', $3, 'exchange', 0, $4, 'pending')
            returning id`,
           [
             exchangeReq.orderId,
@@ -644,52 +648,33 @@ export async function POST(request: NextRequest) {
             [ret.id, line.orderItemId, line.quantity, "POS counter exchange"]
           );
 
-          if (line.variantId && line.productId) {
-            const tracked = await db.queryOne<{ c: number }>(
-              `select count(*)::int as c from product_items
-               where variant_id = $1 and shop_id = $2`,
-              [line.variantId, shopId]
-            );
-            if (Number(tracked?.c || 0) > 0) {
-              const family = await db.queryOne<{ sku: string | null; tag: string | null }>(
-                `select sku, tag from products where id = $1`,
-                [line.productId]
-              );
+        }
+
+        const held = exchangeLines.filter(
+          (line): line is typeof line & { productId: string; variantId: string } =>
+            Boolean(line.productId && line.variantId)
+        );
+        if (held.length) {
+          const families = await db.query<{ id: string; sku: string | null; tag: string | null }>(
+            `select id, sku, tag from products where id = any($1::uuid[])`,
+            [[...new Set(held.map((line) => line.productId))]]
+          );
+          const familyById = new Map(families.map((row) => [row.id, row]));
+          await holdExchangeStock(db, {
+            returnId: ret.id,
+            shopId,
+            lines: held.map((line) => {
+              const family = familyById.get(line.productId);
               const familySku = family?.sku || line.sku || "EXC";
-              await createProductUnits(db, {
+              return {
                 productId: line.productId,
                 variantId: line.variantId,
-                tag: family?.tag || familySku,
+                quantity: line.quantity,
                 sku: familySku,
-                count: line.quantity,
-                shopId
-              });
-              await syncSellableStock(db, line.variantId, shopId);
-            } else {
-              await db.query(
-                `insert into shop_variant_stock (shop_id, variant_id, stock_quantity, updated_at)
-                 values ($1, $2, $3, now())
-                 on conflict (shop_id, variant_id) do update
-                   set stock_quantity = shop_variant_stock.stock_quantity + excluded.stock_quantity,
-                       updated_at = now()`,
-                [shopId, line.variantId, line.quantity]
-              );
-              await syncSellableStock(db, line.variantId, shopId);
-            }
-            await db.query(
-              `insert into inventory_movements
-                 (product_variant_id, type, quantity, reference_type, reference_id, note, created_by, shop_id)
-               values ($1, 'return', $2, 'exchange', $3, $4, $5, $6)`,
-              [
-                line.variantId,
-                line.quantity,
-                ret.id,
-                `POS exchange return · ${line.productName}`,
-                ctx.userId,
-                shopId
-              ]
-            ).catch(() => undefined);
-          }
+                tag: family?.tag || familySku
+              };
+            })
+          });
         }
       }
 

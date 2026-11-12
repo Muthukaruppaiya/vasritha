@@ -56,8 +56,13 @@ export function getPool() {
       idleTimeoutMillis: isServerlessRuntime() ? 60_000 : 30_000,
       connectionTimeoutMillis: 8_000,
       statement_timeout: 120_000,
+      // Local Postgres applies this. Supabase's transaction pooler ignores startup
+      // options, so a stalled checkout is killed here and not on the live site.
       options: "-c idle_in_transaction_session_timeout=30s",
       ssl: needsSsl ? { rejectUnauthorized: false } : undefined
+    });
+    global.__vasrithaPgPool.on("error", (err) => {
+      console.error("Postgres connection closed:", err.message);
     });
   }
   return global.__vasrithaPgPool;
@@ -93,6 +98,7 @@ export async function withTransaction<T>(fn: (client: {
   queryOne: <R extends QueryResultRow = QueryResultRow>(text: string, params?: unknown[]) => Promise<R | null>;
 }) => Promise<T>) {
   const client = await getPool().connect();
+  let dead = false;
   try {
     await client.query("begin");
     const helper = {
@@ -109,9 +115,14 @@ export async function withTransaction<T>(fn: (client: {
     await client.query("commit");
     return result;
   } catch (error) {
-    await client.query("rollback");
+    try {
+      await client.query("rollback");
+    } catch {
+      // Postgres already closed this connection (idle-in-transaction timeout).
+      dead = true;
+    }
     throw error;
   } finally {
-    client.release();
+    client.release(dead);
   }
 }

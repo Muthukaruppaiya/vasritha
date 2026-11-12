@@ -66,7 +66,7 @@ export function statusTone(status?: string | null): "neutral" | "success" | "war
     return "success";
   }
   if (["pending", "pending_approval", "processing", "draft", "requested", "shipped"].includes(value)) return "warn";
-  if (["failed", "cancelled", "rejected", "archived", "refunded"].includes(value)) return "danger";
+  if (["failed", "cancelled", "rejected", "archived", "refunded", "damaged"].includes(value)) return "danger";
   if (["received"].includes(value)) return "info";
   return "neutral";
 }

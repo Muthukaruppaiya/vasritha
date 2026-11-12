@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, PackageCheck, RefreshCw, X } from "lucide-react";
+import { Ban, Check, Eye, PackageCheck, RefreshCw, X } from "lucide-react";
 import {
   AdminAlert,
   AdminBadge,
@@ -11,20 +11,35 @@ import {
   AdminPanel,
   statusTone
 } from "../../../components/admin/admin-ui";
-import { adminFetch, formatDate } from "../../../lib/admin-api";
+import { adminFetch, formatDate, formatMoney } from "../../../lib/admin-api";
 import { useAdminQuery } from "../../../hooks/use-admin-query";
 import { AdminPagination, useAdminPageSize } from "../../../components/admin/admin-pagination";
+
+type ExchangeProduct = {
+  id?: string;
+  quantity: number;
+  reason?: string | null;
+  product_name: string | null;
+  variant_name: string | null;
+  sku: string | null;
+  unit_price: string | null;
+  line_total?: string | null;
+};
 
 type ReturnRow = {
   id: string;
   return_number: string;
   status: string;
   reason: string | null;
+  admin_notes?: string | null;
   request_type?: string | null;
+  qc_status?: string | null;
   refund_amount: string | null;
   created_at: string;
   orders: { order_number: string; total_amount: string } | null;
-  return_items: unknown[];
+  return_items: ExchangeProduct[];
+  replacement_order_number?: string | null;
+  replacement_items?: ExchangeProduct[];
 };
 
 const NEXT: Record<string, string[]> = {
@@ -50,6 +65,7 @@ export default function AdminReturnsPage() {
   const { data, error, loading, reload } = useAdminQuery<ReturnRow[]>("/api/admin/returns");
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useAdminPageSize();
+  const [detail, setDetail] = useState<ReturnRow | null>(null);
 
   const rows = data || [];
 
@@ -70,12 +86,30 @@ export default function AdminReturnsPage() {
     await reload();
   };
 
+  const decideQc = async (row: ReturnRow, qc: "approve" | "damage") => {
+    const ok = window.confirm(
+      qc === "approve"
+        ? `Approve ${row.return_number} for sale? It will show in POS.`
+        : `Mark ${row.return_number} as damaged? It will not be sold.`
+    );
+    if (!ok) return;
+    const result = await adminFetch("/api/admin/returns", {
+      method: "PATCH",
+      json: { returnId: row.id, qc }
+    });
+    if (result.error) {
+      window.alert(result.error);
+      return;
+    }
+    await reload();
+  };
+
   return (
     <>
       <AdminPageHeader
         eyebrow="Orders"
         title="Exchanges"
-        description="NO REFUND boutique policy — approve, receive and complete exchange requests only. Cash refunds are blocked by the server."
+        description="Exchange history. Returned pieces stay off the POS list until you approve them here. Disapprove marks the piece damaged."
       />
 
       <AdminPanel title="Exchange requests">
@@ -92,6 +126,7 @@ export default function AdminReturnsPage() {
                   <th>Reason</th>
                   <th>Items</th>
                   <th>Status</th>
+                  <th>QC</th>
                   <th>Requested</th>
                   <th>Actions</th>
                 </tr>
@@ -113,9 +148,56 @@ export default function AdminReturnsPage() {
                     <td>
                       <AdminBadge tone={statusTone(row.status)}>{row.status}</AdminBadge>
                     </td>
+                    <td>
+                      {row.qc_status ? (
+                        <AdminBadge tone={statusTone(row.qc_status)}>
+                          {row.qc_status === "pending"
+                            ? "QC pending"
+                            : row.qc_status === "approved"
+                              ? "On sale"
+                              : "Damaged"}
+                        </AdminBadge>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                     <td>{formatDate(row.created_at)}</td>
                     <td>
                       <div className="admin-row-actions" role="group" aria-label="Exchange actions">
+                        <button
+                          type="button"
+                          className="admin-icon-tip"
+                          onClick={() => setDetail(row)}
+                          data-tooltip="Product details"
+                          aria-label={`Product details for ${row.return_number}`}
+                        >
+                          <Eye size={16} strokeWidth={2} />
+                          <span>Details</span>
+                        </button>
+                        {row.qc_status === "pending" ? (
+                          <>
+                            <button
+                              type="button"
+                              className="admin-icon-tip admin-action-btn--primary"
+                              onClick={() => void decideQc(row, "approve")}
+                              data-tooltip="Approve for POS"
+                              aria-label={`Approve ${row.return_number} for POS`}
+                            >
+                              <Check size={16} strokeWidth={2} />
+                              <span>Approve for POS</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="admin-icon-tip admin-action-btn--danger"
+                              onClick={() => void decideQc(row, "damage")}
+                              data-tooltip="Mark damaged"
+                              aria-label={`Mark ${row.return_number} damaged`}
+                            >
+                              <Ban size={16} strokeWidth={2} />
+                              <span>Mark damaged</span>
+                            </button>
+                          </>
+                        ) : null}
                         {(NEXT[row.status] || []).map((status) => {
                           const action = STATUS_ACTION[status];
                           const Icon = action?.icon;
@@ -158,6 +240,105 @@ export default function AdminReturnsPage() {
           </div>
         )}
       </AdminPanel>
+
+      {detail ? (
+        <ExchangeDetailModal row={detail} onClose={() => setDetail(null)} />
+      ) : null}
     </>
+  );
+}
+
+function productLabel(line: ExchangeProduct) {
+  const name = line.product_name || "Product";
+  return line.variant_name ? `${name} · ${line.variant_name}` : name;
+}
+
+function lineAmount(line: ExchangeProduct) {
+  if (line.line_total != null && line.line_total !== "") return Number(line.line_total);
+  return Number(line.unit_price || 0) * Number(line.quantity || 0);
+}
+
+function ExchangeLines({ lines }: { lines: ExchangeProduct[] }) {
+  if (!lines.length) {
+    return <p className="muted">No product lines on this exchange.</p>;
+  }
+  return (
+    <table className="admin-table">
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th>SKU</th>
+          <th>Qty</th>
+          <th>Price</th>
+        </tr>
+      </thead>
+      <tbody>
+        {lines.map((line, index) => (
+          <tr key={line.id || `${line.sku || "line"}-${index}`}>
+            <td>
+              <b>{productLabel(line)}</b>
+              {line.reason ? <div className="muted admin-sub">{line.reason}</div> : null}
+            </td>
+            <td>{line.sku || "—"}</td>
+            <td>{line.quantity}</td>
+            <td>{formatMoney(lineAmount(line))}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function ExchangeDetailModal({ row, onClose }: { row: ReturnRow; onClose: () => void }) {
+  const returned = row.return_items || [];
+  const given = row.replacement_items || [];
+  return (
+    <div className="admin-modal-backdrop" role="presentation" onClick={onClose}>
+      <div
+        className="admin-modal admin-modal--wide"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="exchange-detail-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="admin-modal-head">
+          <div>
+            <p className="eyebrow">Exchange products</p>
+            <h2 id="exchange-detail-title">{row.return_number}</h2>
+          </div>
+          <button type="button" className="admin-modal-close" aria-label="Close" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </div>
+        <div className="admin-modal-body">
+          <div className="grn-detail-meta">
+            <div>
+              <span className="muted">Original bill</span>
+              <strong>{row.orders?.order_number || "—"}</strong>
+            </div>
+            <div>
+              <span className="muted">New bill</span>
+              <strong>{row.replacement_order_number || "—"}</strong>
+            </div>
+            <div>
+              <span className="muted">Status</span>
+              <div>
+                <AdminBadge tone={statusTone(row.status)}>{row.status}</AdminBadge>
+              </div>
+            </div>
+          </div>
+          <p className="eyebrow">Returned</p>
+          <ExchangeLines lines={returned} />
+          <p className="eyebrow">Given on new bill</p>
+          <ExchangeLines lines={given} />
+          {row.admin_notes ? <p className="muted">{row.admin_notes}</p> : null}
+          <div className="admin-modal-actions">
+            <button type="button" className="admin-ghost-btn" onClick={onClose}>
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -31,7 +31,8 @@ export async function ensureExchangePolicySchema() {
   await query(`
     alter table public.order_returns
       add column if not exists request_type text not null default 'exchange',
-      add column if not exists admin_notes text
+      add column if not exists admin_notes text,
+      add column if not exists qc_status text
   `);
 
   // Allow exchanged status; keep historical refunded rows but new refunds blocked in API.
