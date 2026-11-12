@@ -13,7 +13,11 @@ import {
   getExchangePolicySettings,
   isAllowedExchangeTransition
 } from "../../../../lib/exchange-policy";
-import { decideExchangeQc, queueReturnForQc } from "../../../../lib/exchange-qc";
+import {
+  decideExchangeQc,
+  queueReturnForQc,
+  reopenLegacyExchangeQc
+} from "../../../../lib/exchange-qc";
 
 type ReturnItemDetail = {
   id: string;
@@ -57,6 +61,9 @@ export async function GET(request: NextRequest) {
 
   await ensureExchangePolicySchema();
   const isCustomerOnly = ctx.roles.length === 1 && ctx.roles[0] === "customer";
+  if (!isCustomerOnly) {
+    await reopenLegacyExchangeQc();
+  }
 
   const returns = await query<{
     id: string;
@@ -86,7 +93,23 @@ export async function GET(request: NextRequest) {
     returnIds.length
       ? query<ReturnItemDetail>(
           `select ri.id, ri.return_id, ri.order_item_id, ri.quantity, ri.reason,
-                  oi.product_name, oi.variant_name, oi.sku, oi.unit_price
+                  oi.product_name, oi.variant_name, oi.unit_price,
+                  coalesce(
+                    nullif((
+                      select string_agg(piece.unit_code, ', ' order by piece.seq)
+                      from (
+                        select i.unit_code, i.seq
+                        from product_items i
+                        where oi.order_id is not null
+                          and i.bill_id = oi.order_id
+                          and (oi.variant_id is null or i.variant_id = oi.variant_id)
+                          and nullif(i.unit_code, '') is not null
+                        order by i.seq asc
+                        limit greatest(coalesce(ri.quantity, 1), 1)
+                      ) piece
+                    ), ''),
+                    oi.sku
+                  ) as sku
            from return_items ri
            left join order_items oi on oi.id = ri.order_item_id
            where ri.return_id = any($1::uuid[])`,

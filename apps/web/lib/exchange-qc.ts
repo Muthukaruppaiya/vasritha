@@ -165,7 +165,11 @@ export async function decideExchangeQc(input: {
       await syncSellableStock(poolDb, piece.variant_id, piece.shop_id);
     }
   } else if (input.decision === "approve") {
-    await releaseUntrackedReturn(input.returnId, current.order_id);
+    const alreadyPosted = await exchangeStockAlreadyPosted(input.returnId);
+    if (!alreadyPosted) await releaseUntrackedReturn(input.returnId, current.order_id);
+  } else {
+    const alreadyPosted = await exchangeStockAlreadyPosted(input.returnId);
+    if (alreadyPosted) await reverseUntrackedReturn(input.returnId, current.order_id);
   }
 
   const shop = await queryOne<{ shop_id: string | null }>(
@@ -186,6 +190,89 @@ export async function decideExchangeQc(input: {
   }
 
   return { id: input.returnId, qc_status: next };
+}
+
+/** Exchanges saved before QC have no qc_status. Pull their pieces off POS and open QC. */
+export async function reopenLegacyExchangeQc() {
+  await ensureExchangePolicySchema();
+  await ensureProductUnitsSchema();
+  const rows = await query<{ id: string; order_id: string; created_at: string }>(
+    `select id, order_id, created_at
+     from order_returns
+     where qc_status is null
+       and status in ('exchanged', 'received')
+     order by created_at asc`
+  );
+  for (const row of rows) {
+    const shop = await queryOne<{ shop_id: string | null }>(
+      `select shop_id from orders where id = $1`,
+      [row.order_id]
+    );
+    const lines = await query<{
+      variant_id: string | null;
+      quantity: number;
+      family_sku: string | null;
+    }>(
+      `select oi.variant_id, ri.quantity, p.sku as family_sku
+       from return_items ri
+       join order_items oi on oi.id = ri.order_item_id
+       left join products p on p.id = oi.product_id
+       where ri.return_id = $1`,
+      [row.id]
+    );
+    const touched = new Set<string>();
+    for (const line of lines) {
+      if (!line.variant_id) continue;
+      const qty = Math.max(1, Math.trunc(Number(line.quantity) || 1));
+      const family = String(line.family_sku || "").trim();
+      const claimed = await query<{ variant_id: string; shop_id: string | null }>(
+        `update product_items
+         set status = 'returned', source_return_id = $1
+         where id in (
+           select i.id
+           from product_items i
+           where i.variant_id = $2
+             and ($3::uuid is null or i.shop_id = $3)
+             and i.status = 'to_sell'
+             and i.bill_id is null
+             and i.source_return_id is null
+             and i.date_added >= $4::timestamptz - interval '15 seconds'
+             and i.date_added <= $4::timestamptz + interval '2 minutes'
+             and ($5 = '' or i.unit_code ilike $5 || '-%')
+           order by i.date_added asc, i.seq asc
+           limit $6
+         )
+         returning variant_id, shop_id`,
+        [row.id, line.variant_id, shop?.shop_id || null, row.created_at, family, qty]
+      );
+      for (const piece of claimed) {
+        touched.add(`${piece.variant_id}:${piece.shop_id || ""}`);
+      }
+    }
+    for (const key of touched) {
+      const [variantId, shopId] = key.split(":");
+      await syncSellableStock(poolDb, variantId, shopId || null);
+    }
+    await query(
+      `update order_returns
+       set qc_status = 'pending', updated_at = now()
+       where id = $1 and qc_status is null`,
+      [row.id]
+    );
+  }
+}
+
+async function exchangeStockAlreadyPosted(returnId: string) {
+  const row = await queryOne<{ id: string }>(
+    `select id
+     from inventory_movements
+     where reference_id = $1
+       and reference_type = 'exchange'
+       and type = 'return'
+     limit 1`,
+    [returnId]
+  );
+  return Boolean(row);
 }
 
 async function releaseUntrackedReturn(returnId: string, orderId: string) {
@@ -215,6 +302,46 @@ async function releaseUntrackedReturn(returnId: string, orderId: string) {
     await query(
       `update product_variants
        set stock_quantity = stock_quantity + $2
+       where id = $1`,
+      [line.variant_id, qty]
+    );
+    await query(
+      `update products p
+       set stock_quantity = coalesce((
+         select sum(pv.stock_quantity)::int from product_variants pv where pv.product_id = p.id
+       ), 0),
+       updated_at = now()
+       where id = (select product_id from product_variants where id = $1)`,
+      [line.variant_id]
+    );
+  }
+}
+
+async function reverseUntrackedReturn(returnId: string, orderId: string) {
+  const shop = await queryOne<{ shop_id: string | null }>(
+    `select shop_id from orders where id = $1`,
+    [orderId]
+  );
+  const lines = await query<{ variant_id: string; quantity: number }>(
+    `select oi.variant_id, ri.quantity
+     from return_items ri
+     join order_items oi on oi.id = ri.order_item_id
+     where ri.return_id = $1 and oi.variant_id is not null`,
+    [returnId]
+  );
+  for (const line of lines) {
+    const qty = Math.max(1, Math.trunc(Number(line.quantity) || 1));
+    if (shop?.shop_id) {
+      await query(
+        `update shop_variant_stock
+         set stock_quantity = greatest(0, stock_quantity - $3), updated_at = now()
+         where shop_id = $1 and variant_id = $2`,
+        [shop.shop_id, line.variant_id, qty]
+      );
+    }
+    await query(
+      `update product_variants
+       set stock_quantity = greatest(0, stock_quantity - $2)
        where id = $1`,
       [line.variant_id, qty]
     );
