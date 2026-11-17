@@ -386,6 +386,18 @@ function GrnEntryPageInner() {
   };
 
   const linesTotal = useMemo(() => draftLinesTotal(inward.lines), [inward.lines]);
+  const totalLinesAdded = useMemo(
+    () => inward.lines.filter((line) => Boolean(line.productVariantId)).length,
+    [inward.lines]
+  );
+  const totalQuantity = useMemo(
+    () =>
+      inward.lines.reduce((sum, line) => {
+        if (!line.productVariantId) return sum;
+        return sum + Math.max(0, Math.trunc(Number(line.quantity) || 0));
+      }, 0),
+    [inward.lines]
+  );
   const grandTotal = useMemo(
     () => draftGrandTotal(inward.lines, inward.discountAmount, inward.taxAmount),
     [inward.lines, inward.discountAmount, inward.taxAmount]
@@ -1075,7 +1087,11 @@ function GrnEntryPageInner() {
 
         <div className="grn-footer">
           <div className="grn-footer-totals">
-            <span>Lines</span>
+            <span>Total lines</span>
+            <strong>{totalLinesAdded}</strong>
+            <span>Total qty</span>
+            <strong>{totalQuantity}</strong>
+            <span>Lines ₹</span>
             <strong>{formatMoney(linesTotal)}</strong>
             <span>Discount</span>
             <strong>-{formatMoney(Number(inward.discountAmount) || 0)}</strong>
