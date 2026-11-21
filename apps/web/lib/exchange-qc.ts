@@ -1,11 +1,7 @@
 import type { QueryResultRow } from "pg";
 import { query, queryOne } from "./db/pool";
 import { ensureExchangePolicySchema } from "./exchange-policy";
-import {
-  createProductUnits,
-  ensureProductUnitsSchema,
-  syncSellableStock
-} from "./product-units";
+import { ensureProductUnitsSchema, syncSellableStock } from "./product-units";
 
 type Db = {
   query: <R extends QueryResultRow = QueryResultRow>(text: string, params?: unknown[]) => Promise<R[]>;
@@ -14,47 +10,147 @@ type Db = {
 
 const poolDb: Db = { query, queryOne };
 
-export type ExchangeHoldLine = {
-  productId: string;
-  variantId: string;
-  quantity: number;
-  sku: string;
-  tag?: string | null;
-};
+function looksLikePieceCode(sku: string | null | undefined) {
+  const value = String(sku || "").trim().toUpperCase();
+  return Boolean(value && /-\d{3,}$/.test(value));
+}
 
-/** Park exchanged pieces as returned. They stay off the POS list until QC approves. */
+/**
+ * Put the original sold pieces into QC hold (status returned).
+ * Reuses the same unit_code / barcode — never creates a new code when the sold piece exists.
+ */
 export async function holdExchangeStock(
   db: Db,
-  input: { returnId: string; shopId: string | null; lines: ExchangeHoldLine[] }
+  input: { returnId: string; shopId: string | null }
 ) {
-  // Caller must ensure the schema first. Running ALTER here uses a second
-  // connection and stalls the open checkout transaction until Postgres kills it.
-  for (const line of input.lines) {
-    if (!line.productId || !line.variantId) continue;
+  const header = await db.queryOne<{ id: string; order_id: string }>(
+    `select id, order_id from order_returns where id = $1`,
+    [input.returnId]
+  );
+  if (!header) throw new Error("Exchange not found");
+
+  const lines = await db.query<{
+    product_id: string | null;
+    variant_id: string | null;
+    quantity: number;
+    sku: string | null;
+    family_sku: string | null;
+    tag: string | null;
+    product_name: string | null;
+  }>(
+    `select oi.product_id, oi.variant_id, ri.quantity, oi.sku,
+            p.sku as family_sku, p.tag, oi.product_name
+     from return_items ri
+     join order_items oi on oi.id = ri.order_item_id
+     left join products p on p.id = oi.product_id
+     where ri.return_id = $1`,
+    [input.returnId]
+  );
+
+  for (const line of lines) {
+    if (!line.product_id || !line.variant_id) continue;
     const qty = Math.max(1, Math.trunc(Number(line.quantity) || 1));
+
     const tracked = await db.queryOne<{ c: number }>(
       input.shopId
         ? `select count(*)::int as c from product_items where variant_id = $1 and shop_id = $2`
         : `select count(*)::int as c from product_items where variant_id = $1`,
-      input.shopId ? [line.variantId, input.shopId] : [line.variantId]
+      input.shopId ? [line.variant_id, input.shopId] : [line.variant_id]
     );
     if (Number(tracked?.c || 0) <= 0) continue;
-    const familySku = line.sku || "EXC";
-    await createProductUnits(db, {
-      productId: line.productId,
-      variantId: line.variantId,
-      tag: line.tag || familySku,
-      sku: familySku,
-      count: qty,
-      shopId: input.shopId,
-      status: "returned",
-      sourceReturnId: input.returnId
-    });
+
+    const pieceCode = looksLikePieceCode(line.sku) ? String(line.sku).trim().toUpperCase() : "";
+    const compact = pieceCode.replace(/[^A-Za-z0-9]/g, "");
+
+    // 1) Prefer the exact barcode / unit code from the original bill line.
+    let claimed = pieceCode
+      ? await db.query<{ id: string }>(
+          `with picked as (
+             select i.id
+             from product_items i
+             where i.variant_id = $2
+               and i.status = 'sold'
+               and i.source_return_id is null
+               and ($3::uuid is null or i.shop_id = $3)
+               and (
+                 upper(i.unit_code) = $4
+                 or upper(replace(i.barcode, '-', '')) = $5
+               )
+             order by i.date_sold desc nulls last, i.seq asc
+             limit $6
+             for update
+           )
+           update product_items p
+           set status = 'returned', source_return_id = $1
+           from picked
+           where p.id = picked.id
+           returning p.id`,
+          [input.returnId, line.variant_id, input.shopId, pieceCode, compact, qty]
+        )
+      : [];
+
+    // 2) Otherwise take sold pieces from this same invoice (bill_id).
+    if (claimed.length < qty) {
+      const need = qty - claimed.length;
+      const more = await db.query<{ id: string }>(
+        `with picked as (
+           select i.id
+           from product_items i
+           where i.variant_id = $2
+             and i.status = 'sold'
+             and i.source_return_id is null
+             and i.bill_id = $3
+             and ($4::uuid is null or i.shop_id = $4)
+           order by i.date_sold desc nulls last, i.seq asc
+           limit $5
+           for update
+         )
+         update product_items p
+         set status = 'returned', source_return_id = $1
+         from picked
+         where p.id = picked.id
+         returning p.id`,
+        [input.returnId, line.variant_id, header.order_id, input.shopId, need]
+      );
+      claimed = [...claimed, ...more];
+    }
+
+    // 3) Last resort: any sold piece of this variant at this shop (still same old codes).
+    if (claimed.length < qty) {
+      const need = qty - claimed.length;
+      const more = await db.query<{ id: string }>(
+        `with picked as (
+           select i.id
+           from product_items i
+           where i.variant_id = $2
+             and i.status = 'sold'
+             and i.source_return_id is null
+             and ($3::uuid is null or i.shop_id = $3)
+           order by i.date_sold desc nulls last, i.seq asc
+           limit $4
+           for update
+         )
+         update product_items p
+         set status = 'returned', source_return_id = $1
+         from picked
+         where p.id = picked.id
+         returning p.id`,
+        [input.returnId, line.variant_id, input.shopId, need]
+      );
+      claimed = [...claimed, ...more];
+    }
+
+    if (claimed.length < qty) {
+      const name = line.product_name || line.family_sku || "item";
+      throw new Error(
+        `Could not find the original barcode for ${name}. Expected ${qty} sold piece(s); found ${claimed.length}.`
+      );
+    }
   }
 }
 
 /** Customer exchange marked received: hold the pieces and wait for QC on the history page. */
-export async function queueReturnForQc(returnId: string) {
+export async function receiveReturnForQc(returnId: string) {
   await ensureExchangePolicySchema();
   await ensureProductUnitsSchema();
   const header = await queryOne<{ id: string; order_id: string; qc_status: string | null }>(
@@ -68,38 +164,9 @@ export async function queueReturnForQc(returnId: string) {
     `select shop_id from orders where id = $1`,
     [header.order_id]
   );
-  const lines = await query<{
-    product_id: string | null;
-    variant_id: string | null;
-    quantity: number;
-    sku: string | null;
-    tag: string | null;
-    family_sku: string | null;
-  }>(
-    `select oi.product_id, oi.variant_id, ri.quantity, oi.sku, p.tag, p.sku as family_sku
-     from return_items ri
-     join order_items oi on oi.id = ri.order_item_id
-     left join products p on p.id = oi.product_id
-     where ri.return_id = $1`,
-    [returnId]
-  );
   await holdExchangeStock(poolDb, {
     returnId,
-    shopId: shop?.shop_id || null,
-    lines: lines
-      .filter((line): line is typeof line & { product_id: string; variant_id: string } =>
-        Boolean(line.product_id && line.variant_id)
-      )
-      .map((line) => {
-        const familySku = line.family_sku || line.sku || "EXC";
-        return {
-          productId: line.product_id,
-          variantId: line.variant_id,
-          quantity: Number(line.quantity) || 1,
-          sku: familySku,
-          tag: line.tag || familySku
-        };
-      })
+    shopId: shop?.shop_id || null
   });
   await query(
     `update order_returns set qc_status = 'pending', updated_at = now() where id = $1 and qc_status is null`,
@@ -143,9 +210,13 @@ export async function decideExchangeQc(input: {
 
   if (pieces.length) {
     if (input.decision === "approve") {
+      // Same barcode goes back on sale — clear the sold bill link.
       await query(
         `update product_items
-         set status = 'to_sell'
+         set status = 'to_sell',
+             bill_id = null,
+             date_sold = null,
+             damage_detail = null
          where source_return_id = $1 and status = 'returned'`,
         [input.returnId]
       );
@@ -192,15 +263,22 @@ export async function decideExchangeQc(input: {
   return { id: input.returnId, qc_status: next };
 }
 
-/** Exchanges saved before QC have no qc_status. Pull their pieces off POS and open QC. */
+/**
+ * Exchanges that already created a NEW barcode: pull those new codes off POS,
+ * and put the original sold barcode into QC hold instead.
+ */
 export async function reopenLegacyExchangeQc() {
   await ensureExchangePolicySchema();
   await ensureProductUnitsSchema();
-  const rows = await query<{ id: string; order_id: string; created_at: string }>(
-    `select id, order_id, created_at
+  const rows = await query<{ id: string; order_id: string; created_at: string; qc_status: string | null }>(
+    `select id, order_id, created_at, qc_status
      from order_returns
-     where qc_status is null
-       and status in ('exchanged', 'received')
+     where status in ('exchanged', 'received')
+       and (
+         qc_status is null
+         or qc_status = 'pending'
+         or qc_status = 'approved'
+       )
      order by created_at asc`
   );
   for (const row of rows) {
@@ -208,57 +286,66 @@ export async function reopenLegacyExchangeQc() {
       `select shop_id from orders where id = $1`,
       [row.order_id]
     );
-    const lines = await query<{
-      variant_id: string | null;
-      quantity: number;
-      family_sku: string | null;
-    }>(
-      `select oi.variant_id, ri.quantity, p.sku as family_sku
-       from return_items ri
-       join order_items oi on oi.id = ri.order_item_id
-       left join products p on p.id = oi.product_id
-       where ri.return_id = $1`,
-      [row.id]
+
+    // Remove wrongly generated NEW pieces from this exchange (new codes).
+    const bogus = await query<{ id: string; variant_id: string; shop_id: string | null }>(
+      `select id, variant_id, shop_id
+       from product_items
+       where source_return_id = $1
+         and status in ('returned', 'to_sell')
+         and bill_id is null
+         and date_added >= $2::timestamptz - interval '15 seconds'`,
+      [row.id, row.created_at]
     );
-    const touched = new Set<string>();
-    for (const line of lines) {
-      if (!line.variant_id) continue;
-      const qty = Math.max(1, Math.trunc(Number(line.quantity) || 1));
-      const family = String(line.family_sku || "").trim();
-      const claimed = await query<{ variant_id: string; shop_id: string | null }>(
-        `update product_items
-         set status = 'returned', source_return_id = $1
-         where id in (
-           select i.id
-           from product_items i
-           where i.variant_id = $2
-             and ($3::uuid is null or i.shop_id = $3)
-             and i.status = 'to_sell'
-             and i.bill_id is null
-             and i.source_return_id is null
-             and i.date_added >= $4::timestamptz - interval '15 seconds'
-             and i.date_added <= $4::timestamptz + interval '2 minutes'
-             and ($5 = '' or i.unit_code ilike $5 || '-%')
-           order by i.date_added asc, i.seq asc
-           limit $6
-         )
-         returning variant_id, shop_id`,
-        [row.id, line.variant_id, shop?.shop_id || null, row.created_at, family, qty]
-      );
-      for (const piece of claimed) {
-        touched.add(`${piece.variant_id}:${piece.shop_id || ""}`);
+    if (bogus.length) {
+      await query(`delete from product_items where id = any($1::uuid[])`, [
+        bogus.map((p) => p.id)
+      ]);
+      const seen = new Set<string>();
+      for (const piece of bogus) {
+        const key = `${piece.variant_id}:${piece.shop_id || ""}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        await syncSellableStock(poolDb, piece.variant_id, piece.shop_id);
       }
     }
-    for (const key of touched) {
-      const [variantId, shopId] = key.split(":");
-      await syncSellableStock(poolDb, variantId, shopId || null);
+
+    // Reclaim original sold barcodes into returned / to_sell based on QC.
+    try {
+      await holdExchangeStock(poolDb, {
+        returnId: row.id,
+        shopId: shop?.shop_id || null
+      });
+    } catch {
+      /* older bills without piece tracking stay as untracked stock */
     }
-    await query(
-      `update order_returns
-       set qc_status = 'pending', updated_at = now()
-       where id = $1 and qc_status is null`,
-      [row.id]
-    );
+
+    if (row.qc_status === "approved") {
+      await query(
+        `update product_items
+         set status = 'to_sell', bill_id = null, date_sold = null, damage_detail = null
+         where source_return_id = $1 and status = 'returned'`,
+        [row.id]
+      );
+      const pieces = await query<{ variant_id: string; shop_id: string | null }>(
+        `select variant_id, shop_id from product_items where source_return_id = $1`,
+        [row.id]
+      );
+      const seen = new Set<string>();
+      for (const piece of pieces) {
+        const key = `${piece.variant_id}:${piece.shop_id || ""}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        await syncSellableStock(poolDb, piece.variant_id, piece.shop_id);
+      }
+    } else if (!row.qc_status) {
+      await query(
+        `update order_returns
+         set qc_status = 'pending', updated_at = now()
+         where id = $1 and qc_status is null`,
+        [row.id]
+      );
+    }
   }
 }
 

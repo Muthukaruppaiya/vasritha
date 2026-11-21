@@ -15,7 +15,7 @@ import {
 } from "../../../../lib/exchange-policy";
 import {
   decideExchangeQc,
-  queueReturnForQc,
+  receiveReturnForQc,
   reopenLegacyExchangeQc
 } from "../../../../lib/exchange-qc";
 
@@ -337,7 +337,7 @@ export async function PATCH(request: NextRequest) {
 
   // Goods are in hand, but they stay off the POS list until QC on this page.
   if (before.status !== "received" && body.status === "received") {
-    await queueReturnForQc(body.returnId);
+    await receiveReturnForQc(body.returnId);
   }
 
   await writeAuditLog({

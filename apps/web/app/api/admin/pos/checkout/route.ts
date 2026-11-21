@@ -223,7 +223,7 @@ export async function POST(request: NextRequest) {
     phone: body?.customerPhone,
     email: body?.customerEmail
   });
-  if ("error" in customer) return fail(customer.error);
+  if ("error" in customer) return fail(customer.error || "Invalid customer details");
 
   const paymentMethod =
     body?.paymentMethod === "razorpay"
@@ -650,31 +650,9 @@ export async function POST(request: NextRequest) {
 
         }
 
-        const held = exchangeLines.filter(
-          (line): line is typeof line & { productId: string; variantId: string } =>
-            Boolean(line.productId && line.variantId)
-        );
-        if (held.length) {
-          const families = await db.query<{ id: string; sku: string | null; tag: string | null }>(
-            `select id, sku, tag from products where id = any($1::uuid[])`,
-            [[...new Set(held.map((line) => line.productId))]]
-          );
-          const familyById = new Map(families.map((row) => [row.id, row]));
-          await holdExchangeStock(db, {
-            returnId: ret.id,
-            shopId,
-            lines: held.map((line) => {
-              const family = familyById.get(line.productId);
-              const familySku = family?.sku || line.sku || "EXC";
-              return {
-                productId: line.productId,
-                variantId: line.variantId,
-                quantity: line.quantity,
-                sku: familySku,
-                tag: family?.tag || familySku
-              };
-            })
-          });
+        if (exchangeLines.some((line) => line.productId && line.variantId)) {
+          // Reclaim the original sold barcode(s) into QC hold — never invent a new code.
+          await holdExchangeStock(db, { returnId: ret.id, shopId });
         }
       }
 

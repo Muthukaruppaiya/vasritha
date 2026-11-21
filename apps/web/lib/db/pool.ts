@@ -79,7 +79,7 @@ export async function query<T extends QueryResultRow = QueryResultRow>(
 export async function queryOne<T extends QueryResultRow = QueryResultRow>(
   text: string,
   params: unknown[] = []
-) {
+): Promise<T | null> {
   const rows = await query<T>(text, params);
   return rows[0] ?? null;
 }
@@ -102,11 +102,17 @@ export async function withTransaction<T>(fn: (client: {
   try {
     await client.query("begin");
     const helper = {
-      async query<R extends QueryResultRow = QueryResultRow>(text: string, params: unknown[] = []) {
+      async query<R extends QueryResultRow = QueryResultRow>(
+        text: string,
+        params: unknown[] = []
+      ): Promise<R[]> {
         const result = await client.query<R>(text, params);
         return result.rows;
       },
-      async queryOne<R extends QueryResultRow = QueryResultRow>(text: string, params: unknown[] = []) {
+      async queryOne<R extends QueryResultRow = QueryResultRow>(
+        text: string,
+        params: unknown[] = []
+      ): Promise<R | null> {
         const rows = await helper.query<R>(text, params);
         return rows[0] ?? null;
       }
